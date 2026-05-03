@@ -17,26 +17,30 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         rememberMe: { label: 'Ghi nhớ đăng nhập', type: 'text' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null
+        if (!credentials?.email || !credentials?.password) {
+          throw new Error('MISSING_FIELDS')
+        }
 
         try {
           await connectDB()
-          const user = await UserModel.findOne({ email: credentials.email }).select('+password')
-          if (!user) return null
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          throw new Error(`DB_CONNECT: ${msg.slice(0, 120)}`)
+        }
 
-          const valid = await bcrypt.compare(credentials.password as string, user.password)
-          if (!valid) return null
+        const user = await UserModel.findOne({ email: credentials.email }).select('+password')
+        if (!user) throw new Error('USER_NOT_FOUND')
 
-          return {
-            id:         user._id.toString(),
-            name:       user.name,
-            email:      user.email,
-            role:       user.role,
-            avatar:     user.avatar,
-            rememberMe: credentials.rememberMe === 'true',
-          }
-        } catch {
-          return null
+        const valid = await bcrypt.compare(credentials.password as string, user.password)
+        if (!valid) throw new Error('WRONG_PASSWORD')
+
+        return {
+          id:         user._id.toString(),
+          name:       user.name,
+          email:      user.email,
+          role:       user.role,
+          avatar:     user.avatar,
+          rememberMe: credentials.rememberMe === 'true',
         }
       },
     }),

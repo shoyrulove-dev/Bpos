@@ -27,7 +27,18 @@ export default function LoginPage() {
       })
 
       if (result?.error) {
-        setError('Email hoặc mật khẩu không đúng')
+        const code = (result as { code?: string }).code ?? ''
+        if (code === 'USER_NOT_FOUND') {
+          setError('Email không tồn tại trong hệ thống')
+        } else if (code === 'WRONG_PASSWORD') {
+          setError('Mật khẩu không đúng')
+        } else if (code.startsWith('DB_CONNECT')) {
+          setError(`Lỗi kết nối database: ${code.replace('DB_CONNECT: ', '')}`)
+        } else if (code === 'MISSING_FIELDS') {
+          setError('Vui lòng nhập đầy đủ email và mật khẩu')
+        } else {
+          setError(`Đăng nhập thất bại${code ? ` (${code})` : ''}`)
+        }
       } else {
         router.push('/dashboard')
         router.refresh()
