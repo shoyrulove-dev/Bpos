@@ -9,6 +9,7 @@ export default function LoginPage() {
   const router = useRouter()
   const [form, setForm] = useState({ email: '', password: '' })
   const [showPass, setShowPass] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -21,6 +22,7 @@ export default function LoginPage() {
       const result = await signIn('credentials', {
         email: form.email,
         password: form.password,
+        rememberMe: String(rememberMe),
         redirect: false,
       })
 
@@ -100,6 +102,18 @@ export default function LoginPage() {
                   {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-primary-500 accent-orange-500 cursor-pointer"
+                />
+                <span className="text-sm text-gray-600">Ghi nhớ đăng nhập</span>
+              </label>
             </div>
 
             <button

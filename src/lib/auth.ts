@@ -4,13 +4,17 @@ import bcrypt from 'bcryptjs'
 import { connectDB } from '@/lib/db'
 import UserModel from '@/models/User'
 
+const REMEMBER_MAX_AGE = 30 * 24 * 60 * 60 // 30 days
+const DEFAULT_MAX_AGE  = 24 * 60 * 60       // 1 day
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
       name: 'Credentials',
       credentials: {
-        email:    { label: 'Email',    type: 'email' },
-        password: { label: 'Mật khẩu', type: 'password' },
+        email:      { label: 'Email',             type: 'email' },
+        password:   { label: 'Mật khẩu',          type: 'password' },
+        rememberMe: { label: 'Ghi nhớ đăng nhập', type: 'text' },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null
@@ -24,11 +28,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           if (!valid) return null
 
           return {
-            id:     user._id.toString(),
-            name:   user.name,
-            email:  user.email,
-            role:   user.role,
-            avatar: user.avatar,
+            id:         user._id.toString(),
+            name:       user.name,
+            email:      user.email,
+            role:       user.role,
+            avatar:     user.avatar,
+            rememberMe: credentials.rememberMe === 'true',
           }
         } catch {
           return null
@@ -39,9 +44,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id     = user.id
-        token.role   = (user as { role?: string }).role
-        token.avatar = (user as { avatar?: string }).avatar
+        token.id         = user.id
+        token.role       = (user as { role?: string }).role
+        token.avatar     = (user as { avatar?: string }).avatar
+        token.rememberMe = (user as { rememberMe?: boolean }).rememberMe ?? false
+        // Set token expiry based on rememberMe
+        token.exp = Math.floor(Date.now() / 1000) +
+          (token.rememberMe ? REMEMBER_MAX_AGE : DEFAULT_MAX_AGE)
       }
       return token
     },
@@ -58,6 +67,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     signIn: '/login',
     error:  '/login',
   },
-  session: { strategy: 'jwt' },
+  session: {
+    strategy: 'jwt',
+    maxAge: REMEMBER_MAX_AGE,
+  },
   secret: process.env.NEXTAUTH_SECRET,
 })
