@@ -159,3 +159,85 @@ export function useRevenueReport(params?: { days?: number; brandId?: string }) {
   if (params?.brandId) sp.set('brandId', params.brandId)
   return useQuery({ queryKey: ['report-revenue', params], queryFn: () => fetchJSON(`/api/reports/revenue?${sp}`) })
 }
+
+// ---- Orders report ----
+export function useOrdersReport(params?: { days?: number; brandId?: string; hubId?: string }) {
+  const sp = new URLSearchParams()
+  if (params?.days) sp.set('days', String(params.days))
+  if (params?.brandId) sp.set('brandId', params.brandId)
+  if (params?.hubId) sp.set('hubId', params.hubId)
+  return useQuery({ queryKey: ['report-orders', params], queryFn: () => fetchJSON(`/api/reports/orders?${sp}`) })
+}
+
+// ---- Brands report ----
+export function useBrandsReport(params?: { days?: number }) {
+  const sp = new URLSearchParams()
+  if (params?.days) sp.set('days', String(params.days))
+  return useQuery({ queryKey: ['report-brands', params], queryFn: () => fetchJSON(`/api/reports/brands?${sp}`) })
+}
+
+// ---- Channels report ----
+export function useChannelsReport(params?: { days?: number; brandId?: string }) {
+  const sp = new URLSearchParams()
+  if (params?.days) sp.set('days', String(params.days))
+  if (params?.brandId) sp.set('brandId', params.brandId)
+  return useQuery({ queryKey: ['report-channels', params], queryFn: () => fetchJSON(`/api/reports/channels?${sp}`) })
+}
+
+// ---- Hubs report ----
+export function useHubsReport(params?: { days?: number; brandId?: string }) {
+  const sp = new URLSearchParams()
+  if (params?.days) sp.set('days', String(params.days))
+  if (params?.brandId) sp.set('brandId', params.brandId)
+  return useQuery({ queryKey: ['report-hubs', params], queryFn: () => fetchJSON(`/api/reports/hubs?${sp}`) })
+}
+
+// ---- Products report ----
+export function useProductsReport(params?: { days?: number; brandId?: string }) {
+  const sp = new URLSearchParams()
+  if (params?.days) sp.set('days', String(params.days))
+  if (params?.brandId) sp.set('brandId', params.brandId)
+  return useQuery({ queryKey: ['report-products', params], queryFn: () => fetchJSON(`/api/reports/products?${sp}`) })
+}
+
+// ---- Customers report ----
+export function useCustomersReport(params?: { days?: number; brandId?: string }) {
+  const sp = new URLSearchParams()
+  if (params?.days) sp.set('days', String(params.days))
+  if (params?.brandId) sp.set('brandId', params.brandId)
+  return useQuery({ queryKey: ['report-customers', params], queryFn: () => fetchJSON(`/api/reports/customers?${sp}`) })
+}
+
+// ---- Cancelled report ----
+export function useCancelledReport(params?: { days?: number; brandId?: string }) {
+  const sp = new URLSearchParams()
+  if (params?.days) sp.set('days', String(params.days))
+  if (params?.brandId) sp.set('brandId', params.brandId)
+  return useQuery({ queryKey: ['report-cancelled', params], queryFn: () => fetchJSON(`/api/reports/cancelled?${sp}`) })
+}
+
+// ---- Shifts (Ca bán hàng) ----
+export function useShifts(params?: { brandId?: string; hubId?: string; status?: string; page?: number }) {
+  const sp = new URLSearchParams()
+  if (params?.brandId) sp.set('brandId', params.brandId)
+  if (params?.hubId) sp.set('hubId', params.hubId)
+  if (params?.status) sp.set('status', params.status)
+  if (params?.page) sp.set('page', String(params.page))
+  return useQuery({ queryKey: ['shifts', params], queryFn: () => fetchJSON(`/api/shifts?${sp}`) })
+}
+
+export function useOpenShift() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) => fetchJSON('/api/shifts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['shifts'] }),
+  })
+}
+
+export function useCloseShift() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: Record<string, unknown>) => fetchJSON(`/api/shifts/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'close', ...data }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['shifts'] }),
+  })
+}

@@ -23,6 +23,7 @@ import {
   ChevronRight,
   ShoppingBag,
   Link as LinkIcon,
+  Clock,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -81,6 +82,7 @@ const navItems: NavItem[] = [
     children: [
       { href: '/orders',    label: 'Quản lý đơn hàng', icon: <ShoppingCart className="w-4 h-4" /> },
       { href: '/shipments', label: 'Vận đơn',           icon: <Truck className="w-4 h-4" /> },
+      { href: '/shifts',    label: 'Ca bán hàng',        icon: <Clock className="w-4 h-4" /> },
     ],
   },
   {

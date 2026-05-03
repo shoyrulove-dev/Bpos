@@ -2,7 +2,7 @@
 // BPOS – Global TypeScript Types
 // ============================================================
 
-export type Role = 'user' | 'admin'
+export type Role = 'admin' | 'brand_manager' | 'hub_manager' | 'cashier'
 
 export type ActiveStatus = 'active' | 'inactive'
 
@@ -49,6 +49,12 @@ export interface Hub {
 }
 
 // ---- Staff (Nhân viên) ----
+export interface StaffPermission {
+  brandId?: string
+  hubId?: string
+  role: 'brand_manager' | 'hub_manager' | 'cashier'
+}
+
 export interface Staff {
   _id: string
   name: string
@@ -60,32 +66,65 @@ export interface Staff {
   hubId?: string
   hubName?: string
   avatar?: string
+  permissions: StaffPermission[]
   status: ActiveStatus
   createdAt: string
   updatedAt: string
 }
 
 // ---- Product ----
-export type ProductType = 'single' | 'combo' | 'topping'
+export type ProductType = 'raw_material' | 'semi_product' | 'finished_product' | 'goods'
+
+export interface ProductIngredient {
+  productId?: string
+  name: string
+  quantity: number
+  unit: string
+}
 
 export interface Product {
   _id: string
   name: string
   code: string
+  barcode?: string
+  description?: string
   category: string
   type: ProductType
   unit: string
   brandId: string
   brandName?: string
+  allowSell: boolean
   saleStatus: 'selling' | 'stopped' | 'draft'
   status: ActiveStatus
   price?: number
+  costPrice?: number
   image?: string
+  supplier?: string
+  weight?: number
+  height?: number
+  length?: number
+  ingredients: ProductIngredient[]
   createdAt: string
   updatedAt: string
 }
 
 // ---- Menu (Thực đơn) ----
+export interface MenuOptionItem {
+  productId?: string
+  name: string
+  price: number
+  isDefault?: boolean
+}
+
+export interface MenuOptionGroup {
+  _id?: string
+  name: string
+  isRequired: boolean
+  minSelect: number
+  maxSelect: number
+  items: MenuOptionItem[]
+}
+
 export interface Menu {
   _id: string
   name: string
@@ -93,6 +132,8 @@ export interface Menu {
   brandId: string
   brandName?: string
   productIds: string[]
+  channelIds: string[]
+  optionGroups: MenuOptionGroup[]
   status: ActiveStatus
   createdAt: string
   updatedAt: string
@@ -113,12 +154,30 @@ export interface SyncLog {
 }
 
 // ---- Promotion (Khuyến mãi) ----
-export type PromotionType = 'discount_percent' | 'discount_amount' | 'free_item' | 'combo'
+export type PromotionType =
+  | 'discount_percent'
+  | 'discount_amount'
+  | 'free_item'
+  | 'combo'
+  | 'order_tiered_discount'
+  | 'shipping_discount'
 export type PromotionStatus = 'active' | 'upcoming' | 'ended'
+
+export interface PromotionTier {
+  minOrderValue: number
+  discountType: 'percent' | 'amount'
+  discountValue: number
+  maxDiscount?: number
+  shippingType?: 'discount' | 'flat_price' | 'freeship'
+  flatPrice?: number
+  region?: string
+}
 
 export interface Promotion {
   _id: string
   name: string
+  description?: string
+  code?: string
   type: PromotionType
   brandId: string
   brandName?: string
@@ -126,7 +185,19 @@ export interface Promotion {
   endAt: string
   quantity?: number
   usedCount?: number
+  maxPerUser?: number
+  allowCombine: boolean
   status: PromotionStatus
+  discountType?: 'percent' | 'amount'
+  discountValue?: number
+  applicableProducts?: string[]
+  tiers?: PromotionTier[]
+  buyProducts?: string[]
+  buyQuantity?: number
+  getProducts?: string[]
+  getDiscountType?: 'percent' | 'amount' | 'flat'
+  getDiscountValue?: number
+  applicableChannels?: string[]
   createdAt: string
   updatedAt: string
 }
@@ -297,6 +368,33 @@ export interface NormalizedOrder {
   placedAt: string
   deliveredAt?: string
   rawPayload: Record<string, unknown>
+}
+
+// ---- Shift (Ca bán hàng) ----
+export type ShiftStatus = 'open' | 'closed'
+
+export interface Shift {
+  _id: string
+  hubId: string
+  hubName?: string
+  brandId: string
+  brandName?: string
+  openedById: string
+  openedByName?: string
+  closedById?: string
+  closedByName?: string
+  openedAt: string
+  closedAt?: string
+  openCash: number
+  closeCash?: number
+  status: ShiftStatus
+  note?: string
+  orderCount?: number
+  revenue?: number
+  discount?: number
+  platformFee?: number
+  createdAt: string
+  updatedAt: string
 }
 
 // ---- Report ----

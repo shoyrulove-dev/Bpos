@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   const exists = await UserModel.findOne({ email }).lean()
   if (exists) return err('Email đã tồn tại')
   const hash = await bcrypt.hash(password || '123456', 10)
-  const user = await UserModel.create({ name, email, phone, role: role || 'user', brandId, status: status || 'active', password: hash })
+  const user = await UserModel.create({ name, email, phone, role: role || 'cashier', brandId, status: status || 'active', password: hash })
   const { password: _pw, ...safe } = user.toObject()
   return ok(safe, 201)
 }

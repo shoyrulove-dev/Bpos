@@ -29,8 +29,14 @@ export async function POST(req: NextRequest) {
   if (res) return res
   await connectDB()
   const body = await req.json()
-  const { name, code, category, type, unit, brandId, price, saleStatus, status } = body
+  const { name, code, category, type, unit, brandId, price, saleStatus, status,
+    barcode, description, costPrice, supplier, weight, height, length, allowSell } = body
   if (!name || !code || !category || !brandId) return err('Thiếu thông tin bắt buộc')
-  const product = await ProductModel.create({ name, code, category, type: type || 'single', unit: unit || 'Cái', brandId, price, saleStatus: saleStatus || 'selling', status: status || 'active' })
+  const product = await ProductModel.create({
+    name, code, category, type: type || 'finished_product', unit: unit || 'Cái',
+    brandId, price, saleStatus: saleStatus || 'selling', status: status || 'active',
+    barcode, description, costPrice, supplier, weight, height, length,
+    allowSell: allowSell !== undefined ? allowSell : true,
+  })
   return ok(product, 201)
 }

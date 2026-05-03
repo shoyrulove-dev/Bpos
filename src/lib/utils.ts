@@ -82,10 +82,54 @@ export const BRAND_TYPE_LABEL: Record<string, string> = {
 }
 
 export const PROMOTION_TYPE_LABEL: Record<string, string> = {
-  discount_percent: 'Giảm %',
-  discount_amount: 'Giảm tiền',
-  free_item: 'Tặng món',
-  combo: 'Combo',
+  discount_percent: 'Giảm % theo SP',
+  discount_amount: 'Giảm tiền theo SP',
+  free_item: 'Tặng món theo đơn',
+  combo: 'Mua X tặng/giảm Y',
+  order_tiered_discount: 'Giảm theo tổng đơn',
+  shipping_discount: 'Giảm phí vận chuyển',
+}
+
+export const PROMOTION_TYPE_COLOR: Record<string, string> = {
+  discount_percent: 'bg-blue-100 text-blue-700',
+  discount_amount: 'bg-violet-100 text-violet-700',
+  free_item: 'bg-green-100 text-green-700',
+  combo: 'bg-orange-100 text-orange-700',
+  order_tiered_discount: 'bg-amber-100 text-amber-700',
+  shipping_discount: 'bg-teal-100 text-teal-700',
+}
+
+export const PRODUCT_TYPE_LABEL: Record<string, string> = {
+  raw_material: 'Nguyên vật liệu',
+  semi_product: 'Bán thành phẩm',
+  finished_product: 'Thành phẩm',
+  goods: 'Hàng hóa',
+}
+
+export const PRODUCT_TYPE_COLOR: Record<string, string> = {
+  raw_material: 'bg-yellow-100 text-yellow-700',
+  semi_product: 'bg-blue-100 text-blue-700',
+  finished_product: 'bg-green-100 text-green-700',
+  goods: 'bg-purple-100 text-purple-700',
+}
+
+export const STAFF_ROLE_LABEL: Record<string, string> = {
+  admin: 'Admin',
+  brand_manager: 'Quản lý thương hiệu',
+  hub_manager: 'Quản lý cửa hàng',
+  cashier: 'Thu ngân',
+}
+
+export const STAFF_ROLE_COLOR: Record<string, string> = {
+  admin: 'bg-red-100 text-red-700',
+  brand_manager: 'bg-blue-100 text-blue-700',
+  hub_manager: 'bg-green-100 text-green-700',
+  cashier: 'bg-gray-100 text-gray-700',
+}
+
+export const SHIFT_STATUS_LABEL: Record<string, string> = {
+  open: 'Đang mở',
+  closed: 'Đã đóng',
 }
 
 export const SHIPMENT_STATUS_LABEL: Record<string, string> = {
