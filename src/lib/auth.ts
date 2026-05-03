@@ -3,11 +3,13 @@ import Credentials from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { connectDB } from '@/lib/db'
 import UserModel from '@/models/User'
+import { authConfig } from '@/lib/auth.config'
 
 const REMEMBER_MAX_AGE = 30 * 24 * 60 * 60 // 30 days
 const DEFAULT_MAX_AGE  = 24 * 60 * 60       // 1 day
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  ...authConfig,
   providers: [
     Credentials({
       name: 'Credentials',
