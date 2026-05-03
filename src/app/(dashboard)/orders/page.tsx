@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Search, RefreshCw, Printer, Eye, X, Phone, MapPin, Package, Truck } from 'lucide-react'
-import { mockOrders } from '@/lib/mock-data'
+import { Search, RefreshCw, Printer, Eye, X, Phone, MapPin, Package, Truck, Loader2 } from 'lucide-react'
+import { useOrders } from '@/hooks/use-orders-channels'
+import { useDebounce } from '@/hooks/use-debounce'
 import { cn, formatCurrency, formatDate, ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
 import type { Order, OrderStatus } from '@/types'
 
@@ -30,24 +31,16 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [sourceFilter, setSourceFilter] = useState('')
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
-  const [orders] = useState<Order[]>(mockOrders)
 
-  const filtered = useMemo(() => orders.filter(o => {
-    const q = search.toLowerCase()
-    const matchSearch = o.shortId.toLowerCase().includes(q)
-      || o.customerName.toLowerCase().includes(q)
-      || (o.customerPhone || '').includes(q)
-    const matchStatus = !statusFilter || o.status === statusFilter
-    const matchSource = !sourceFilter || o.source === sourceFilter
-    return matchSearch && matchStatus && matchSource
-  }), [orders, search, statusFilter, sourceFilter])
+  const dq = useDebounce(search)
+  const { data, isLoading, refetch } = useOrders({ q: dq, status: statusFilter, source: sourceFilter })
+  const orders: Order[] = data?.orders ?? []
+  const filtered = orders
 
   // Count per status for tabs
   const countByStatus = useMemo(() => {
     const counts: Record<string, number> = {}
-    orders.forEach(o => {
-      counts[o.status] = (counts[o.status] || 0) + 1
-    })
+    orders.forEach(o => { counts[o.status] = (counts[o.status] || 0) + 1 })
     return counts
   }, [orders])
 
@@ -59,8 +52,8 @@ export default function OrdersPage() {
           <h1 className="page-title">Quản lý đơn hàng</h1>
           <p className="page-subtitle">Tổng hợp đơn từ tất cả kênh bán</p>
         </div>
-        <button className="btn-outline">
-          <RefreshCw className="w-4 h-4" /> Làm mới
+        <button onClick={() => refetch()} disabled={isLoading} className="btn-outline">
+          <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} /> Làm mới
         </button>
       </div>
 

@@ -102,6 +102,12 @@ const navItems: NavItem[] = [
     label: 'Hóa đơn điện tử',
     icon: <Receipt className="w-4 h-4" />,
   },
+  {
+    href: '/integrations',
+    label: 'Tích hợp sàn',
+    icon: <LinkIcon className="w-4 h-4" />,
+    adminOnly: true,
+  },
 ]
 
 interface SidebarGroupProps {

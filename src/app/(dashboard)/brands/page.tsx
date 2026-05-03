@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Search, Building2, Phone, MapPin, Tag, MoreVertical, Edit, Trash2 } from 'lucide-react'
-import { mockBrands } from '@/lib/mock-data'
-import { cn } from '@/lib/utils'
-import { BRAND_TYPE_LABEL } from '@/lib/utils'
+import { Plus, Search, Building2, Phone, MapPin, Tag, Edit, Trash2, Loader2 } from 'lucide-react'
+import { useBrands, useCreateBrand, useUpdateBrand, useDeleteBrand } from '@/hooks/use-brands'
+import { useDebounce } from '@/hooks/use-debounce'
+import { cn, BRAND_TYPE_LABEL } from '@/lib/utils'
 import type { Brand } from '@/types'
 
 const brandTypeOptions = [
@@ -15,24 +15,27 @@ const brandTypeOptions = [
   { value: 'other', label: 'Khác' },
 ]
 
+const emptyForm = { name: '', phone: '', type: 'fnb', address: '', note: '', status: 'active' }
+
 export default function BrandsPage() {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
-  const [brands, setBrands] = useState<Brand[]>(mockBrands)
   const [showForm, setShowForm] = useState(false)
   const [editBrand, setEditBrand] = useState<Brand | null>(null)
-  const [form, setForm] = useState({ name: '', phone: '', type: 'fnb', address: '', note: '', status: 'active' })
+  const [form, setForm] = useState(emptyForm)
 
-  const filtered = brands.filter(b => {
-    const q = search.toLowerCase()
-    const matchSearch = b.name.toLowerCase().includes(q) || b.phone.includes(q) || b.address.toLowerCase().includes(q)
-    const matchType = !typeFilter || b.type === typeFilter
-    return matchSearch && matchType
-  })
+  const dq = useDebounce(search)
+  const { data: brands = [], isLoading, error } = useBrands({ q: dq, type: typeFilter })
+  const createMutation = useCreateBrand()
+  const updateMutation = useUpdateBrand()
+  const deleteMutation = useDeleteBrand()
+  const saving = createMutation.isPending || updateMutation.isPending
+
+  const filtered = brands
 
   const openCreate = () => {
     setEditBrand(null)
-    setForm({ name: '', phone: '', type: 'fnb', address: '', note: '', status: 'active' })
+    setForm(emptyForm)
     setShowForm(true)
   }
 
@@ -42,27 +45,19 @@ export default function BrandsPage() {
     setShowForm(true)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name || !form.phone || !form.address) return
     if (editBrand) {
-      setBrands(prev => prev.map(b => b._id === editBrand._id ? { ...b, ...form, type: form.type as Brand['type'], status: form.status as Brand['status'], updatedAt: new Date().toISOString() } : b))
+      await updateMutation.mutateAsync({ id: editBrand._id, ...form })
     } else {
-      const newBrand: Brand = {
-        _id: `brand-${Date.now()}`,
-        ...form,
-        type: form.type as Brand['type'],
-        status: form.status as Brand['status'],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }
-      setBrands(prev => [newBrand, ...prev])
+      await createMutation.mutateAsync(form)
     }
     setShowForm(false)
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Xóa thương hiệu này?')) {
-      setBrands(prev => prev.filter(b => b._id !== id))
+      await deleteMutation.mutateAsync(id)
     }
   }
 
@@ -72,7 +67,7 @@ export default function BrandsPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Thương hiệu</h1>
-          <p className="page-subtitle">{brands.length} thương hiệu trong hệ thống</p>
+          <p className="page-subtitle">{isLoading ? '...' : `${brands.length} thương hiệu`}</p>
         </div>
         <button onClick={openCreate} className="btn-primary">
           <Plus className="w-4 h-4" /> Thêm thương hiệu
@@ -92,15 +87,19 @@ export default function BrandsPage() {
         </div>
       </div>
 
+      {/* States */}
+      {isLoading && <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-primary-400" /></div>}
+      {error && <div className="card card-body text-red-600 text-sm">Lỗi: {(error as Error).message}</div>}
+
       {/* Grid */}
-      {filtered.length === 0 ? (
+      {!isLoading && brands.length === 0 ? (
         <div className="empty-state card">
           <Building2 className="w-12 h-12 mb-3" />
           <p className="font-medium">Không tìm thấy thương hiệu</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filtered.map(brand => (
+          {brands.map((brand: Brand) => (
             <div key={brand._id} className="card p-5 hover:shadow-md transition-shadow group">
               {/* Logo placeholder */}
               <div className="flex items-start justify-between mb-4">
@@ -190,7 +189,9 @@ export default function BrandsPage() {
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button onClick={() => setShowForm(false)} className="btn-outline">Hủy</button>
-              <button onClick={handleSave} className="btn-primary">Lưu</button>
+              <button onClick={handleSave} disabled={saving} className="btn-primary">
+                {saving && <Loader2 className="w-4 h-4 animate-spin" />} Lưu
+              </button>
             </div>
           </div>
         </div>

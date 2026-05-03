@@ -1,38 +1,34 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Edit, Trash2 } from 'lucide-react'
-import { mockMenus } from '@/lib/mock-data'
+import { Plus, Edit, Trash2, Loader2 } from 'lucide-react'
+import { useMenus, useCreateMenu, useUpdateMenu, useDeleteMenu } from '@/hooks/use-data'
 import { cn, formatDate } from '@/lib/utils'
 import type { Menu } from '@/types'
 
 export default function MenusPage() {
-  const [menus, setMenus] = useState<Menu[]>(mockMenus)
+  const { data: rawMenus = [], isLoading } = useMenus()
+  const menus = rawMenus as Menu[]
+  const createMutation = useCreateMenu()
+  const updateMutation = useUpdateMenu()
+  const deleteMutation = useDeleteMenu()
   const [showForm, setShowForm] = useState(false)
   const [editMenu, setEditMenu] = useState<Menu | null>(null)
-  const [form, setForm] = useState({ name: '', description: '', status: 'active' })
+  const [form, setForm] = useState({ name: '', description: '', status: 'active', brandId: '' })
+  const saving = createMutation.isPending || updateMutation.isPending
 
   const openEdit = (m: Menu) => {
     setEditMenu(m)
-    setForm({ name: m.name, description: m.description ?? '', status: m.status })
+    setForm({ name: m.name, description: m.description ?? '', status: m.status, brandId: m.brandId })
     setShowForm(true)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name) return
     if (editMenu) {
-      setMenus(prev => prev.map(m => m._id === editMenu._id ? { ...m, ...form, status: form.status as Menu['status'], updatedAt: new Date().toISOString() } : m))
+      await updateMutation.mutateAsync({ id: editMenu._id, ...form })
     } else {
-      setMenus(prev => [{
-        _id: `menu-${Date.now()}`,
-        ...form,
-        status: form.status as Menu['status'],
-        brandId: 'brand-1',
-        brandName: 'Trà Sữa Phúc Long',
-        productIds: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }, ...prev])
+      await createMutation.mutateAsync(form)
     }
     setShowForm(false)
   }
@@ -44,7 +40,7 @@ export default function MenusPage() {
           <h1 className="page-title">Thực đơn</h1>
           <p className="page-subtitle">{menus.length} thực đơn</p>
         </div>
-        <button onClick={() => { setEditMenu(null); setForm({ name: '', description: '', status: 'active' }); setShowForm(true) }} className="btn-primary">
+        <button onClick={() => { setEditMenu(null); setForm({ name: '', description: '', status: 'active', brandId: '' }); setShowForm(true) }} className="btn-primary">
           <Plus className="w-4 h-4" /> Tạo thực đơn
         </button>
       </div>
@@ -56,7 +52,7 @@ export default function MenusPage() {
               <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-2xl">🍽️</div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button onClick={() => openEdit(menu)} className="btn-ghost btn-sm p-1.5"><Edit className="w-3.5 h-3.5" /></button>
-                <button onClick={() => setMenus(prev => prev.filter(m => m._id !== menu._id))} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
+                <button onClick={() => deleteMutation.mutate(menu._id)} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             </div>
             <h3 className="font-semibold text-gray-900">{menu.name}</h3>

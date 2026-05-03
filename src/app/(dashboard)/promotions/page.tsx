@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Calendar, Tag } from 'lucide-react'
-import { mockPromotions } from '@/lib/mock-data'
+import { Plus, Calendar, Tag, Loader2 } from 'lucide-react'
+import { usePromotions } from '@/hooks/use-data'
 import { cn, formatDate, PROMOTION_TYPE_LABEL, formatNumber } from '@/lib/utils'
 import type { Promotion, PromotionStatus } from '@/types'
 
@@ -26,17 +26,18 @@ const statusLabel: Record<string, string> = {
 
 export default function PromotionsPage() {
   const [tab, setTab] = useState<PromotionStatus | 'all'>('all')
-  const [promotions] = useState<Promotion[]>(mockPromotions)
   const [showForm, setShowForm] = useState(false)
 
-  const filtered = promotions.filter(p => tab === 'all' || p.status === tab)
+  const { data: rawPromos = [], isLoading } = usePromotions()
+  const allPromos = rawPromos as Promotion[]
+  const filtered = allPromos.filter((p: Promotion) => tab === 'all' || p.status === tab)
 
   return (
     <div className="space-y-5">
       <div className="page-header">
         <div>
           <h1 className="page-title">Khuyến mãi</h1>
-          <p className="page-subtitle">{promotions.length} chương trình khuyến mãi</p>
+          <p className="page-subtitle">{isLoading ? '...' : `${allPromos.length} chương trình`}</p>
         </div>
         <button onClick={() => setShowForm(true)} className="btn-primary">
           <Plus className="w-4 h-4" /> Tạo khuyến mãi

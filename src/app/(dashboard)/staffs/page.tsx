@@ -1,25 +1,26 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Search, Edit, Trash2, Shield, User } from 'lucide-react'
-import { mockStaffs } from '@/lib/mock-data'
+import { Plus, Search, Edit, Trash2, Shield, User, Loader2 } from 'lucide-react'
+import { useStaffs, useCreateStaff, useUpdateStaff, useDeleteStaff } from '@/hooks/use-staffs'
+import { useDebounce } from '@/hooks/use-debounce'
 import { cn } from '@/lib/utils'
 import type { Staff } from '@/types'
 
 export default function StaffsPage() {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
-  const [staffs, setStaffs] = useState<Staff[]>(mockStaffs)
   const [showForm, setShowForm] = useState(false)
   const [editStaff, setEditStaff] = useState<Staff | null>(null)
   const [form, setForm] = useState({ name: '', email: '', phone: '', role: 'user', status: 'active' })
 
-  const filtered = staffs.filter(s => {
-    const q = search.toLowerCase()
-    const matchSearch = s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q) || (s.phone || '').includes(q)
-    const matchRole = !roleFilter || s.role === roleFilter
-    return matchSearch && matchRole
-  })
+  const dq = useDebounce(search)
+  const { data: rawStaffs = [], isLoading } = useStaffs({ q: dq, role: roleFilter })
+  const staffs = rawStaffs as Staff[]
+  const createMutation = useCreateStaff()
+  const updateMutation = useUpdateStaff()
+  const deleteMutation = useDeleteStaff()
+  const saving = createMutation.isPending || updateMutation.isPending
 
   const openCreate = () => {
     setEditStaff(null)
@@ -33,29 +34,28 @@ export default function StaffsPage() {
     setShowForm(true)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name || !form.email) return
     if (editStaff) {
-      setStaffs(prev => prev.map(s => s._id === editStaff._id ? { ...s, ...form, role: form.role as Staff['role'], status: form.status as Staff['status'], updatedAt: new Date().toISOString() } : s))
+      await updateMutation.mutateAsync({ id: editStaff._id, ...form })
     } else {
-      setStaffs(prev => [{
-        _id: `staff-${Date.now()}`,
-        ...form,
-        role: form.role as Staff['role'],
-        status: form.status as Staff['status'],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }, ...prev])
+      await createMutation.mutateAsync(form)
     }
     setShowForm(false)
   }
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Xóa nhân viên này?')) deleteMutation.mutate(id)
+  }
+
+  const filtered = staffs
 
   return (
     <div className="space-y-5">
       <div className="page-header">
         <div>
           <h1 className="page-title">Nhân viên</h1>
-          <p className="page-subtitle">{staffs.length} nhân viên trong hệ thống</p>
+          <p className="page-subtitle">{isLoading ? '...' : `${staffs.length} nhân viên`}</p>
         </div>
         <button onClick={openCreate} className="btn-primary">
           <Plus className="w-4 h-4" /> Thêm nhân viên
@@ -123,7 +123,7 @@ export default function StaffsPage() {
                   <td>
                     <div className="flex gap-1">
                       <button onClick={() => openEdit(staff)} className="btn-ghost btn-sm p-1.5"><Edit className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => setStaffs(prev => prev.filter(s => s._id !== staff._id))} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => handleDelete(staff._id)} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </td>
                 </tr>
@@ -177,7 +177,9 @@ export default function StaffsPage() {
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button onClick={() => setShowForm(false)} className="btn-outline">Hủy</button>
-              <button onClick={handleSave} className="btn-primary">Lưu</button>
+              <button onClick={handleSave} disabled={saving} className="btn-primary">
+                {saving && <Loader2 className="w-4 h-4 animate-spin" />} Lưu
+              </button>
             </div>
           </div>
         </div>

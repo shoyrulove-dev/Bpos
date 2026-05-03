@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Edit, Eye, FileText, ToggleLeft, ToggleRight } from 'lucide-react'
-import { mockBillTemplates } from '@/lib/mock-data'
+import { Plus, Edit, Eye, FileText, ToggleLeft, ToggleRight, Loader2 } from 'lucide-react'
+import { useBillTemplates, useCreateBillTemplate, useUpdateBillTemplate } from '@/hooks/use-data'
 import { cn } from '@/lib/utils'
 import type { BillTemplate } from '@/types'
 
@@ -11,34 +11,34 @@ const sizeColor: Record<string, string> = { A4: 'badge-blue', A5: 'badge-blue', 
 const typeLabel: Record<string, string> = { order: 'Đơn hàng', delivery: 'Giao hàng', receipt: 'Biên lai' }
 
 export default function BillTemplatesPage() {
-  const [templates, setTemplates] = useState<BillTemplate[]>(mockBillTemplates)
+  const { data: rawTemplates = [], isLoading } = useBillTemplates()
+  const templates = rawTemplates as BillTemplate[]
+  const createMutation = useCreateBillTemplate()
+  const updateMutation = useUpdateBillTemplate()
   const [showForm, setShowForm] = useState(false)
   const [editTpl, setEditTpl] = useState<BillTemplate | null>(null)
-  const [form, setForm] = useState({ name: '', type: 'order', size: '80mm', isActive: true, templateContent: '' })
+  const [form, setForm] = useState({ name: '', type: 'order', size: '80mm', isActive: true, templateContent: '', brandId: '' })
   const [preview, setPreview] = useState<BillTemplate | null>(null)
+  const saving = createMutation.isPending || updateMutation.isPending
 
   const openEdit = (t: BillTemplate) => {
     setEditTpl(t)
-    setForm({ name: t.name, type: t.type, size: t.size, isActive: t.isActive, templateContent: t.templateContent })
+    setForm({ name: t.name, type: t.type, size: t.size, isActive: t.isActive, templateContent: t.templateContent, brandId: t.brandId ?? '' })
     setShowForm(true)
     setPreview(null)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name) return
     if (editTpl) {
-      setTemplates(prev => prev.map(t => t._id === editTpl._id ? { ...t, ...form, type: form.type as BillTemplate['type'], size: form.size as BillTemplate['size'], updatedAt: new Date().toISOString() } : t))
+      await updateMutation.mutateAsync({ id: editTpl._id, ...form })
     } else {
-      setTemplates(prev => [{
-        _id: `bill-${Date.now()}`, ...form,
-        type: form.type as BillTemplate['type'], size: form.size as BillTemplate['size'],
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      }, ...prev])
+      await createMutation.mutateAsync(form)
     }
     setShowForm(false)
   }
 
-  const toggleActive = (id: string) => setTemplates(prev => prev.map(t => t._id === id ? { ...t, isActive: !t.isActive } : t))
+  const toggleActive = (tpl: BillTemplate) => updateMutation.mutate({ id: tpl._id, isActive: !tpl.isActive })
 
   const insertVar = (v: string) => setForm(prev => ({ ...prev, templateContent: prev.templateContent + v }))
 
@@ -47,9 +47,9 @@ export default function BillTemplatesPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Hóa đơn mẫu</h1>
-          <p className="page-subtitle">{templates.length} mẫu hóa đơn</p>
+          <p className="page-subtitle">{isLoading ? '...' : `${templates.length} mẫu hóa đơn`}</p>
         </div>
-        <button onClick={() => { setEditTpl(null); setForm({ name: '', type: 'order', size: '80mm', isActive: true, templateContent: '' }); setShowForm(true) }} className="btn-primary">
+        <button onClick={() => { setEditTpl(null); setForm({ name: '', type: 'order', size: '80mm', isActive: true, templateContent: '', brandId: '' }); setShowForm(true) }} className="btn-primary">
           <Plus className="w-4 h-4" /> Tạo mẫu mới
         </button>
       </div>
@@ -64,7 +64,7 @@ export default function BillTemplatesPage() {
               <div className="flex items-center gap-1">
                 <button onClick={() => openEdit(tpl)} className="btn-ghost btn-sm p-1.5"><Edit className="w-3.5 h-3.5" /></button>
                 <button onClick={() => setPreview(tpl)} className="btn-ghost btn-sm p-1.5"><Eye className="w-3.5 h-3.5" /></button>
-                <button onClick={() => toggleActive(tpl._id)} className={cn('btn-ghost btn-sm p-1.5', tpl.isActive ? 'text-green-500' : 'text-gray-400')}>
+                <button onClick={() => toggleActive(tpl)} className={cn('btn-ghost btn-sm p-1.5', tpl.isActive ? 'text-green-500' : 'text-gray-400')}>
                   {tpl.isActive ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
                 </button>
               </div>

@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Link, Unlink, Building2 } from 'lucide-react'
-import { mockEInvoiceConnections } from '@/lib/mock-data'
+import { Plus, Link, Unlink, Building2, Loader2 } from 'lucide-react'
+import { useEInvoices, useCreateEInvoice } from '@/hooks/use-data'
 import { cn, formatDate } from '@/lib/utils'
 import type { EInvoiceConnection } from '@/types'
 
@@ -15,25 +15,17 @@ const PROVIDERS = [
 ]
 
 export default function EInvoicesPage() {
-  const [connections, setConnections] = useState<EInvoiceConnection[]>(mockEInvoiceConnections)
+  const { data: rawConns = [], isLoading } = useEInvoices()
+  const connections = rawConns as EInvoiceConnection[]
+  const createMutation = useCreateEInvoice()
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ provider: 'viettel', taxCode: '', username: '', password: '' })
+  const [form, setForm] = useState({ provider: 'viettel', taxCode: '', username: '', password: '', brandId: '' })
 
-  const handleConnect = () => {
-    setConnections(prev => [{
-      _id: `einv-${Date.now()}`,
-      provider: form.provider as EInvoiceConnection['provider'],
-      brandId: 'brand-1',
-      brandName: 'Trà Sữa Phúc Long',
-      taxCode: form.taxCode,
-      username: form.username,
-      isConnected: true,
-      connectedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }, ...prev])
+  const handleConnect = async () => {
+    if (!form.taxCode || !form.username) return
+    await createMutation.mutateAsync(form)
     setShowForm(false)
-    setForm({ provider: 'viettel', taxCode: '', username: '', password: '' })
+    setForm({ provider: 'viettel', taxCode: '', username: '', password: '', brandId: '' })
   }
 
   const providerInfo = (value: string) => PROVIDERS.find(p => p.value === value)

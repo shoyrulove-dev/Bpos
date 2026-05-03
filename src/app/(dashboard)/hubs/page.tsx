@@ -1,25 +1,28 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Search, MapPin, Edit, Trash2 } from 'lucide-react'
-import { mockHubs } from '@/lib/mock-data'
+import { Plus, Search, MapPin, Edit, Trash2, Loader2 } from 'lucide-react'
+import { useHubs, useCreateHub, useUpdateHub, useDeleteHub } from '@/hooks/use-hubs'
+import { useDebounce } from '@/hooks/use-debounce'
 import { cn } from '@/lib/utils'
 import type { Hub } from '@/types'
 
 export default function HubsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [hubs, setHubs] = useState<Hub[]>(mockHubs)
   const [showForm, setShowForm] = useState(false)
   const [editHub, setEditHub] = useState<Hub | null>(null)
   const [form, setForm] = useState({ code: '', name: '', address: '', brandId: '', servicePackage: 'basic', status: 'active' })
 
-  const filtered = hubs.filter(h => {
-    const q = search.toLowerCase()
-    const matchSearch = h.name.toLowerCase().includes(q) || h.code.toLowerCase().includes(q) || h.address.toLowerCase().includes(q)
-    const matchStatus = !statusFilter || h.status === statusFilter
-    return matchSearch && matchStatus
-  })
+  const dq = useDebounce(search)
+  const { data: rawHubs = [], isLoading, error } = useHubs({ q: dq })
+  const hubs = rawHubs as Hub[]
+  const createMutation = useCreateHub()
+  const updateMutation = useUpdateHub()
+  const deleteMutation = useDeleteHub()
+  const saving = createMutation.isPending || updateMutation.isPending
+
+  const filtered = statusFilter ? hubs.filter((h: Hub) => h.status === statusFilter) : hubs
 
   const openCreate = () => {
     setEditHub(null)
@@ -33,27 +36,18 @@ export default function HubsPage() {
     setShowForm(true)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.code || !form.name || !form.address) return
     if (editHub) {
-      setHubs(prev => prev.map(h => h._id === editHub._id ? { ...h, ...form, servicePackage: form.servicePackage as Hub['servicePackage'], status: form.status as Hub['status'], updatedAt: new Date().toISOString() } : h))
+      await updateMutation.mutateAsync({ id: editHub._id, ...form })
     } else {
-      const newHub: Hub = {
-        _id: `hub-${Date.now()}`,
-        ...form,
-        servicePackage: form.servicePackage as Hub['servicePackage'],
-        status: form.status as Hub['status'],
-        linkedChannels: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }
-      setHubs(prev => [newHub, ...prev])
+      await createMutation.mutateAsync(form)
     }
     setShowForm(false)
   }
 
-  const handleDelete = (id: string) => {
-    if (confirm('Xóa điểm bán này?')) setHubs(prev => prev.filter(h => h._id !== id))
+  const handleDelete = async (id: string) => {
+    if (confirm('Xóa điểm bán này?')) deleteMutation.mutate(id)
   }
 
   const packageLabel: Record<string, string> = { basic: 'Cơ bản', standard: 'Tiêu chuẩn', premium: 'Cao cấp' }
@@ -64,7 +58,7 @@ export default function HubsPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Điểm bán</h1>
-          <p className="page-subtitle">{hubs.length} điểm bán trong hệ thống</p>
+          <p className="page-subtitle">{isLoading ? '...' : `${hubs.length} điểm bán`}</p>
         </div>
         <button onClick={openCreate} className="btn-primary">
           <Plus className="w-4 h-4" /> Thêm điểm bán

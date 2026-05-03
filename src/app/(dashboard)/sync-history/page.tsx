@@ -1,14 +1,15 @@
 'use client'
 
-import { mockSyncLogs } from '@/lib/mock-data'
+import { useSyncLogs } from '@/hooks/use-data'
 import { cn, formatDate } from '@/lib/utils'
-import { RefreshCw, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { RefreshCw, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react'
 
 const typeLabel: Record<string, string> = { product: 'Sản phẩm', menu: 'Thực đơn', channel: 'Kênh bán', order: 'Đơn hàng' }
 const sourceLabel: Record<string, string> = { shopee: 'Shopee', grab: 'GrabFood', xanh_sm: 'Xanh SM', be: 'Be' }
 
 export default function SyncHistoryPage() {
-  const logs = mockSyncLogs
+  const { data: rawLogs = [], isLoading, refetch } = useSyncLogs()
+  const logs = rawLogs as import('@/types').SyncLog[]
 
   return (
     <div className="space-y-5">
@@ -17,7 +18,7 @@ export default function SyncHistoryPage() {
           <h1 className="page-title">Lịch sử đồng bộ</h1>
           <p className="page-subtitle">Theo dõi trạng thái đồng bộ dữ liệu</p>
         </div>
-        <button className="btn-outline"><RefreshCw className="w-4 h-4" /> Làm mới</button>
+        <button onClick={() => refetch()} className="btn-outline"><RefreshCw className="w-4 h-4" /> Làm mới</button>
       </div>
 
       <div className="card">

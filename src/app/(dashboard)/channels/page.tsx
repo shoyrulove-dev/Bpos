@@ -1,24 +1,24 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Search, Settings, ToggleLeft, ToggleRight, Edit, Unlink } from 'lucide-react'
-import { mockChannels } from '@/lib/mock-data'
+import { Plus, Search, Settings, ToggleLeft, ToggleRight, Edit, Unlink, Loader2 } from 'lucide-react'
+import { useChannels, useUpdateChannel, useDeleteChannel } from '@/hooks/use-orders-channels'
+import { useDebounce } from '@/hooks/use-debounce'
 import { cn } from '@/lib/utils'
 import { CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
 import type { Channel } from '@/types'
 
 export default function ChannelsPage() {
   const [search, setSearch] = useState('')
-  const [channels, setChannels] = useState<Channel[]>(mockChannels)
   const [showForm, setShowForm] = useState(false)
 
-  const filtered = channels.filter(c => {
-    const q = search.toLowerCase()
-    return c.name.toLowerCase().includes(q) || c.brandName?.toLowerCase().includes(q) || ''
-  })
+  const dq = useDebounce(search)
+  const { data: channels = [], isLoading } = useChannels({ q: dq })
+  const updateMutation = useUpdateChannel()
+  const deleteMutation = useDeleteChannel()
 
-  const toggle = (id: string, field: keyof Channel) => {
-    setChannels(prev => prev.map(c => c._id === id ? { ...c, [field]: !c[field as keyof Channel] } : c))
+  const toggle = async (id: string, field: string, current: boolean) => {
+    await updateMutation.mutateAsync({ id, [field]: !current })
   }
 
   return (
@@ -45,8 +45,9 @@ export default function ChannelsPage() {
         </div>
       </div>
 
+      {isLoading && <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-primary-400" /></div>}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {filtered.map(channel => (
+        {channels.map((channel: Channel) => (
           <div key={channel._id} className="card p-5">
             <div className="flex items-start justify-between mb-4">
               <div>
@@ -73,24 +74,17 @@ export default function ChannelsPage() {
             {/* Config toggles */}
             <div className="space-y-2 pt-3 border-t border-gray-100">
               {[
-                { key: 'isPageActive', label: 'Trang bán hàng' },
-                { key: 'isStoreOpen', label: 'Cửa hàng mở cửa' },
-                { key: 'isManualConfirm', label: 'Xác nhận thủ công' },
-                { key: 'autoInvoice', label: 'Tự động phát sinh HĐĐT' },
+                { key: 'isPageActive',   label: 'Trang bán hàng' },
+                { key: 'isStoreOpen',    label: 'Cửa hàng mở cửa' },
+                { key: 'isManualConfirm',label: 'Xác nhận thủ công' },
+                { key: 'autoInvoice',    label: 'Tự động phát sinh HĐĐT' },
               ].map(({ key, label }) => (
                 <div key={key} className="flex items-center justify-between">
                   <span className="text-sm text-gray-600">{label}</span>
-                  <button
-                    onClick={() => toggle(channel._id, key as keyof Channel)}
-                    className={cn(
-                      'transition-colors',
-                      (channel[key as keyof Channel] as boolean) ? 'text-green-500' : 'text-gray-300'
-                    )}
-                  >
-                    {(channel[key as keyof Channel] as boolean)
-                      ? <ToggleRight className="w-6 h-6" />
-                      : <ToggleLeft className="w-6 h-6" />
-                    }
+                  <button onClick={() => toggle(channel._id, key, channel[key as keyof Channel] as boolean)} className="text-gray-400 hover:text-primary-500">
+                    {channel[key as keyof Channel]
+                      ? <ToggleRight className="w-5 h-5 text-primary-500" />
+                      : <ToggleLeft className="w-5 h-5" />}
                   </button>
                 </div>
               ))}

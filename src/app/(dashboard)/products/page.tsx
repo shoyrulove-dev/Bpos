@@ -1,66 +1,59 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Search, Upload, Download, Edit, Trash2, Filter } from 'lucide-react'
-import { mockProducts } from '@/lib/mock-data'
+import { Plus, Search, Upload, Download, Edit, Trash2, Loader2 } from 'lucide-react'
+import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct } from '@/hooks/use-products'
+import { useDebounce } from '@/hooks/use-debounce'
 import { cn, formatCurrency } from '@/lib/utils'
 import type { Product } from '@/types'
 
 const saleStatusLabel: Record<string, string> = { selling: 'Đang bán', stopped: 'Ngừng bán', draft: 'Nháp' }
 const saleStatusColor: Record<string, string> = { selling: 'badge-green', stopped: 'badge-red', draft: 'badge-gray' }
 const typeLabel: Record<string, string> = { single: 'Đơn lẻ', combo: 'Combo', topping: 'Topping' }
+const emptyForm = { name: '', code: '', category: '', type: 'single', unit: 'Cái', saleStatus: 'selling', status: 'active', price: '', brandId: '' }
 
 export default function ProductsPage() {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [saleFilter, setSaleFilter] = useState('')
-  const [products, setProducts] = useState<Product[]>(mockProducts)
   const [showForm, setShowForm] = useState(false)
   const [editProduct, setEditProduct] = useState<Product | null>(null)
-  const [form, setForm] = useState({ name: '', code: '', category: '', type: 'single', unit: 'Cái', saleStatus: 'selling', status: 'active', price: '' })
+  const [form, setForm] = useState(emptyForm)
 
-  const filtered = products.filter(p => {
-    const q = search.toLowerCase()
-    const matchSearch = p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
-    const matchType = !typeFilter || p.type === typeFilter
-    const matchSale = !saleFilter || p.saleStatus === saleFilter
-    return matchSearch && matchType && matchSale
-  })
+  const dq = useDebounce(search)
+  const { data: rawProducts = [], isLoading } = useProducts({ q: dq, type: typeFilter, saleStatus: saleFilter })
+  const products = rawProducts as Product[]
+  const filtered = products
+  const createMutation = useCreateProduct()
+  const updateMutation = useUpdateProduct()
+  const deleteMutation = useDeleteProduct()
+  const saving = createMutation.isPending || updateMutation.isPending
 
   const openCreate = () => {
     setEditProduct(null)
-    setForm({ name: '', code: '', category: '', type: 'single', unit: 'Cái', saleStatus: 'selling', status: 'active', price: '' })
+    setForm(emptyForm)
     setShowForm(true)
   }
 
   const openEdit = (p: Product) => {
     setEditProduct(p)
-    setForm({ name: p.name, code: p.code, category: p.category, type: p.type, unit: p.unit, saleStatus: p.saleStatus, status: p.status, price: String(p.price ?? '') })
+    setForm({ name: p.name, code: p.code, category: p.category, type: p.type, unit: p.unit, saleStatus: p.saleStatus, status: p.status, price: String(p.price ?? ''), brandId: p.brandId })
     setShowForm(true)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name || !form.code) return
-    const productData = {
-      ...form,
-      type: form.type as Product['type'],
-      saleStatus: form.saleStatus as Product['saleStatus'],
-      status: form.status as Product['status'],
-      price: form.price ? Number(form.price) : undefined,
-    }
+    const productData = { ...form, price: form.price ? Number(form.price) : undefined }
     if (editProduct) {
-      setProducts(prev => prev.map(p => p._id === editProduct._id ? { ...p, ...productData, updatedAt: new Date().toISOString() } : p))
+      await updateMutation.mutateAsync({ id: editProduct._id, ...productData })
     } else {
-      setProducts(prev => [{
-        _id: `prod-${Date.now()}`,
-        ...productData,
-        brandId: 'brand-1',
-        brandName: 'Trà Sữa Phúc Long',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }, ...prev])
+      await createMutation.mutateAsync(productData)
     }
     setShowForm(false)
+  }
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Xóa sản phẩm này?')) deleteMutation.mutate(id)
   }
 
   return (
@@ -135,7 +128,7 @@ export default function ProductsPage() {
                   <td>
                     <div className="flex gap-1">
                       <button onClick={() => openEdit(product)} className="btn-ghost btn-sm p-1.5"><Edit className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => setProducts(prev => prev.filter(p => p._id !== product._id))} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => handleDelete(product._id)} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </td>
                 </tr>

@@ -1,63 +1,33 @@
 'use client'
 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts'
-import { ShoppingCart, DollarSign, Building2, MapPin, Clock, TrendingUp, AlertCircle } from 'lucide-react'
-import { mockDashboardStats, mockRevenueData, mockOrders } from '@/lib/mock-data'
+import { ShoppingCart, DollarSign, Building2, MapPin, Clock, TrendingUp, AlertCircle, Loader2 } from 'lucide-react'
+import { useStats, useRevenueReport } from '@/hooks/use-data'
+import { useOrders } from '@/hooks/use-orders-channels'
 import { formatCurrency, formatNumber, ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
-const stats = [
-  {
-    label: 'Đơn hôm nay',
-    value: formatNumber(mockDashboardStats.ordersToday),
-    sub: `Tổng: ${formatNumber(mockDashboardStats.totalOrders)}`,
-    icon: <ShoppingCart className="w-5 h-5" />,
-    color: 'bg-orange-50 text-orange-600',
-    trend: '+12%',
-  },
-  {
-    label: 'Doanh thu hôm nay',
-    value: formatCurrency(mockDashboardStats.revenueToday),
-    sub: `Tổng: ${formatCurrency(mockDashboardStats.totalRevenue)}`,
-    icon: <DollarSign className="w-5 h-5" />,
-    color: 'bg-green-50 text-green-600',
-    trend: '+8%',
-  },
-  {
-    label: 'Thương hiệu',
-    value: String(mockDashboardStats.totalBrands),
-    sub: 'Đang hoạt động',
-    icon: <Building2 className="w-5 h-5" />,
-    color: 'bg-blue-50 text-blue-600',
-    trend: '',
-  },
-  {
-    label: 'Điểm bán',
-    value: String(mockDashboardStats.totalHubs),
-    sub: 'Đang hoạt động',
-    icon: <MapPin className="w-5 h-5" />,
-    color: 'bg-purple-50 text-purple-600',
-    trend: '',
-  },
-  {
-    label: 'Chờ xử lý',
-    value: String(mockDashboardStats.pendingOrders),
-    sub: 'Đơn cần xác nhận',
-    icon: <AlertCircle className="w-5 h-5" />,
-    color: 'bg-yellow-50 text-yellow-600',
-    trend: '',
-  },
-]
-
-// Chart data - last 14 days
-const chartData = mockRevenueData.slice(-14).map(d => ({
-  date: d.date.slice(5), // MM-DD
-  'Doanh thu': Math.round(d.revenueAfterDiscount / 1000),
-  'Phí sàn': Math.round(d.platformFee / 1000),
-}))
-
 export default function DashboardPage() {
-  const recentOrders = mockOrders.slice(0, 5)
+  const { data: statsData, isLoading: statsLoading } = useStats()
+  const { data: revenueData } = useRevenueReport({ days: 14 })
+  const { data: ordersData } = useOrders({ q: '', status: '', source: '' })
+
+  const s = statsData ?? {}
+  const recentOrders = (ordersData?.orders ?? []) as import('@/types').Order[]
+
+  const chartData = (revenueData?.data ?? []).map((d: Record<string, number>) => ({
+    date: String(d.date ?? '').slice(5),
+    'Doanh thu': Math.round((d.revenue ?? 0) / 1000),
+    'Phí sàn': Math.round((d.platformFee ?? 0) / 1000),
+  }))
+
+  const stats = [
+    { label: 'Đơn hôm nay', value: formatNumber(s.ordersToday ?? 0), sub: `Tổng: ${formatNumber(s.totalOrders ?? 0)}`, icon: <ShoppingCart className="w-5 h-5" />, color: 'bg-orange-50 text-orange-600', trend: '' },
+    { label: 'Doanh thu hôm nay', value: formatCurrency(s.revenueToday ?? 0), sub: `Tổng: ${formatCurrency(s.totalRevenue ?? 0)}`, icon: <DollarSign className="w-5 h-5" />, color: 'bg-green-50 text-green-600', trend: '' },
+    { label: 'Thương hiệu', value: String(s.totalBrands ?? 0), sub: 'Đang hoạt động', icon: <Building2 className="w-5 h-5" />, color: 'bg-blue-50 text-blue-600', trend: '' },
+    { label: 'Điểm bán', value: String(s.totalHubs ?? 0), sub: 'Đang hoạt động', icon: <MapPin className="w-5 h-5" />, color: 'bg-purple-50 text-purple-600', trend: '' },
+    { label: 'Chờ xử lý', value: String(s.pendingOrders ?? 0), sub: 'Đơn cần xác nhận', icon: <AlertCircle className="w-5 h-5" />, color: 'bg-yellow-50 text-yellow-600', trend: '' },
+  ]
 
   return (
     <div className="space-y-6">
