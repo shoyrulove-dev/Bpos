@@ -1,18 +1,46 @@
 import type { NormalizedOrder, OrderItem, OrderStatus } from '@/types'
 import type { PlatformAdapter, AdapterConfig } from './types'
 
+const BE_BASE = 'https://merchant-api.be.com.vn/v1'
+
 /**
- * Be adapter
+ * Be Food adapter – Be Merchant API (API Key)
+ * Credentials cần lấy từ: https://merchant.be.com.vn → Cài đặt → API
  */
 export class BeAdapter implements PlatformAdapter {
   source = 'be' as const
 
-  async fetchOrders(_config: AdapterConfig): Promise<NormalizedOrder[]> {
-    return []
+  async fetchOrders(config: AdapterConfig): Promise<NormalizedOrder[]> {
+    const apiKey  = String(config.apiKey  ?? '')
+    const storeId = String(config.storeId ?? config.externalStoreId ?? '')
+
+    if (!apiKey) throw new Error('Thiếu credentials: cần API Key từ Be Merchant Portal')
+    if (!storeId) throw new Error('Thiếu Store ID')
+
+    const res = await fetch(`${BE_BASE}/restaurants/${storeId}/orders?status=active&limit=20`, {
+      headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
+    })
+    if (res.status === 401) throw new Error('API Key không hợp lệ hoặc đã hết hạn')
+    if (res.status === 404) throw new Error(`Không tìm thấy cửa hàng với Store ID: ${storeId}`)
+    if (!res.ok) throw new Error(`Be API ${res.status}: ${res.statusText}`)
+
+    const data   = await res.json() as { orders?: Record<string, unknown>[]; data?: Record<string, unknown>[] }
+    const orders = data.orders ?? data.data ?? []
+    return orders.map(o => this.normalizeOrder(o))
   }
 
-  async fetchOrderDetail(_id: string, _config: AdapterConfig): Promise<NormalizedOrder | null> {
-    return null
+  async fetchOrderDetail(orderId: string, config: AdapterConfig): Promise<NormalizedOrder | null> {
+    const apiKey  = String(config.apiKey  ?? '')
+    const storeId = String(config.storeId ?? '')
+    if (!apiKey || !storeId) return null
+    try {
+      const res = await fetch(`${BE_BASE}/restaurants/${storeId}/orders/${orderId}`, {
+        headers: { 'X-Api-Key': apiKey },
+      })
+      if (!res.ok) return null
+      const data = await res.json() as Record<string, unknown>
+      return this.normalizeOrder(data)
+    } catch { return null }
   }
 
   normalizeOrder(raw: Record<string, unknown>): NormalizedOrder {
