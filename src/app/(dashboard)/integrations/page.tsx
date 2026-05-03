@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { ShoppingBag, Plus, Trash2, Settings, PlayCircle, Loader2, Lock, CheckCircle, XCircle } from 'lucide-react'
+import { ShoppingBag, Plus, Trash2, Settings, PlayCircle, Loader2, Lock, CheckCircle, XCircle, Zap, Info } from 'lucide-react'
 import { useIntegrations, useCreateIntegration, useDeleteIntegration, useUpdateIntegration } from '@/hooks/use-data'
 import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
@@ -50,6 +50,51 @@ type TestResult = { loading: boolean; ok?: boolean; message?: string; count?: nu
 
 const emptyForm = { provider: 'shopee', brandId: '', hubId: '', externalStoreId: '', externalStoreName: '' }
 
+const PLATFORM_GUIDES: Record<string, { steps: string[]; link: string; knownStores?: { id: string; name: string }[] }> = {
+  be: {
+    steps: [
+      '1. Đăng nhập https://merchant.be.com.vn bằng email/pass',
+      '2. Vào Cài đặt → Tích hợp API',
+      '3. Copy API Key dán vào ô bên dưới',
+    ],
+    link: 'https://merchant.be.com.vn',
+    knownStores: [
+      { id: '129990', name: '3B Food & Drink' },
+      { id: '99379',  name: 'Ò Ó O' },
+    ],
+  },
+  grab: {
+    steps: [
+      '1. Đăng ký Partner API tại developer.grab.com',
+      '2. Gửi yêu cầu GrabFood Partner (chờ duyệt ~1-2 tuần)',
+      '3. Sau khi duyệt: nhận clientId + clientSecret',
+    ],
+    link: 'https://developer.grab.com/docs/grabfood/get-started/',
+    knownStores: [
+      { id: 'C73WNZCKANCXTN', name: '3B Food & Drink' },
+      { id: 'C63FDBAKC7MVRX', name: 'Ò Ó O' },
+    ],
+  },
+  shopee: {
+    steps: [
+      '1. Đăng ký tại open.shopeefood.vn',
+      '2. Tạo ứng dụng → lấy partnerId + partnerKey',
+      '3. Đăng nhập Shopee lấy accessToken + shopId',
+    ],
+    link: 'https://open.shopeefood.vn/',
+  },
+  xanh_sm: {
+    steps: [
+      '1. Liên hệ Xanh SM để xin API access',
+      '2. Vào merchant.xanhsm.com → Cài đặt → Tích hợp',
+      '3. Copy API Key + Store ID',
+    ],
+    link: 'https://merchant.xanhsm.com',
+  },
+}
+
+type QuickTestResult = { loading: boolean; ok?: boolean; message?: string; count?: number; sample?: unknown[] }
+
 export default function IntegrationsPage() {
   const { data: session } = useSession()
   const isAdmin = (session?.user as { role?: string })?.role === 'admin'
@@ -76,6 +121,28 @@ export default function IntegrationsPage() {
 
   // Test results per card
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
+
+  // Quick Test (no DB)
+  const [showQt, setShowQt]         = useState(false)
+  const [qtProvider, setQtProvider] = useState('be')
+  const [qtCreds, setQtCreds]       = useState<Record<string, string>>({})
+  const [qtResult, setQtResult]     = useState<QuickTestResult | null>(null)
+
+  const handleQuickTest = async () => {
+    setQtResult({ loading: true })
+    try {
+      const res  = await fetch('/api/integrations/quick-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: qtProvider, credentials: qtCreds }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Lỗi kết nối')
+      setQtResult({ loading: false, ok: true, message: data.message, count: data.count, sample: data.sample })
+    } catch (e) {
+      setQtResult({ loading: false, ok: false, message: e instanceof Error ? e.message : 'Lỗi không xác định' })
+    }
+  }
 
   const filteredHubs = form.brandId ? hubs.filter(h => h.brandId === form.brandId) : hubs
   const provInfo = (v: string) => PROVIDERS.find(p => p.value === v)
@@ -142,9 +209,14 @@ export default function IntegrationsPage() {
           <h1 className="page-title">Tích hợp sàn</h1>
           <p className="page-subtitle">{isLoading ? '...' : `${integrations.length} kết nối`} — chỉ Admin quản lý</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="btn-primary">
-          <Plus className="w-4 h-4" /> Thêm tích hợp
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => { setShowQt(true); setQtResult(null); setQtCreds({}) }} className="btn-outline flex items-center gap-1.5">
+            <Zap className="w-4 h-4 text-yellow-500" /> Quick Test
+          </button>
+          <button onClick={() => setShowForm(true)} className="btn-primary">
+            <Plus className="w-4 h-4" /> Thêm tích hợp
+          </button>
+        </div>
       </div>
 
       {isLoading && <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-primary-400" /></div>}
@@ -270,6 +342,111 @@ export default function IntegrationsPage() {
                 className="btn-primary flex-1 disabled:opacity-50">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}Lưu
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick Test Modal ── */}
+      {showQt && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold flex items-center gap-2"><Zap className="w-4 h-4 text-yellow-500" /> Quick Test kết nối</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Nhập credentials để test trực tiếp, không lưu vào database</p>
+              </div>
+              <button onClick={() => setShowQt(false)} className="w-7 h-7 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400">&times;</button>
+            </div>
+            <div className="p-6 space-y-5">
+              {/* Provider selector */}
+              <div>
+                <label className="label">Chọn sàn</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {PROVIDERS.map(p => (
+                    <button key={p.value} onClick={() => { setQtProvider(p.value); setQtCreds({}); setQtResult(null) }}
+                      className={cn('p-2 rounded-xl border-2 text-xs font-medium text-center transition-all', qtProvider === p.value ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:border-gray-300')}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Guide */}
+              {PLATFORM_GUIDES[qtProvider] && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center gap-1.5 font-medium text-blue-800 text-sm"><Info className="w-4 h-4" /> Cách lấy credentials</div>
+                  <div className="space-y-1">
+                    {PLATFORM_GUIDES[qtProvider].steps.map((s, i) => (
+                      <p key={i} className="text-xs text-blue-700">{s}</p>
+                    ))}
+                  </div>
+                  <a href={PLATFORM_GUIDES[qtProvider].link} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-blue-600 underline mt-1">
+                    → Mở {PLATFORM_GUIDES[qtProvider].link}
+                  </a>
+                  {PLATFORM_GUIDES[qtProvider].knownStores && (
+                    <div className="mt-2 pt-2 border-t border-blue-100">
+                      <p className="text-xs font-medium text-blue-800 mb-1">Store ID đã biết:</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {PLATFORM_GUIDES[qtProvider].knownStores!.map(s => (
+                          <button key={s.id} onClick={() => setQtCreds(p => ({ ...p, storeId: s.id }))}
+                            className="text-xs bg-white border border-blue-200 rounded-lg px-2 py-1 hover:bg-blue-50 transition-colors">
+                            {s.name}: <code className="font-mono">{s.id}</code>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Credential fields */}
+              <div className="space-y-3">
+                {(CRED_FIELDS[qtProvider] ?? []).map(f => (
+                  <div key={f.key}>
+                    <label className="label">{f.label}</label>
+                    <input className="input w-full" type={f.type ?? 'text'} placeholder={f.placeholder ?? ''}
+                      value={qtCreds[f.key] ?? ''} onChange={e => setQtCreds(p => ({ ...p, [f.key]: e.target.value }))}
+                      autoComplete="off" />
+                  </div>
+                ))}
+                {/* storeId shown for all */}
+                <div>
+                  <label className="label">Store ID <span className="text-gray-400 text-xs">(mã cửa hàng trên sàn)</span></label>
+                  <input className="input w-full font-mono" placeholder="VD: 129990"
+                    value={qtCreds.storeId ?? ''} onChange={e => setQtCreds(p => ({ ...p, storeId: e.target.value }))} />
+                </div>
+              </div>
+
+              {/* Result */}
+              {qtResult && !qtResult.loading && (
+                <div className={cn('rounded-xl p-4 text-sm', qtResult.ok ? 'bg-green-50 border border-green-100' : 'bg-red-50 border border-red-100')}>
+                  <div className={cn('flex items-center gap-2 font-medium mb-1', qtResult.ok ? 'text-green-700' : 'text-red-600')}>
+                    {qtResult.ok ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                    {qtResult.ok ? `✅ ${qtResult.message} — ${qtResult.count ?? 0} đơn hiện tại` : `❌ ${qtResult.message}`}
+                  </div>
+                  {qtResult.ok && qtResult.sample && (qtResult.sample as unknown[]).length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-green-600 font-medium">Đơn mẫu (tối đa 3):</p>
+                      {(qtResult.sample as Record<string, unknown>[]).map((o, i) => (
+                        <div key={i} className="text-xs bg-white rounded-lg p-2 border border-green-100 font-mono">
+                          #{String(o.externalOrderId ?? o.shortId ?? i)} — {String(o.customerName ?? '?')} — {String(o.total ?? 0).toLocaleString()}đ
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setShowQt(false)} className="btn-outline flex-1">Đóng</button>
+                <button onClick={handleQuickTest} disabled={!!(qtResult?.loading)}
+                  className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-60">
+                  {qtResult?.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                  {qtResult?.loading ? 'Đang kiểm tra...' : 'Test ngay'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
