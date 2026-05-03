@@ -433,3 +433,88 @@ export interface ApiResponse<T = unknown> {
   message?: string
   error?: string
 }
+
+// ---- Customer (Loyalty) ----
+export type LoyaltyTier = 'bronze' | 'silver' | 'gold' | 'platinum'
+
+export interface Customer {
+  _id: string
+  phone: string
+  name: string
+  email?: string
+  brandId: string
+  brandName?: string
+  points: number
+  totalSpend: number
+  orderCount: number
+  tier: LoyaltyTier
+  note?: string
+  status: ActiveStatus
+  lastOrderAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Table (Bàn / Khu vực) ----
+export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning'
+
+export interface Table {
+  _id: string
+  name: string
+  zone: string
+  capacity: number
+  hubId: string
+  hubName?: string
+  brandId: string
+  brandName?: string
+  status: TableStatus
+  currentOrderId?: string
+  qrToken?: string
+  note?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Inventory (Tồn kho) ----
+export interface Inventory {
+  _id: string
+  productId: string
+  productName?: string
+  productCode?: string
+  hubId: string
+  hubName?: string
+  brandId: string
+  brandName?: string
+  quantity: number
+  minQuantity: number
+  maxQuantity?: number
+  unit: string
+  lastMovementAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Stock Movement (Biến động kho) ----
+export type MovementType = 'import' | 'export' | 'adjust' | 'consume' | 'transfer'
+
+export interface StockMovement {
+  _id: string
+  productId: string
+  productName?: string
+  hubId: string
+  hubName?: string
+  brandId: string
+  type: MovementType
+  quantity: number
+  beforeQty: number
+  afterQty: number
+  note?: string
+  referenceId?: string
+  createdById?: string
+  createdByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Payment Method ----
+export type PaymentMethod = 'cash' | 'card' | 'momo' | 'zalopay' | 'vnpay' | 'banking' | 'other'

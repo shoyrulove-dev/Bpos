@@ -24,6 +24,10 @@ import {
   ShoppingBag,
   Link as LinkIcon,
   Clock,
+  Warehouse,
+  LayoutGrid,
+  Monitor,
+  UserCircle,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -57,6 +61,7 @@ const navItems: NavItem[] = [
     children: [
       { href: '/products',     label: 'Sản phẩm',      icon: <Package className="w-4 h-4" /> },
       { href: '/menus',        label: 'Thực đơn',       icon: <UtensilsCrossed className="w-4 h-4" /> },
+      { href: '/inventory',    label: 'Tồn kho',        icon: <Warehouse className="w-4 h-4" /> },
       { href: '/sync-history', label: 'Lịch sử đồng bộ', icon: <RefreshCw className="w-4 h-4" /> },
     ],
   },
@@ -83,6 +88,8 @@ const navItems: NavItem[] = [
       { href: '/orders',    label: 'Quản lý đơn hàng', icon: <ShoppingCart className="w-4 h-4" /> },
       { href: '/shipments', label: 'Vận đơn',           icon: <Truck className="w-4 h-4" /> },
       { href: '/shifts',    label: 'Ca bán hàng',        icon: <Clock className="w-4 h-4" /> },
+      { href: '/tables',    label: 'Bản đồ bàn',        icon: <LayoutGrid className="w-4 h-4" /> },
+      { href: '/kds',       label: 'Màn hình bếp',      icon: <Monitor className="w-4 h-4" /> },
     ],
   },
   {
@@ -98,6 +105,11 @@ const navItems: NavItem[] = [
       { href: '/reports/products',  label: 'Hàng bán',             icon: <Package className="w-4 h-4" /> },
       { href: '/reports/customers', label: 'Khách hàng',           icon: <Users className="w-4 h-4" /> },
     ],
+  },
+  {
+    href: '/customers',
+    label: 'Khách hàng',
+    icon: <UserCircle className="w-4 h-4" />,
   },
   {
     href: '/e-invoices',

@@ -139,3 +139,57 @@ export const SHIPMENT_STATUS_LABEL: Record<string, string> = {
   delivered: 'Đã giao',
   failed: 'Giao thất bại',
 }
+
+export const TABLE_STATUS_LABEL: Record<string, string> = {
+  available: 'Trống',
+  occupied: 'Đang dùng',
+  reserved: 'Đặt trước',
+  cleaning: 'Đang dọn',
+}
+
+export const TABLE_STATUS_COLOR: Record<string, string> = {
+  available: 'bg-green-100 text-green-700',
+  occupied: 'bg-red-100 text-red-700',
+  reserved: 'bg-blue-100 text-blue-700',
+  cleaning: 'bg-yellow-100 text-yellow-700',
+}
+
+export const LOYALTY_TIER_LABEL: Record<string, string> = {
+  bronze: 'Đồng',
+  silver: 'Bạc',
+  gold: 'Vàng',
+  platinum: 'Bạch Kim',
+}
+
+export const LOYALTY_TIER_COLOR: Record<string, string> = {
+  bronze: 'bg-amber-100 text-amber-700',
+  silver: 'bg-gray-200 text-gray-700',
+  gold: 'bg-yellow-100 text-yellow-700',
+  platinum: 'bg-indigo-100 text-indigo-700',
+}
+
+export const MOVEMENT_TYPE_LABEL: Record<string, string> = {
+  import: 'Nhập kho',
+  export: 'Xuất kho',
+  adjust: 'Điều chỉnh',
+  consume: 'Tiêu thụ',
+  transfer: 'Chuyển kho',
+}
+
+export const MOVEMENT_TYPE_COLOR: Record<string, string> = {
+  import: 'bg-green-100 text-green-700',
+  export: 'bg-red-100 text-red-700',
+  adjust: 'bg-blue-100 text-blue-700',
+  consume: 'bg-orange-100 text-orange-700',
+  transfer: 'bg-purple-100 text-purple-700',
+}
+
+export const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  cash: 'Tiền mặt',
+  card: 'Thẻ ngân hàng',
+  momo: 'MoMo',
+  zalopay: 'ZaloPay',
+  vnpay: 'VNPay',
+  banking: 'Chuyển khoản',
+  other: 'Khác',
+}
