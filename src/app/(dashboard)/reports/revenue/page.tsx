@@ -6,7 +6,7 @@ import { formatCurrency, formatNumber } from '@/lib/utils'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendingUp, ShoppingCart, DollarSign, Receipt, Loader2 } from 'lucide-react'
 
-const RANGES = [{ label: '7 ngay', days: 7 }, { label: '30 ngay', days: 30 }, { label: '90 ngay', days: 90 }]
+const RANGES = [{ label: '7 ngày', days: 7 }, { label: '30 ngày', days: 30 }, { label: '90 ngày', days: 90 }]
 
 const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) => {
   if (active && payload && payload.length) {
@@ -28,10 +28,10 @@ export default function RevenueReportPage() {
   const rows = (report?.data ?? []) as Record<string, number>[]
 
   const stats = [
-    { label: 'Tong don hang', value: formatNumber(summary.totalOrders ?? 0), icon: <ShoppingCart className="w-5 h-5" />, color: 'text-blue-500 bg-blue-50' },
-    { label: 'Doanh thu gop', value: formatCurrency(summary.revenue ?? 0), icon: <DollarSign className="w-5 h-5" />, color: 'text-green-500 bg-green-50' },
-    { label: 'Phi nen tang', value: formatCurrency(summary.platformFee ?? 0), icon: <Receipt className="w-5 h-5" />, color: 'text-red-500 bg-red-50' },
-    { label: 'Doanh thu thuc', value: formatCurrency((summary.revenue ?? 0) - (summary.platformFee ?? 0) - (summary.discount ?? 0)), icon: <TrendingUp className="w-5 h-5" />, color: 'text-primary-500 bg-orange-50' },
+    { label: 'Tổng đơn hàng', value: formatNumber(summary.totalOrders ?? 0), icon: <ShoppingCart className="w-5 h-5" />, color: 'text-blue-500 bg-blue-50' },
+    { label: 'Doanh thu gộp', value: formatCurrency(summary.revenue ?? 0), icon: <DollarSign className="w-5 h-5" />, color: 'text-green-500 bg-green-50' },
+    { label: 'Phí nền tảng', value: formatCurrency(summary.platformFee ?? 0), icon: <Receipt className="w-5 h-5" />, color: 'text-red-500 bg-red-50' },
+    { label: 'Doanh thu thực', value: formatCurrency((summary.revenue ?? 0) - (summary.platformFee ?? 0) - (summary.discount ?? 0)), icon: <TrendingUp className="w-5 h-5" />, color: 'text-primary-500 bg-orange-50' },
   ]
 
   const chartData = rows.map(d => ({
@@ -44,8 +44,8 @@ export default function RevenueReportPage() {
     <div className="space-y-5">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Doanh thu tong quan</h1>
-          <p className="page-subtitle">So lieu {days} ngay qua</p>
+          <h1 className="page-title">Doanh thu tổng quan</h1>
+          <p className="page-subtitle">Số liệu {days} ngày qua</p>
         </div>
         <div className="flex gap-2">
           {RANGES.map(r => (
@@ -67,7 +67,7 @@ export default function RevenueReportPage() {
       </div>
 
       <div className="card card-body">
-        <h3 className="font-semibold text-gray-900 mb-4">Bieu do doanh thu (nghin dong)</h3>
+        <h3 className="font-semibold text-gray-900 mb-4">Biểu đồ doanh thu (nghìn đồng)</h3>
         <ResponsiveContainer width="100%" height={240}>
           <AreaChart data={chartData}>
             <defs>
@@ -86,7 +86,7 @@ export default function RevenueReportPage() {
       </div>
 
       <div className="card card-body">
-        <h3 className="font-semibold text-gray-900 mb-4">So don hang theo ngay</h3>
+        <h3 className="font-semibold text-gray-900 mb-4">Số đơn hàng theo ngày</h3>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={rows}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />

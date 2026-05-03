@@ -139,6 +139,14 @@ export function useDeleteIntegration() {
   })
 }
 
+export function useUpdateIntegration() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: Record<string, unknown>) => fetchJSON(`/api/integrations/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['integrations'] }),
+  })
+}
+
 // ---- Stats ----
 export function useStats() {
   return useQuery({ queryKey: ['stats'], queryFn: () => fetchJSON('/api/stats'), staleTime: 60_000 })
