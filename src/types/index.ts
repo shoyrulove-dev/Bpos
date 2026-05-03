@@ -1,0 +1,337 @@
+// ============================================================
+// BPOS – Global TypeScript Types
+// ============================================================
+
+export type Role = 'user' | 'admin'
+
+export type ActiveStatus = 'active' | 'inactive'
+
+// ---- Auth ----
+export interface AuthUser {
+  id: string
+  name: string
+  email: string
+  role: Role
+  avatar?: string
+}
+
+// ---- Brand ----
+export type BrandType = 'fnb' | 'retail' | 'service' | 'other'
+
+export interface Brand {
+  _id: string
+  name: string
+  phone: string
+  type: BrandType
+  address: string
+  note?: string
+  logo?: string
+  status: ActiveStatus
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Hub (Điểm bán) ----
+export type ServicePackage = 'basic' | 'standard' | 'premium'
+
+export interface Hub {
+  _id: string
+  code: string
+  name: string
+  address: string
+  brandId: string
+  brandName?: string
+  linkedChannels: string[]
+  servicePackage: ServicePackage
+  status: ActiveStatus
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Staff (Nhân viên) ----
+export interface Staff {
+  _id: string
+  name: string
+  email: string
+  phone: string
+  role: Role
+  brandId?: string
+  brandName?: string
+  hubId?: string
+  hubName?: string
+  avatar?: string
+  status: ActiveStatus
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Product ----
+export type ProductType = 'single' | 'combo' | 'topping'
+
+export interface Product {
+  _id: string
+  name: string
+  code: string
+  category: string
+  type: ProductType
+  unit: string
+  brandId: string
+  brandName?: string
+  saleStatus: 'selling' | 'stopped' | 'draft'
+  status: ActiveStatus
+  price?: number
+  image?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Menu (Thực đơn) ----
+export interface Menu {
+  _id: string
+  name: string
+  description?: string
+  brandId: string
+  brandName?: string
+  productIds: string[]
+  status: ActiveStatus
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Sync Log (Lịch sử đồng bộ) ----
+export type SyncType = 'product' | 'menu' | 'channel' | 'order'
+export type SyncStatus = 'success' | 'failed' | 'pending'
+
+export interface SyncLog {
+  _id: string
+  type: SyncType
+  status: SyncStatus
+  content: string
+  source?: string
+  brandId?: string
+  createdAt: string
+}
+
+// ---- Promotion (Khuyến mãi) ----
+export type PromotionType = 'discount_percent' | 'discount_amount' | 'free_item' | 'combo'
+export type PromotionStatus = 'active' | 'upcoming' | 'ended'
+
+export interface Promotion {
+  _id: string
+  name: string
+  type: PromotionType
+  brandId: string
+  brandName?: string
+  startAt: string
+  endAt: string
+  quantity?: number
+  usedCount?: number
+  status: PromotionStatus
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Bill Template (Hóa đơn mẫu) ----
+export type BillSize = 'A4' | 'A5' | '80mm' | '58mm'
+export type BillType = 'order' | 'delivery' | 'receipt'
+
+export interface BillTemplate {
+  _id: string
+  name: string
+  type: BillType
+  size: BillSize
+  isActive: boolean
+  templateContent: string
+  brandId?: string
+  brandName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Channel (Kênh bán) ----
+export type ChannelSource = 'shopee' | 'grab' | 'xanh_sm' | 'be' | 'internal' | 'other'
+
+export interface Channel {
+  _id: string
+  name: string
+  source: ChannelSource
+  externalStoreId?: string
+  externalStoreName?: string
+  brandId: string
+  brandName?: string
+  hubId?: string
+  hubName?: string
+  isPageActive: boolean
+  isStoreOpen: boolean
+  isManualConfirm: boolean
+  autoInvoice: boolean
+  workingHours?: WorkingHour[]
+  status: ActiveStatus
+  connectedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WorkingHour {
+  day: 0 | 1 | 2 | 3 | 4 | 5 | 6 // 0 = Sun, 6 = Sat
+  open: string  // "08:00"
+  close: string // "22:00"
+  isClosed: boolean
+}
+
+// ---- Order (Đơn hàng) ----
+export type OrderStatus =
+  | 'draft'
+  | 'pre_order'
+  | 'waiting_confirm'
+  | 'waiting_pickup'
+  | 'delivering'
+  | 'completed'
+  | 'cancelled'
+
+export interface OrderItem {
+  productId?: string
+  name: string
+  quantity: number
+  price: number
+  total: number
+  note?: string
+}
+
+export interface DeliveryInfo {
+  address?: string
+  lat?: number
+  lng?: number
+  note?: string
+  estimatedTime?: string
+}
+
+export interface DriverInfo {
+  name?: string
+  phone?: string
+  vehiclePlate?: string
+  status?: string
+}
+
+export interface Order {
+  _id: string
+  shortId: string
+  source: ChannelSource
+  externalOrderId?: string
+  brandId: string
+  brandName?: string
+  hubId?: string
+  hubName?: string
+  channelId?: string
+  channelName?: string
+  customerName: string
+  customerPhone?: string
+  items: OrderItem[]
+  subtotal: number
+  discount: number
+  total: number
+  platformFee?: number
+  paymentMethod?: string
+  deliveryInfo?: DeliveryInfo
+  driverInfo?: DriverInfo
+  status: OrderStatus
+  note?: string
+  placedAt: string
+  deliveredAt?: string
+  cancelledAt?: string
+  cancelReason?: string
+  rawPayload?: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Shipment (Vận đơn) ----
+export type ShipmentStatus = 'assigned' | 'picked_up' | 'delivering' | 'delivered' | 'failed'
+
+export interface Shipment {
+  _id: string
+  orderId: string
+  shortOrderId?: string
+  trackingCode?: string
+  carrierName?: string
+  driverName?: string
+  driverPhone?: string
+  vehiclePlate?: string
+  status: ShipmentStatus
+  pickupAt?: string
+  deliveredAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- E-Invoice Connection ----
+export type EInvoiceProvider = 'viettel' | 'vnpt' | 'misa' | 'bkav' | 'other'
+
+export interface EInvoiceConnection {
+  _id: string
+  provider: EInvoiceProvider
+  brandId: string
+  brandName?: string
+  taxCode?: string
+  username?: string
+  isConnected: boolean
+  connectedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// ---- Integration Provider (Adapter) ----
+export interface NormalizedOrder {
+  source: ChannelSource
+  externalOrderId: string
+  externalStoreId: string
+  customerName: string
+  customerPhone?: string
+  items: OrderItem[]
+  subtotal: number
+  discount: number
+  total: number
+  deliveryInfo?: DeliveryInfo
+  driverInfo?: DriverInfo
+  orderStatus: OrderStatus
+  placedAt: string
+  deliveredAt?: string
+  rawPayload: Record<string, unknown>
+}
+
+// ---- Report ----
+export interface RevenueReport {
+  date: string
+  totalOrders: number
+  revenueBeforeDiscount: number
+  revenueAfterDiscount: number
+  actualRevenue: number
+  platformFee: number
+}
+
+export interface DashboardStats {
+  totalOrders: number
+  totalRevenue: number
+  totalBrands: number
+  totalHubs: number
+  ordersToday: number
+  revenueToday: number
+  pendingOrders: number
+}
+
+// ---- Pagination ----
+export interface PaginatedResult<T> {
+  data: T[]
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+}
+
+// ---- API Response ----
+export interface ApiResponse<T = unknown> {
+  success: boolean
+  data?: T
+  message?: string
+  error?: string
+}

@@ -1,0 +1,200 @@
+'use client'
+
+import { useState } from 'react'
+import { Plus, Search, Building2, Phone, MapPin, Tag, MoreVertical, Edit, Trash2 } from 'lucide-react'
+import { mockBrands } from '@/lib/mock-data'
+import { cn } from '@/lib/utils'
+import { BRAND_TYPE_LABEL } from '@/lib/utils'
+import type { Brand } from '@/types'
+
+const brandTypeOptions = [
+  { value: '', label: 'Tất cả loại' },
+  { value: 'fnb', label: 'F&B' },
+  { value: 'retail', label: 'Bán lẻ' },
+  { value: 'service', label: 'Dịch vụ' },
+  { value: 'other', label: 'Khác' },
+]
+
+export default function BrandsPage() {
+  const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+  const [brands, setBrands] = useState<Brand[]>(mockBrands)
+  const [showForm, setShowForm] = useState(false)
+  const [editBrand, setEditBrand] = useState<Brand | null>(null)
+  const [form, setForm] = useState({ name: '', phone: '', type: 'fnb', address: '', note: '', status: 'active' })
+
+  const filtered = brands.filter(b => {
+    const q = search.toLowerCase()
+    const matchSearch = b.name.toLowerCase().includes(q) || b.phone.includes(q) || b.address.toLowerCase().includes(q)
+    const matchType = !typeFilter || b.type === typeFilter
+    return matchSearch && matchType
+  })
+
+  const openCreate = () => {
+    setEditBrand(null)
+    setForm({ name: '', phone: '', type: 'fnb', address: '', note: '', status: 'active' })
+    setShowForm(true)
+  }
+
+  const openEdit = (b: Brand) => {
+    setEditBrand(b)
+    setForm({ name: b.name, phone: b.phone, type: b.type, address: b.address, note: b.note ?? '', status: b.status })
+    setShowForm(true)
+  }
+
+  const handleSave = () => {
+    if (!form.name || !form.phone || !form.address) return
+    if (editBrand) {
+      setBrands(prev => prev.map(b => b._id === editBrand._id ? { ...b, ...form, type: form.type as Brand['type'], status: form.status as Brand['status'], updatedAt: new Date().toISOString() } : b))
+    } else {
+      const newBrand: Brand = {
+        _id: `brand-${Date.now()}`,
+        ...form,
+        type: form.type as Brand['type'],
+        status: form.status as Brand['status'],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      setBrands(prev => [newBrand, ...prev])
+    }
+    setShowForm(false)
+  }
+
+  const handleDelete = (id: string) => {
+    if (confirm('Xóa thương hiệu này?')) {
+      setBrands(prev => prev.filter(b => b._id !== id))
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Thương hiệu</h1>
+          <p className="page-subtitle">{brands.length} thương hiệu trong hệ thống</p>
+        </div>
+        <button onClick={openCreate} className="btn-primary">
+          <Plus className="w-4 h-4" /> Thêm thương hiệu
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="card card-body">
+        <div className="filter-bar">
+          <div className="relative flex-1 min-w-[240px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input className="input pl-9" placeholder="Tìm thương hiệu..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <select className="input w-44" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
+            {brandTypeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Grid */}
+      {filtered.length === 0 ? (
+        <div className="empty-state card">
+          <Building2 className="w-12 h-12 mb-3" />
+          <p className="font-medium">Không tìm thấy thương hiệu</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filtered.map(brand => (
+            <div key={brand._id} className="card p-5 hover:shadow-md transition-shadow group">
+              {/* Logo placeholder */}
+              <div className="flex items-start justify-between mb-4">
+                <div className="w-12 h-12 rounded-xl bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-lg">
+                  {brand.name.charAt(0)}
+                </div>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => openEdit(brand)} className="btn-ghost btn-sm p-1.5">
+                    <Edit className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={() => handleDelete(brand._id)} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <h3 className="font-semibold text-gray-900 mb-1">{brand.name}</h3>
+
+              <div className="space-y-1.5 mt-3">
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Tag className="w-3 h-3" />
+                  {BRAND_TYPE_LABEL[brand.type]}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Phone className="w-3 h-3" />
+                  {brand.phone}
+                </div>
+                <div className="flex items-start gap-2 text-xs text-gray-500">
+                  <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                  <span className="line-clamp-2">{brand.address}</span>
+                </div>
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+                <span className={cn('badge', brand.status === 'active' ? 'badge-green' : 'badge-red')}>
+                  {brand.status === 'active' ? 'Hoạt động' : 'Ngừng hoạt động'}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Form Modal */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">{editBrand ? 'Cập nhật thương hiệu' : 'Thêm thương hiệu'}</h2>
+              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="form-group">
+                <label className="label">Tên thương hiệu *</label>
+                <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Vd: Trà Sữa Phúc Long" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="form-group">
+                  <label className="label">Số điện thoại *</label>
+                  <input className="input" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="028-3822-3456" />
+                </div>
+                <div className="form-group">
+                  <label className="label">Loại thương hiệu</label>
+                  <select className="input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+                    <option value="fnb">F&B</option>
+                    <option value="retail">Bán lẻ</option>
+                    <option value="service">Dịch vụ</option>
+                    <option value="other">Khác</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="label">Địa chỉ *</label>
+                <input className="input" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="123 Nguyễn Huệ, Q.1..." />
+              </div>
+              <div className="form-group">
+                <label className="label">Ghi chú</label>
+                <textarea className="input" rows={2} value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} placeholder="Ghi chú thêm..." />
+              </div>
+              <div className="form-group">
+                <label className="label">Trạng thái</label>
+                <select className="input" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+                  <option value="active">Hoạt động</option>
+                  <option value="inactive">Ngừng hoạt động</option>
+                </select>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+              <button onClick={() => setShowForm(false)} className="btn-outline">Hủy</button>
+              <button onClick={handleSave} className="btn-primary">Lưu</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
