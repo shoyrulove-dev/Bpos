@@ -34,8 +34,9 @@ const CRED_FIELDS: Record<string, CredField[]> = {
     { key: 'storeId', label: 'Store ID', placeholder: 'Mã cửa hàng Xanh SM' },
   ],
   be: [
-    { key: 'apiKey',  label: 'API Key',  type: 'password', placeholder: 'Be API Key' },
-    { key: 'storeId', label: 'Store ID', placeholder: 'Mã cửa hàng Be' },
+    { key: 'clientId',     label: 'Client ID',     placeholder: 'Số ID cấp bởi beFood (ví dụ: 4000)' },
+    { key: 'clientSecret', label: 'Client Secret', type: 'password', placeholder: 'Secret cấp bởi beFood' },
+    { key: 'restaurantId', label: 'Restaurant ID', placeholder: 'ID nhà hàng trên beFood (ví dụ: 129990)' },
   ],
 }
 
@@ -53,11 +54,11 @@ const emptyForm = { provider: 'shopee', brandId: '', hubId: '', externalStoreId:
 const PLATFORM_GUIDES: Record<string, { steps: string[]; link: string; knownStores?: { id: string; name: string }[] }> = {
   be: {
     steps: [
-      '1. Đăng nhập https://merchant.be.com.vn bằng email/pass',
-      '2. Vào Cài đặt → Tích hợp API',
-      '3. Copy API Key dán vào ô bên dưới',
+      '1. Liên hệ Be để đăng ký merchant partner: hotro@be.com.vn / 1900232345',
+      '2. Be cấp client_id + client_secret (khác với tài khoản merchant portal)',
+      '3. Lấy restaurant_id từ URL merchant portal hoặc hỏi Be support',
     ],
-    link: 'https://merchant.be.com.vn',
+    link: 'https://developers.be.com.vn/docs/food-api-10',
     knownStores: [
       { id: '129990', name: '3B Food & Drink' },
       { id: '99379',  name: 'Ò Ó O' },
