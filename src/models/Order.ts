@@ -79,6 +79,6 @@ const OrderSchema = new Schema<IOrder>({
 OrderSchema.index({ brandId: 1, status: 1 })
 OrderSchema.index({ source: 1 })
 OrderSchema.index({ placedAt: -1 })
-OrderSchema.index({ externalOrderId: 1, source: 1 }, { sparse: true })
+OrderSchema.index({ externalOrderId: 1, source: 1 }, { unique: true, sparse: true })
 
 export default mongoose.models.Order || mongoose.model<IOrder>('Order', OrderSchema)

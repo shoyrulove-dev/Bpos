@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { ShoppingBag, Plus, Trash2, Settings, PlayCircle, Loader2, Lock, CheckCircle, XCircle, Zap, Info } from 'lucide-react'
+import { ShoppingBag, Plus, Trash2, Settings, PlayCircle, Loader2, Lock, CheckCircle, XCircle, Zap, Info, RefreshCw } from 'lucide-react'
 import { useIntegrations, useCreateIntegration, useDeleteIntegration, useUpdateIntegration } from '@/hooks/use-data'
 import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
@@ -122,6 +122,10 @@ export default function IntegrationsPage() {
   // Test results per card
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
 
+  // Sync results per card
+  type SyncResult = { loading: boolean; ok?: boolean; upserted?: number; updated?: number; message?: string }
+  const [syncResults, setSyncResults] = useState<Record<string, SyncResult>>({})
+
   // Quick Test (no DB)
   const [showQt, setShowQt]         = useState(false)
   const [qtProvider, setQtProvider] = useState('be')
@@ -180,6 +184,18 @@ export default function IntegrationsPage() {
     if (__externalStoreId?.trim()) body.externalStoreId = __externalStoreId.trim()
     await updateMutation.mutateAsync({ id: settingsId, ...body })
     setSettingsId(null)
+  }
+
+  const handleSync = async (id: string) => {
+    setSyncResults(prev => ({ ...prev, [id]: { loading: true } }))
+    try {
+      const res  = await fetch(`/api/integrations/${id}/sync`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Lỗi đồng bộ')
+      setSyncResults(prev => ({ ...prev, [id]: { loading: false, ok: true, upserted: data.upserted, updated: data.updated } }))
+    } catch (e) {
+      setSyncResults(prev => ({ ...prev, [id]: { loading: false, ok: false, message: e instanceof Error ? e.message : 'Lỗi không xác định' } }))
+    }
   }
 
   const handleTest = async (id: string) => {
@@ -264,6 +280,16 @@ export default function IntegrationsPage() {
                 </div>
               </div>
 
+              {/* Sync result */}
+              {syncResults[integ._id] && !syncResults[integ._id].loading && (
+                <div className={cn('flex items-start gap-1.5 text-xs rounded-lg px-3 py-2',
+                  syncResults[integ._id].ok ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-600')}>
+                  {syncResults[integ._id].ok
+                    ? <><RefreshCw className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>+{syncResults[integ._id].upserted} mới, {syncResults[integ._id].updated} cập nhật</span></>
+                    : <><XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>{syncResults[integ._id].message}</span></>}
+                </div>
+              )}
+
               {/* Test result */}
               {tr && !tr.loading && (
                 <div className={cn('flex items-start gap-1.5 text-xs rounded-lg px-3 py-2',
@@ -278,13 +304,18 @@ export default function IntegrationsPage() {
               {/* Actions */}
               <div className="flex gap-2 pt-1 border-t border-gray-100">
                 <button onClick={() => openSettings(integ)}
-                  className="btn-outline btn-sm flex-1 flex items-center gap-1 justify-center">
+                  className="btn-outline btn-sm flex items-center gap-1 justify-center px-2">
                   <Settings className="w-3.5 h-3.5" /> Cài đặt
                 </button>
                 <button onClick={() => handleTest(integ._id)} disabled={!!tr?.loading}
-                  className="btn-outline btn-sm flex-1 flex items-center gap-1 justify-center text-primary-600 border-primary-200 hover:bg-primary-50 disabled:opacity-50">
+                  className="btn-outline btn-sm flex items-center gap-1 justify-center px-2 text-primary-600 border-primary-200 hover:bg-primary-50 disabled:opacity-50">
                   {tr?.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlayCircle className="w-3.5 h-3.5" />}
                   Test
+                </button>
+                <button onClick={() => handleSync(integ._id)} disabled={!!syncResults[integ._id]?.loading}
+                  className="btn-primary btn-sm flex-1 flex items-center gap-1 justify-center disabled:opacity-50">
+                  {syncResults[integ._id]?.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  Sync
                 </button>
               </div>
             </div>

@@ -9,7 +9,7 @@ export interface IIntegration extends Document {
   credentials: Record<string, string>
   isActive: boolean
   lastSyncAt?: Date
-  syncStatus?: 'idle' | 'syncing' | 'error'
+  syncStatus?: 'idle' | 'syncing' | 'success' | 'error'
   syncError?: string
   createdBy: mongoose.Types.ObjectId
 }
@@ -23,7 +23,7 @@ const IntegrationSchema = new Schema<IIntegration>({
   credentials:       { type: Map, of: String, select: false },
   isActive:          { type: Boolean, default: true },
   lastSyncAt:        { type: Date },
-  syncStatus:        { type: String, enum: ['idle', 'syncing', 'error'], default: 'idle' },
+  syncStatus:        { type: String, enum: ['idle', 'syncing', 'success', 'error'], default: 'idle' },
   syncError:         { type: String },
   createdBy:         { type: Schema.Types.ObjectId, ref: 'User', required: true },
 }, { timestamps: true })

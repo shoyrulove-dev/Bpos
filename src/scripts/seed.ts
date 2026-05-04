@@ -6,7 +6,7 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/bpos'
 // Minimal inline schemas for seeding
 const UserSchema = new mongoose.Schema({
   name: String, email: { type: String, unique: true }, password: String,
-  role: { type: String, enum: ['user', 'admin'], default: 'user' },
+  role: { type: String, enum: ['admin', 'brand_manager', 'hub_manager', 'cashier'], default: 'cashier' },
   status: { type: String, default: 'active' },
 }, { timestamps: true })
 
@@ -39,12 +39,12 @@ async function seed() {
   const pw = await bcrypt.hash('123456', 10)
   const users = await User.insertMany([
     { name: 'Admin BPOS', email: 'admin@bpos.vn', password: pw, role: 'admin', status: 'active' },
-    { name: 'Nhân viên Demo', email: 'user@bpos.vn', password: pw, role: 'user', status: 'active' },
+    { name: 'Nhân viên Demo', email: 'user@bpos.vn', password: pw, role: 'cashier', status: 'active' },
   ])
   console.log(`Seeded ${users.length} users`)
   console.log('\n✅ Seed complete!')
   console.log('  admin@bpos.vn / 123456  (admin role)')
-  console.log('  user@bpos.vn  / 123456  (user role)')
+  console.log('  user@bpos.vn  / 123456  (cashier role)')
 
   await mongoose.disconnect()
 }
