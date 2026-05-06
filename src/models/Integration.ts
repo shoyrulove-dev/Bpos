@@ -6,7 +6,32 @@ export interface IIntegration extends Document {
   hubId?: mongoose.Types.ObjectId
   externalStoreId?: string
   externalStoreName?: string
+
+  /** 'api' = Official API keys/OAuth2 (legacy). 'auto' = Automation merchant login. */
+  loginMode: 'api' | 'auto'
+
+  /** Official API credentials (api mode). Encrypted AES-256-GCM JSON. */
   credentials: Record<string, string>
+
+  // ─── Auto-login mode fields ────────────────────────────────────────────────
+  /** Merchant portal username (phone / email). Plain text — low sensitivity. */
+  loginUsername?: string
+  /** Merchant portal password. AES-256-GCM encrypted. */
+  loginPassword?: string
+  /** Session cookies captured by Playwright. AES-256-GCM encrypted JSON (PlaywrightCookie[]). */
+  sessionData?: string
+  /** Lifecycle state of the stored session. */
+  sessionStatus: 'none' | 'active' | 'expired' | 'error'
+  /** When the session was last captured. */
+  sessionCapturedAt?: Date
+  /** Estimated session expiry (platform-dependent). */
+  sessionExpiresAt?: Date
+  /** Last error from automation login. */
+  sessionError?: string
+  /** Whether automation is currently running for this integration. */
+  automationRunning: boolean
+  // ──────────────────────────────────────────────────────────────────────────
+
   isActive: boolean
   lastSyncAt?: Date
   syncStatus?: 'idle' | 'syncing' | 'success' | 'error'
@@ -20,7 +45,20 @@ const IntegrationSchema = new Schema<IIntegration>({
   hubId:             { type: Schema.Types.ObjectId, ref: 'Hub' },
   externalStoreId:   { type: String },
   externalStoreName: { type: String },
+
+  loginMode:         { type: String, enum: ['api', 'auto'], default: 'api' },
+
   credentials:       { type: Map, of: String, select: false },
+
+  loginUsername:     { type: String },
+  loginPassword:     { type: String, select: false },
+  sessionData:       { type: String, select: false },
+  sessionStatus:     { type: String, enum: ['none', 'active', 'expired', 'error'], default: 'none' },
+  sessionCapturedAt: { type: Date },
+  sessionExpiresAt:  { type: Date },
+  sessionError:      { type: String },
+  automationRunning: { type: Boolean, default: false },
+
   isActive:          { type: Boolean, default: true },
   lastSyncAt:        { type: Date },
   syncStatus:        { type: String, enum: ['idle', 'syncing', 'success', 'error'], default: 'idle' },

@@ -5,12 +5,15 @@ import OrderModel from '@/models/Order'
 import SyncLogModel from '@/models/SyncLog'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { getAdapter } from '@/integrations/registry'
+import { decryptJSON } from '@/lib/crypto'
 import { generateId } from '@/lib/utils'
 import type { NormalizedOrder } from '@/types'
+import type { SessionData } from '@/integrations/types'
 
 /**
  * POST /api/integrations/[id]/sync
  * Fetch orders from provider and upsert them into the Order collection.
+ * Supports both 'api' mode (credentials) and 'auto' mode (session cookies).
  * Idempotent: running twice for the same orders produces no duplicates.
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -19,7 +22,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   await connectDB()
 
-  const raw = await IntegrationModel.findById(params.id).select('+credentials').lean()
+  const raw = await IntegrationModel.findById(params.id)
+    .select('+credentials +sessionData')
+    .lean()
   if (!raw || Array.isArray(raw)) return err('Không tìm thấy tích hợp', 404)
 
   const intg = raw as unknown as {
@@ -29,6 +34,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     hubId?: string
     externalStoreId?: string
     credentials?: unknown
+    loginMode?: 'api' | 'auto'
+    sessionData?: string
+    sessionStatus?: string
+    sessionExpiresAt?: Date
     isActive: boolean
   }
 
@@ -37,70 +46,88 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const adapter = getAdapter(intg.provider)
   if (!adapter) return err(`Không hỗ trợ provider: ${intg.provider}`, 400)
 
-  const rawCreds = intg.credentials as unknown
-  const credObj: Record<string, string> =
-    rawCreds instanceof Map
-      ? Object.fromEntries((rawCreds as Map<string, string>).entries())
-      : typeof rawCreds === 'object' && rawCreds !== null
-      ? (rawCreds as Record<string, string>)
-      : {}
-
   const startedAt = Date.now()
   let upserted = 0
   let updated = 0
-  let errors: string[] = []
+  const errors: string[] = []
+  let orders: NormalizedOrder[] = []
 
   try {
     await IntegrationModel.findByIdAndUpdate(params.id, { syncStatus: 'syncing' })
 
-    const orders: NormalizedOrder[] = await adapter.fetchOrders({
-      ...credObj,
-      storeId: credObj.storeId ?? intg.externalStoreId,
-      shopId:  credObj.shopId  ?? intg.externalStoreId,
-    })
+    // ── Auto-login (session) mode ─────────────────────────────────────────────
+    if (intg.loginMode === 'auto' && intg.sessionData && adapter.fetchOrdersWithSession) {
+      if (intg.sessionStatus !== 'active') {
+        return err('Session chưa active – vui lòng đăng nhập lại', 400)
+      }
+      const isExpired = intg.sessionExpiresAt
+        ? new Date(intg.sessionExpiresAt) < new Date()
+        : false
+      if (isExpired) {
+        await IntegrationModel.findByIdAndUpdate(params.id, { sessionStatus: 'expired' })
+        return err('Session đã hết hạn – vui lòng đăng nhập lại', 400)
+      }
 
+      const session = decryptJSON<SessionData>(intg.sessionData)
+      const storeId = intg.externalStoreId ?? session.extraHeaders?.['x-grab-store-id'] ?? ''
+      const result  = await adapter.fetchOrdersWithSession(session, storeId)
+      if (result === null) {
+        await IntegrationModel.findByIdAndUpdate(params.id, { sessionStatus: 'expired' })
+        return err('Session hết hạn – đăng nhập lại để tiếp tục', 401)
+      }
+      orders = result
+    } else {
+      // ── API credentials mode ────────────────────────────────────────────────
+      const rawCreds = intg.credentials as unknown
+      const credObj: Record<string, string> =
+        rawCreds instanceof Map
+          ? Object.fromEntries((rawCreds as Map<string, string>).entries())
+          : typeof rawCreds === 'object' && rawCreds !== null
+          ? (rawCreds as Record<string, string>)
+          : {}
+
+      orders = await adapter.fetchOrders({
+        ...credObj,
+        storeId: credObj.storeId ?? intg.externalStoreId,
+        shopId:  credObj.shopId  ?? intg.externalStoreId,
+      })
+    }
+
+    // ── Upsert orders ─────────────────────────────────────────────────────────
     for (const normalized of orders) {
       try {
         if (!normalized.externalOrderId) continue
 
-        const filter = {
-          source:          normalized.source,
-          externalOrderId: normalized.externalOrderId,
-        }
-
-        const update = {
-          $setOnInsert: {
-            shortId:  generateId(),
-            placedAt: normalized.placedAt ? new Date(normalized.placedAt) : new Date(),
-            brandId:  intg.brandId,
-            hubId:    intg.hubId,
+        const result = await OrderModel.findOneAndUpdate(
+          { source: normalized.source, externalOrderId: normalized.externalOrderId },
+          {
+            $setOnInsert: {
+              shortId:  generateId(),
+              placedAt: normalized.placedAt ? new Date(normalized.placedAt) : new Date(),
+              brandId:  intg.brandId,
+              hubId:    intg.hubId,
+            },
+            $set: {
+              status:          normalized.orderStatus,
+              customerName:    normalized.customerName || 'Khách hàng',
+              customerPhone:   normalized.customerPhone,
+              items:           normalized.items,
+              subtotal:        normalized.subtotal,
+              discount:        normalized.discount,
+              total:           normalized.total,
+              deliveryInfo:    normalized.deliveryInfo,
+              driverInfo:      normalized.driverInfo,
+              rawPayload:      normalized.rawPayload,
+              source:          normalized.source,
+              externalOrderId: normalized.externalOrderId,
+              externalStoreId: normalized.externalStoreId,
+            },
           },
-          $set: {
-            status:       normalized.orderStatus,
-            customerName: normalized.customerName || 'Khách hàng',
-            customerPhone: normalized.customerPhone,
-            items:         normalized.items,
-            subtotal:      normalized.subtotal,
-            discount:      normalized.discount,
-            total:         normalized.total,
-            deliveryInfo:  normalized.deliveryInfo,
-            driverInfo:    normalized.driverInfo,
-            rawPayload:    normalized.rawPayload,
-          },
-        }
+          { upsert: true, new: true, includeResultMetadata: true }
+        )
 
-        const result = await OrderModel.findOneAndUpdate(filter, update, {
-          upsert: true,
-          new:    true,
-          includeResultMetadata: true,
-        })
-
-        // lastErrorObject.updatedExisting = false means a new doc was inserted
-        if (result?.lastErrorObject?.updatedExisting === false) {
-          upserted++
-        } else {
-          updated++
-        }
+        if (result?.lastErrorObject?.updatedExisting === false) upserted++
+        else updated++
       } catch (orderErr) {
         errors.push(`${normalized.externalOrderId}: ${orderErr instanceof Error ? orderErr.message : String(orderErr)}`)
       }

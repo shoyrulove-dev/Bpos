@@ -4,27 +4,30 @@ import IntegrationModel from '@/models/Integration'
 import OrderModel from '@/models/Order'
 import SyncLogModel from '@/models/SyncLog'
 import { getAdapter } from '@/integrations/registry'
+import { decryptJSON } from '@/lib/crypto'
 import { generateId } from '@/lib/utils'
 import type { NormalizedOrder } from '@/types'
+import type { SessionData } from '@/integrations/types'
 
 const CRON_SECRET = process.env.CRON_SECRET
 
 /**
  * GET /api/cron/sync-orders
- * Called by Vercel cron every 5 minutes.
+ * Called by Vercel cron every 1 minute.
  * Iterates all active integrations and upserts orders into DB.
+ * Supports both 'api' mode (credentials) and 'auto' mode (session cookies).
  */
 export async function GET(req: NextRequest) {
-  // Verify secret so only Vercel cron (or manual calls with the header) can trigger this
   const authHeader = req.headers.get('authorization')
-  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
+  const secretParam = req.nextUrl.searchParams.get('secret')
+  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}` && secretParam !== CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   await connectDB()
 
   const integrations = await IntegrationModel.find({ isActive: true })
-    .select('+credentials')
+    .select('+credentials +sessionData +loginPassword')
     .lean()
 
   const results: Array<{ id: string; provider: string; upserted: number; updated: number; error?: string }> = []
@@ -37,31 +40,68 @@ export async function GET(req: NextRequest) {
       hubId?: string
       externalStoreId?: string
       credentials?: unknown
+      loginMode?: 'api' | 'auto'
+      sessionData?: string
+      sessionStatus?: string
+      sessionExpiresAt?: Date
     }
 
     const adapter = getAdapter(intg.provider)
     if (!adapter) continue
 
-    const rawCreds = intg.credentials as unknown
-    const credObj: Record<string, string> =
-      rawCreds instanceof Map
-        ? Object.fromEntries((rawCreds as Map<string, string>).entries())
-        : typeof rawCreds === 'object' && rawCreds !== null
-        ? (rawCreds as Record<string, string>)
-        : {}
+    const startedAt = Date.now()
+    let upserted = 0
+    let updated = 0
 
     try {
       await IntegrationModel.findByIdAndUpdate(intg._id, { syncStatus: 'syncing' })
 
-      const orders: NormalizedOrder[] = await adapter.fetchOrders({
-        ...credObj,
-        storeId: credObj.storeId ?? intg.externalStoreId,
-        shopId:  credObj.shopId  ?? intg.externalStoreId,
-      })
+      let orders: NormalizedOrder[] = []
 
-      let upserted = 0
-      let updated = 0
+      // ── Auto-login (session) mode ─────────────────────────────────────────
+      if (intg.loginMode === 'auto' && intg.sessionData && intg.sessionStatus === 'active') {
+        // Check session not expired
+        const isExpired = intg.sessionExpiresAt
+          ? new Date(intg.sessionExpiresAt) < new Date()
+          : false
 
+        if (!isExpired && adapter.fetchOrdersWithSession) {
+          try {
+            const session = decryptJSON(intg.sessionData) as SessionData
+            const storeId = intg.externalStoreId ?? session.extraHeaders?.['x-grab-store-id'] ?? ''
+            const result  = await adapter.fetchOrdersWithSession(session, storeId)
+            if (result !== null) {
+              orders = result
+            } else {
+              // Session returned null = likely expired; mark for refresh
+              await IntegrationModel.findByIdAndUpdate(intg._id, { sessionStatus: 'expired' })
+              throw new Error('Session hết hạn – cần đăng nhập lại')
+            }
+          } catch (sessionErr) {
+            throw sessionErr
+          }
+        } else if (isExpired) {
+          await IntegrationModel.findByIdAndUpdate(intg._id, { sessionStatus: 'expired' })
+          throw new Error('Session đã hết hạn – đang chờ refresh')
+        }
+      } else {
+        // ── API credentials mode ──────────────────────────────────────────
+        const rawCreds = intg.credentials as unknown
+        const credObj: Record<string, string> =
+          rawCreds instanceof Map
+            ? Object.fromEntries((rawCreds as Map<string, string>).entries())
+            : typeof rawCreds === 'object' && rawCreds !== null
+            ? (rawCreds as Record<string, string>)
+            : {}
+
+        orders = await adapter.fetchOrders({
+          ...credObj,
+          storeId: credObj.storeId ?? intg.externalStoreId,
+          shopId:  credObj.shopId  ?? intg.externalStoreId,
+        })
+      }
+
+      // ── Upsert orders ─────────────────────────────────────────────────────
       for (const normalized of orders) {
         if (!normalized.externalOrderId) continue
         try {
@@ -85,15 +125,16 @@ export async function GET(req: NextRequest) {
                 deliveryInfo:  normalized.deliveryInfo,
                 driverInfo:    normalized.driverInfo,
                 rawPayload:    normalized.rawPayload,
+                source:        normalized.source,
+                externalOrderId: normalized.externalOrderId,
+                externalStoreId: normalized.externalStoreId,
               },
             },
             { upsert: true, new: true, includeResultMetadata: true }
           )
           if (result?.lastErrorObject?.updatedExisting === false) upserted++
           else updated++
-        } catch {
-          // skip individual order errors — log at integration level
-        }
+        } catch { /* skip individual order errors */ }
       }
 
       await IntegrationModel.findByIdAndUpdate(intg._id, {
@@ -105,7 +146,7 @@ export async function GET(req: NextRequest) {
       await SyncLogModel.create({
         type:    'order',
         status:  'success',
-        content: `[cron][${intg.provider}] +${upserted} mới, ${updated} cập nhật`,
+        content: `[cron][${intg.provider}] +${upserted} mới, ${updated} cập nhật (${Date.now() - startedAt}ms)`,
         source:  intg.provider,
         brandId: intg.brandId,
       })
@@ -116,6 +157,7 @@ export async function GET(req: NextRequest) {
       await IntegrationModel.findByIdAndUpdate(intg._id, {
         syncStatus: 'error',
         syncError:  errMsg,
+        lastSyncAt: new Date(),
       })
       results.push({ id: String(intg._id), provider: intg.provider, upserted: 0, updated: 0, error: errMsg })
     }
@@ -123,3 +165,4 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ ok: true, ran: results.length, results })
 }
+

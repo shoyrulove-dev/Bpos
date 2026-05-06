@@ -1,16 +1,61 @@
 import type { NormalizedOrder } from '@/types'
 
-export interface PlatformAdapter {
-  source: string
-  fetchOrders(config: AdapterConfig): Promise<NormalizedOrder[]>
-  fetchOrderDetail(externalOrderId: string, config: AdapterConfig): Promise<NormalizedOrder | null>
-  normalizeOrder(raw: Record<string, unknown>): NormalizedOrder
+// ─── Session types (automation merchant login) ────────────────────────────────
+
+/** A single browser cookie captured by Playwright after merchant login. */
+export interface PlaywrightCookie {
+  name: string
+  value: string
+  domain: string
+  path: string
+  expires: number    // Unix timestamp (-1 = session cookie)
+  httpOnly: boolean
+  secure: boolean
+  sameSite: 'Strict' | 'Lax' | 'None'
 }
 
+/** Full session data captured after Playwright login. */
+export interface SessionData {
+  cookies: PlaywrightCookie[]
+  /** Extra auth headers some platforms inject via JS (e.g. x-csrftoken). */
+  extraHeaders?: Record<string, string>
+  capturedAt: string  // ISO-8601
+  /** Estimated expiry in seconds from capturedAt. Platform-specific. */
+  sessionTtlSeconds?: number
+}
+
+// ─── Adapter config ───────────────────────────────────────────────────────────
+
 export interface AdapterConfig {
+  // API mode credentials
   accessToken?: string
   refreshToken?: string
   storeId?: string
   shopId?: string
   [key: string]: unknown
+  // Auto-login mode
+  sessionData?: SessionData
 }
+
+// ─── Adapter interface ────────────────────────────────────────────────────────
+
+export interface PlatformAdapter {
+  source: string
+
+  /** Fetch orders using official API credentials. */
+  fetchOrders(config: AdapterConfig): Promise<NormalizedOrder[]>
+
+  /** Fetch single order detail using official API credentials. */
+  fetchOrderDetail(externalOrderId: string, config: AdapterConfig): Promise<NormalizedOrder | null>
+
+  /** Normalize a raw platform order object into NormalizedOrder. */
+  normalizeOrder(raw: Record<string, unknown>): NormalizedOrder
+
+  /**
+   * Fetch orders using a captured browser session (auto-login mode).
+   * Uses the platform's internal web APIs rather than the official Open API.
+   * Returns null if the session is expired / invalid.
+   */
+  fetchOrdersWithSession?(session: SessionData, storeId: string): Promise<NormalizedOrder[] | null>
+}
+

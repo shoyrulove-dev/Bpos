@@ -14,7 +14,11 @@ export function useOrders(params?: { q?: string; status?: string; source?: strin
   if (params?.source) sp.set('source', params.source)
   if (params?.brandId) sp.set('brandId', params.brandId)
   if (params?.page) sp.set('page', String(params.page))
-  return useQuery({ queryKey: ['orders', params], queryFn: () => fetchJSON(`/api/orders?${sp}`) })
+  return useQuery({
+    queryKey: ['orders', params],
+    queryFn:  () => fetchJSON(`/api/orders?${sp}`),
+    refetchInterval: 30_000,  // near-realtime: poll every 30s for new orders
+  })
 }
 
 export function useOrder(id: string) {

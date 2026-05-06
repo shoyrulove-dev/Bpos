@@ -120,7 +120,11 @@ export function useCreateEInvoice() {
 export function useIntegrations(params?: { brandId?: string }) {
   const sp = new URLSearchParams()
   if (params?.brandId) sp.set('brandId', params.brandId)
-  return useQuery({ queryKey: ['integrations', params], queryFn: () => fetchJSON(`/api/integrations?${sp}`) })
+  return useQuery({
+    queryKey: ['integrations', params],
+    queryFn: () => fetchJSON(`/api/integrations?${sp}`),
+    refetchInterval: 30_000,  // near-realtime: refresh every 30s to pick up sync status
+  })
 }
 
 export function useCreateIntegration() {

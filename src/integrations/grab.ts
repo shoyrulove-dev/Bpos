@@ -1,13 +1,22 @@
 import type { NormalizedOrder, OrderItem, OrderStatus } from '@/types'
-import type { PlatformAdapter, AdapterConfig } from './types'
+import type { PlatformAdapter, AdapterConfig, SessionData } from './types'
 
-const GRAB_TOKEN_URL  = 'https://partner-api.grab.com/grabid/v1/oauth2/token'
-const GRAB_ORDER_BASE = 'https://partner-api.grab.com/partner/v1'
+// GrabFood Partner API (POS) v1.1.3
+// Docs: https://developer.grab.com/docs/grabfood/api/v1-1-3
+const GRAB_TOKEN_URL = 'https://partner-api.grab.com/grabid/v1/oauth2/token'
+const GRAB_API_BASE  = 'https://partner-api.grab.com/grabfood/partner/v1'
 
-/**
- * GrabFood adapter – Grab Merchant API (OAuth2 client credentials)
- * Docs: https://developer.grab.com/docs/
- */
+// ─── Known Grab Merchant Portal internal API endpoints (VN) ──────────────────
+// These are discovered by intercepting XHR during Playwright session.
+// Tried in order; first success wins. Kept as fallback when Playwright hasn't
+// yet captured x-grab-orders-api from the live portal.
+const GRAB_PORTAL_ORDER_CANDIDATES = [
+  'https://merchant.grab.com/grabfood/v1/restaurants/{storeId}/orders',
+  'https://merchant.grab.com/grabfood/v1/stores/{storeId}/orders',
+  'https://merchant.grab.com/portal/v1/orders?merchantID={storeId}',
+  'https://merchant.grab.com/portal/merchant/v1/restaurants/{storeId}/orders',
+]
+
 export class GrabAdapter implements PlatformAdapter {
   source = 'grab' as const
 
@@ -15,7 +24,7 @@ export class GrabAdapter implements PlatformAdapter {
     const res = await fetch(GRAB_TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: 'client_credentials', scope: 'food.order.read' }),
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: 'client_credentials', scope: 'food.partner_api' }),
     })
     if (!res.ok) throw new Error(`Grab OAuth ${res.status}: Sai clientId hoặc clientSecret`)
     const d = await res.json() as { access_token?: string; error?: string; error_description?: string }
@@ -23,6 +32,7 @@ export class GrabAdapter implements PlatformAdapter {
     return d.access_token
   }
 
+  // ── Official Partner API mode ────────────────────────────────────────────
   async fetchOrders(config: AdapterConfig): Promise<NormalizedOrder[]> {
     const clientId     = String(config.clientId     ?? '')
     const clientSecret = String(config.clientSecret ?? '')
@@ -33,15 +43,25 @@ export class GrabAdapter implements PlatformAdapter {
     }
 
     const token = await this.getToken(clientId, clientSecret)
-    const res   = await fetch(`${GRAB_ORDER_BASE}/restaurants/${merchantId}/orders?orderState=ACTIVE`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (res.status === 401) throw new Error('Token không hợp lệ hoặc thiếu quyền food.order.read')
-    if (!res.ok) throw new Error(`Grab API ${res.status}: ${res.statusText}`)
+    const today = new Date().toISOString().slice(0, 10)
+    const allOrders: Record<string, unknown>[] = []
 
-    const data   = await res.json() as { orders?: Record<string, unknown>[]; data?: Record<string, unknown>[] }
-    const orders = data.orders ?? data.data ?? []
-    return orders.map(o => this.normalizeOrder(o))
+    let page = 0
+    let more = true
+    while (more) {
+      const res = await fetch(
+        `${GRAB_API_BASE}/orders?merchantID=${encodeURIComponent(merchantId)}&date=${today}&page=${page}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      if (res.status === 401) throw new Error('Token không hợp lệ hoặc thiếu quyền food.partner_api')
+      if (!res.ok) throw new Error(`Grab API ${res.status}: ${res.statusText}`)
+      const data = await res.json() as { orders?: Record<string, unknown>[]; more?: boolean }
+      allOrders.push(...(data.orders ?? []))
+      more = data.more ?? false
+      page++
+    }
+
+    return allOrders.map(o => this.normalizeOrder(o))
   }
 
   async fetchOrderDetail(orderId: string, config: AdapterConfig): Promise<NormalizedOrder | null> {
@@ -50,52 +70,202 @@ export class GrabAdapter implements PlatformAdapter {
     if (!clientId || !clientSecret) return null
     try {
       const token = await this.getToken(clientId, clientSecret)
-      const res   = await fetch(`${GRAB_ORDER_BASE}/orders/${orderId}`, { headers: { Authorization: `Bearer ${token}` } })
+      const res = await fetch(`${GRAB_API_BASE}/orders?orderIDs=${encodeURIComponent(orderId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
       if (!res.ok) return null
-      const data = await res.json() as Record<string, unknown>
-      return this.normalizeOrder(data)
+      const data = await res.json() as { orders?: Record<string, unknown>[] }
+      const order = data.orders?.[0]
+      return order ? this.normalizeOrder(order) : null
     } catch { return null }
   }
 
+  // ── Auto-login (session) mode ────────────────────────────────────────────
+  /**
+   * Fetches orders from Grab Merchant Portal using captured browser session.
+   * Tries the discovered API endpoint first (stored in extraHeaders['x-grab-orders-api']),
+   * then falls back to known candidate URLs.
+   */
+  async fetchOrdersWithSession(session: SessionData, storeId: string): Promise<NormalizedOrder[] | null> {
+    const cookieHeader = session.cookies
+      .filter(c => {
+        if (c.expires === -1) return true  // session cookie
+        if (c.expires > Date.now() / 1000) return true
+        return false
+      })
+      .map(c => `${c.name}=${c.value}`)
+      .join('; ')
+
+    if (!cookieHeader) return null  // all cookies expired
+
+    const extraHeaders = session.extraHeaders ?? {}
+    const token = extraHeaders['x-grab-token'] ?? extraHeaders['Authorization'] ?? ''
+    const discoveredStoreId = extraHeaders['x-grab-store-id'] ?? storeId
+
+    const baseHeaders: Record<string, string> = {
+      'Cookie':        cookieHeader,
+      'x-grab-tenant': 'GF_VN',
+      'x-grab-country': 'VN',
+      'Accept':         'application/json',
+      'User-Agent':     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Referer':        'https://merchant.grab.com/food/orders',
+    }
+    if (token && !token.startsWith('x-grab')) baseHeaders['Authorization'] = token.startsWith('Bearer ') ? token : `Bearer ${token}`
+
+    // Build list of URLs to try
+    const urlsToTry: string[] = []
+    if (extraHeaders['x-grab-orders-api']) {
+      urlsToTry.push(extraHeaders['x-grab-orders-api'])
+    }
+    for (const tpl of GRAB_PORTAL_ORDER_CANDIDATES) {
+      urlsToTry.push(tpl.replace('{storeId}', encodeURIComponent(discoveredStoreId)))
+    }
+
+    for (const url of urlsToTry) {
+      try {
+        const res = await fetch(url, { headers: baseHeaders, signal: AbortSignal.timeout(8000) })
+        if (res.status === 401 || res.status === 403) continue
+        if (!res.ok) continue
+        const data = await res.json() as unknown
+        const orders = this.extractOrdersFromPortalResponse(data)
+        if (orders !== null) return orders.map(o => this.normalizePortalOrder(o))
+      } catch {
+        continue
+      }
+    }
+
+    return null  // all endpoints failed – session likely expired
+  }
+
+  /** Extract orders array from various portal response shapes */
+  private extractOrdersFromPortalResponse(data: unknown): Record<string, unknown>[] | null {
+    if (!data || typeof data !== 'object') return null
+    const d = data as Record<string, unknown>
+    if (Array.isArray(d)) return d as Record<string, unknown>[]
+    if (Array.isArray(d.orders)) return d.orders as Record<string, unknown>[]
+    if (Array.isArray(d.data)) return d.data as Record<string, unknown>[]
+    if (Array.isArray(d.result)) return d.result as Record<string, unknown>[]
+    if (d.data && typeof d.data === 'object' && !Array.isArray(d.data)) {
+      const inner = d.data as Record<string, unknown>
+      if (Array.isArray(inner.orders)) return inner.orders as Record<string, unknown>[]
+    }
+    return null
+  }
+
+  /**
+   * Normalize a raw order from the Grab Merchant Portal (different shape than Partner API).
+   * Portal orders may use camelCase keys like orderStatus, consumerName, etc.
+   */
+  private normalizePortalOrder(raw: Record<string, unknown>): NormalizedOrder {
+    // Portal might use different field names than Partner API
+    const itemsRaw = (raw.items ?? raw.orderItems ?? raw.lineItems ?? []) as Record<string, unknown>[]
+    const items: OrderItem[] = itemsRaw.map(i => ({
+      name:     String(i.name ?? i.itemName ?? ''),
+      quantity: Number(i.quantity ?? 1),
+      price:    Number(i.itemPrice ?? i.price ?? i.unitPrice ?? 0),
+      total:    Number(i.quantity ?? 1) * Number(i.itemPrice ?? i.price ?? i.unitPrice ?? 0),
+    }))
+
+    const statusMap: Record<string, OrderStatus> = {
+      'PENDING':           'waiting_confirm',
+      'ACCEPTED':          'waiting_pickup',
+      'CONFIRMED':         'waiting_pickup',
+      'PREPARING':         'waiting_pickup',
+      'DRIVER_ALLOCATED':  'waiting_pickup',
+      'DRIVER_ARRIVED':    'waiting_pickup',
+      'COLLECTED':         'delivering',
+      'IN_DELIVERY':       'delivering',
+      'DELIVERED':         'completed',
+      'COMPLETED':         'completed',
+      'BILL_PAID':         'completed',
+      'CANCELLED':         'cancelled',
+      'FAILED':            'cancelled',
+      'REFUNDED':          'cancelled',
+    }
+
+    const rawStatus = String(raw.orderState ?? raw.status ?? raw.orderStatus ?? raw.state ?? '')
+    const consumer  = raw.consumer ?? raw.customer ?? raw.receiver ?? {} as Record<string, unknown>
+    const consumerObj = typeof consumer === 'object' ? consumer as Record<string, unknown> : {}
+
+    const priceObj = (raw.price ?? raw.pricing ?? {}) as Record<string, unknown>
+    const subtotal = Number(priceObj.subtotal ?? raw.subtotal ?? raw.subTotal ?? 0)
+    const discount = Number(priceObj.basketPromo ?? priceObj.discount ?? raw.discount ?? raw.discountAmount ?? 0)
+    const total    = Number(priceObj.eaterPayment ?? priceObj.total ?? raw.total ?? raw.orderTotal ?? 0)
+
+    const delivery = (raw.delivery ?? {}) as Record<string, unknown>
+    const dropoff  = (delivery.dropoff ?? {}) as Record<string, unknown>
+    const address  = String(dropoff.address ?? dropoff.formattedAddress ?? delivery.address ?? raw.deliveryAddress ?? '')
+
+    return {
+      source:          'grab',
+      externalOrderId: String(raw.orderID ?? raw.id ?? raw.orderId ?? ''),
+      externalStoreId: String(raw.merchantID ?? raw.merchantId ?? raw.storeId ?? ''),
+      customerName:    String(consumerObj.name ?? consumerObj.displayName ?? 'Khách hàng'),
+      customerPhone:   String(consumerObj.phones ?? consumerObj.phone ?? consumerObj.phoneNumber ?? ''),
+      items,
+      subtotal, discount, total,
+      paymentMethod:   String(raw.paymentType ?? raw.paymentMethod ?? ''),
+      deliveryInfo:    { address },
+      driverInfo:      { name: '', phone: '' },
+      orderStatus:     statusMap[rawStatus] ?? 'waiting_confirm',
+      placedAt:        String(raw.orderTime ?? raw.createdAt ?? raw.createTime ?? new Date().toISOString()),
+      rawPayload:      raw,
+    }
+  }
+
   normalizeOrder(raw: Record<string, unknown>): NormalizedOrder {
-    const orderItems = raw.orderItems as Record<string, unknown>[] ?? []
-    const items: OrderItem[] = orderItems.map((i) => ({
-      name:     String(i.itemName ?? ''),
+    // items[] — field name is 'items' in POS API v1.1.3 (not 'orderItems')
+    const items: OrderItem[] = ((raw.items as Record<string, unknown>[]) ?? []).map((i) => ({
+      name:     String(i.name ?? ''),
       quantity: Number(i.quantity ?? 1),
       price:    Number(i.price ?? 0),
       total:    Number(i.quantity ?? 1) * Number(i.price ?? 0),
     }))
 
+    // orderState field (not 'state')
     const statusMap: Record<string, OrderStatus> = {
-      'PENDING':   'waiting_confirm',
-      'ACCEPTED':  'waiting_pickup',
-      'IN_DELIVERY': 'delivering',
-      'COMPLETED': 'completed',
-      'CANCELLED': 'cancelled',
-      'FAILED':    'cancelled',
+      'PENDING':           'waiting_confirm',
+      'ACCEPTED':          'waiting_pickup',
+      'DRIVER_ALLOCATED':  'waiting_pickup',
+      'DRIVER_ARRIVED':    'waiting_pickup',
+      'COLLECTED':         'delivering',
+      'IN_DELIVERY':       'delivering',
+      'DELIVERED':         'completed',
+      'COMPLETED':         'completed',
+      'BILL_PAID':         'completed',
+      'CANCELLED':         'cancelled',
+      'FAILED':            'cancelled',
+      'REFUNDED':          'cancelled',
     }
+    const rawStatus = String(raw.orderState ?? '')
 
-    const rawStatus = String(raw.state ?? '')
+    // receiver object contains customer name, phone, and delivery address
+    const receiver = raw.receiver as Record<string, unknown> | undefined
+    const receiverAddress = receiver?.address as Record<string, unknown> | undefined
+
+    // price is a nested object in POS API v1.1.3
+    const price = raw.price as Record<string, unknown> | undefined
 
     return {
       source:          'grab',
       externalOrderId: String(raw.orderID ?? ''),
       externalStoreId: String(raw.merchantID ?? ''),
-      customerName:    String((raw.sender as Record<string,unknown>)?.name ?? 'Khách hàng'),
-      customerPhone:   String((raw.sender as Record<string,unknown>)?.phone ?? ''),
+      customerName:    String(receiver?.name ?? 'Khách hàng'),
+      customerPhone:   String(receiver?.phones ?? ''),
       items,
-      subtotal:        Number(raw.subTotal ?? 0),
-      discount:        Number(raw.discountAmount ?? 0),
-      total:           Number(raw.orderTotal ?? 0),
+      subtotal:        Number(price?.subtotal ?? 0),
+      discount:        Number(price?.basketPromo ?? 0),
+      total:           Number(price?.eaterPayment ?? 0),
+      paymentMethod:   String(raw.paymentType ?? ''),
       deliveryInfo: {
-        address: String((raw.delivery as Record<string,unknown>)?.dropoff ?? ''),
+        address: String(receiverAddress?.address ?? receiverAddress?.formattedAddress ?? ''),
       },
       driverInfo: {
-        name:  String((raw.driver as Record<string,unknown>)?.name ?? ''),
-        phone: String((raw.driver as Record<string,unknown>)?.phone ?? ''),
+        name:  '',
+        phone: '',
       },
       orderStatus: statusMap[rawStatus] ?? 'waiting_confirm',
-      placedAt:    String(raw.createTime ?? new Date().toISOString()),
+      placedAt:    String(raw.orderTime ?? new Date().toISOString()),
       rawPayload:  raw,
     }
   }
