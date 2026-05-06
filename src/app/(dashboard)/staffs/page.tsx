@@ -45,18 +45,18 @@ export default function StaffsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (confirm('XÃ³a nhÃ¢n viÃªn nÃ y?')) deleteMutation.mutate(id)
+    if (confirm('Xóa nhân viên này?')) deleteMutation.mutate(id)
   }
 
   return (
     <div className="space-y-5">
       <div className="page-header">
         <div>
-          <h1 className="page-title">NhÃ¢n viÃªn</h1>
-          <p className="page-subtitle">{isLoading ? '...' : `${staffs.length} nhÃ¢n viÃªn`}</p>
+          <h1 className="page-title">Nhân viên</h1>
+          <p className="page-subtitle">{isLoading ? '...' : `${staffs.length} nhân viên`}</p>
         </div>
         <button onClick={openCreate} className="btn-primary">
-          <Plus className="w-4 h-4" /> ThÃªm nhÃ¢n viÃªn
+          <Plus className="w-4 h-4" /> Thêm nhân viên
         </button>
       </div>
 
@@ -78,10 +78,10 @@ export default function StaffsPage() {
         <div className="filter-bar">
           <div className="relative flex-1 min-w-[240px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input className="input pl-9" placeholder="TÃ¬m nhÃ¢n viÃªn..." value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="input pl-9" placeholder="Tìm nhân viên..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <select className="input w-48" value={roleFilter} onChange={e => setRoleFilter(e.target.value)}>
-            <option value="">Táº¥t cáº£ vai trÃ²</option>
+            <option value="">Tất cả vai trò</option>
             {Object.entries(STAFF_ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
@@ -92,12 +92,12 @@ export default function StaffsPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>NhÃ¢n viÃªn</th>
+                <th>Nhân viên</th>
                 <th>Email</th>
-                <th>Sá»‘ Ä‘iá»‡n thoáº¡i</th>
-                <th>Vai trÃ²</th>
-                <th>PhÃ¢n quyá»n</th>
-                <th>Tráº¡ng thÃ¡i</th>
+                <th>Số điện thoại</th>
+                <th>Vai trò</th>
+                <th>Phân quyền</th>
+                <th>Trạng thái</th>
                 <th></th>
               </tr>
             </thead>
@@ -105,7 +105,7 @@ export default function StaffsPage() {
               {isLoading ? (
                 <tr><td colSpan={7} className="text-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary-400 mx-auto" /></td></tr>
               ) : staffs.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-10 text-gray-400">KhÃ´ng tÃ¬m tháº¥y nhÃ¢n viÃªn</td></tr>
+                  <tr><td colSpan={7} className="text-center py-10 text-gray-400">Không tìm thấy nhân viên</td></tr>
               ) : staffs.map(staff => (
                 <tr key={staff._id}>
                   <td>
@@ -117,7 +117,7 @@ export default function StaffsPage() {
                     </div>
                   </td>
                   <td className="text-sm text-gray-500">{staff.email}</td>
-                  <td className="text-sm text-gray-500">{staff.phone || 'â€”'}</td>
+                  <td className="text-sm text-gray-500">{staff.phone || '—'}</td>
                   <td>
                     <span className={cn('badge text-xs', STAFF_ROLE_COLOR[staff.role])}>
                       {STAFF_ROLE_LABEL[staff.role]}
@@ -125,12 +125,12 @@ export default function StaffsPage() {
                   </td>
                   <td>
                     {staff.permissions?.length > 0
-                      ? <span className="text-xs text-gray-500">{staff.permissions.length} phÃ¢n quyá»n</span>
-                      : <span className="text-xs text-gray-400">â€”</span>}
+                      ? <span className="text-xs text-gray-500">{staff.permissions.length} phân quyền</span>
+                      : <span className="text-xs text-gray-400">—</span>}
                   </td>
                   <td>
                     <span className={cn('badge', staff.status === 'active' ? 'badge-green' : 'badge-red')}>
-                      {staff.status === 'active' ? 'Hoáº¡t Ä‘á»™ng' : 'Ngá»«ng'}
+                      {staff.status === 'active' ? 'Hoạt động' : 'Ngừng'}
                     </span>
                   </td>
                   <td>
@@ -150,24 +150,24 @@ export default function StaffsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">{editStaff ? 'Cáº­p nháº­t nhÃ¢n viÃªn' : 'ThÃªm nhÃ¢n viÃªn'}</h2>
+              <h2 className="font-semibold text-gray-900">{editStaff ? 'Cập nhật nhân viên' : 'Thêm nhân viên'}</h2>
               <button onClick={() => setShowForm(false)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">&times;</button>
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="label">Há» tÃªn *</label>
-                <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Nguyá»…n VÄƒn A" />
+                <label className="label">Họ tên *</label>
+                <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Nguyễn Văn A" />
               </div>
               <div>
                 <label className="label">Email *</label>
                 <input type="email" className="input" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="nva@example.com" disabled={!!editStaff} />
               </div>
               <div>
-                <label className="label">Sá»‘ Ä‘iá»‡n thoáº¡i</label>
+                <label className="label">Số điện thoại</label>
                 <input className="input" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="0901 234 567" />
               </div>
               <div>
-                <label className="label mb-2">Vai trÃ²</label>
+                <label className="label mb-2">Vai trò</label>
                 <div className="grid grid-cols-2 gap-2">
                   {Object.entries(STAFF_ROLE_LABEL).filter(([r]) => r !== 'admin').map(([role, label]) => (
                     <button key={role} type="button" onClick={() => setForm({ ...form, role: role as Role })}
@@ -181,22 +181,22 @@ export default function StaffsPage() {
                 </div>
               </div>
               <div>
-                <label className="label">Tráº¡ng thÃ¡i</label>
+                <label className="label">Trạng thái</label>
                 <select className="input" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
-                  <option value="active">Hoáº¡t Ä‘á»™ng</option>
-                  <option value="inactive">Ngá»«ng hoáº¡t Ä‘á»™ng</option>
+                  <option value="active">Hoạt động</option>
+                  <option value="inactive">Ngừng hoạt động</option>
                 </select>
               </div>
               {!editStaff && (
                 <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700">
-                  Máº­t kháº©u máº·c Ä‘á»‹nh: <strong>123456</strong> â€” nhÃ¢n viÃªn cáº§n Ä‘á»•i sau láº§n Ä‘Äƒng nháº­p Ä‘áº§u tiÃªn.
+                  Mật khẩu mặc định: <strong>123456</strong> — nhân viên cần đổi sau lần đăng nhập đầu tiên.
                 </div>
               )}
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => setShowForm(false)} className="btn-outline">Há»§y</button>
+              <button onClick={() => setShowForm(false)} className="btn-outline">Hủy</button>
               <button onClick={handleSave} disabled={saving} className="btn-primary min-w-[80px]">
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'LÆ°u'}
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Lưu'}
               </button>
             </div>
           </div>

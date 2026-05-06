@@ -20,7 +20,10 @@ export async function GET(req: NextRequest) {
     { customerName: { $regex: q, $options: 'i' } },
     { customerPhone: { $regex: q, $options: 'i' } },
   ]
-  if (status) filter.status = status
+  if (status) {
+    const statuses = status.split(',').map(s => s.trim()).filter(Boolean)
+    filter.status = statuses.length === 1 ? statuses[0] : { $in: statuses }
+  }
   if (source) filter.source = source
   if (brandId) filter.brandId = brandId
   const skip = (page - 1) * limit

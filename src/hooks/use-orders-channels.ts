@@ -30,7 +30,10 @@ export function useUpdateOrder() {
   return useMutation({
     mutationFn: ({ id, ...data }: Record<string, unknown>) =>
       fetchJSON(`/api/orders/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['orders'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] })
+      qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
+    },
   })
 }
 

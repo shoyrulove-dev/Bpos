@@ -142,7 +142,7 @@ export class GrabAutomation implements PlatformAutomation {
       await page.goto(PORTAL_ORDERS_URL, { waitUntil: 'networkidle', timeout: 30_000 })
       await page.waitForTimeout(5000) // let order API calls fire
 
-      // ── 8. Extract storeId from URL or localStorage ────────────────────────
+      // ── 8. Extract storeId from URL or captured APIs ───────────────────────
       const pageUrl = page.url()
       const storeIdMatch = pageUrl.match(/(?:restaurant|store|merchant)(?:Id|ID|_id)?[=/]([A-Z0-9_-]{5,30})/i)
       const storeIdFromUrl = storeIdMatch?.[1] ?? null
@@ -152,14 +152,72 @@ export class GrabAutomation implements PlatformAutomation {
         try {
           const state = (window as unknown as Record<string, unknown>).__NEXT_DATA__ as Record<string, unknown> | undefined
           const reduxState = (window as unknown as Record<string, unknown>).__REDUX_STATE__ as Record<string, unknown> | undefined
-          // Look in common state locations
           const stateStr = JSON.stringify(state ?? reduxState ?? {})
           const match = stateStr.match(/"(?:merchantID|merchantId|storeId|restaurantId)":"([A-Z0-9_-]{5,30})"/i)
           return match?.[1] ?? null
         } catch { return null }
       })
 
-      const storeId = storeIdFromJs ?? storeIdFromUrl
+      // Try to fetch store list from the Grab internal API using cookies
+      const rawCookiesEarly = await context.cookies(['https://merchant.grab.com', 'https://grab.com'])
+      const cookieStr = rawCookiesEarly.map(c => `${c.name}=${c.value}`).join('; ')
+
+      let storeIdFromApi: string | null = null
+      let storeNameFromApi: string | null = null
+      let storesFromApi: Array<{ id: string; name: string }> = []
+
+      const storeListCandidates = [
+        'https://merchant.grab.com/grabfood/api/v1/merchants/stores',
+        'https://merchant.grab.com/grabfood/v1/merchants/stores',
+        'https://merchant.grab.com/mex-api/v1/merchants/stores',
+        'https://merchant.grab.com/portal/merchant/v1/stores',
+        'https://merchant.grab.com/portal/v1/stores',
+      ]
+      for (const endpoint of storeListCandidates) {
+        try {
+          const r = await page.evaluate(async ({ url, cookies }: { url: string; cookies: string }) => {
+            const resp = await fetch(url, {
+              headers: {
+                'Cookie': cookies,
+                'x-grab-tenant': 'GF_VN',
+                'x-grab-country': 'VN',
+                'Accept': 'application/json',
+              },
+            })
+            if (!resp.ok) return null
+            return await resp.json()
+          }, { url: endpoint, cookies: cookieStr })
+          if (r && typeof r === 'object') {
+            const rObj = r as Record<string, unknown>
+            // Look for array of stores in various shapes
+            const storeArray =
+              (Array.isArray(rObj.stores) ? rObj.stores : null) ??
+              (Array.isArray(rObj.data) ? rObj.data : null) ??
+              (Array.isArray(rObj.restaurants) ? rObj.restaurants : null)
+            if (storeArray && storeArray.length > 0) {
+              storesFromApi = storeArray.map((s: Record<string, unknown>) => ({
+                id: String(s.id ?? s.merchantID ?? s.storeId ?? s.restaurantId ?? ''),
+                name: String(s.name ?? s.storeName ?? s.restaurantName ?? ''),
+              })).filter(s => s.id)
+              if (storesFromApi.length > 0) {
+                storeIdFromApi = storesFromApi[0].id
+                storeNameFromApi = storesFromApi[0].name
+                break
+              }
+            }
+          }
+        } catch { /* try next */ }
+      }
+
+      // Also try from captured API calls
+      const storeIdFromCaptured = capturedApis
+        .map(a => {
+          const m = a.url.match(/(?:restaurant|store|merchant)(?:Id|ID|_id)?[=/]([A-Z0-9_-]{5,30})/i)
+          return m?.[1] ?? null
+        })
+        .find(Boolean) ?? null
+
+      const storeId = storeIdFromApi ?? storeIdFromJs ?? storeIdFromUrl ?? storeIdFromCaptured
 
       // ── 9. Capture Bearer token from storage / headers ────────────────────
       const tokenFromStorage = await page.evaluate(() => {
@@ -167,11 +225,6 @@ export class GrabAutomation implements PlatformAutomation {
         for (const k of keys) {
           const v = localStorage.getItem(k) ?? sessionStorage.getItem(k)
           if (v && v.length > 20) return v
-        }
-        // Try looking at cookies in JS context for token patterns
-        const cookies = document.cookie.split(';').map(c => c.trim())
-        for (const c of cookies) {
-          if (c.startsWith('token=') || c.startsWith('grab_session=')) return c.split('=').slice(1).join('=')
         }
         return null
       })
@@ -199,8 +252,12 @@ export class GrabAutomation implements PlatformAutomation {
       }
       if (apiToken)               extraHeaders['x-grab-token']      = apiToken
       if (storeId)                extraHeaders['x-grab-store-id']   = storeId
+      if (storeNameFromApi)       extraHeaders['x-grab-store-name'] = storeNameFromApi
       if (ordersApiCall?.url)     extraHeaders['x-grab-orders-api'] = ordersApiCall.url
       if (ordersApiCall?.auth)    extraHeaders['Authorization']      = ordersApiCall.auth
+      if (storesFromApi.length > 0) {
+        extraHeaders['x-grab-stores'] = JSON.stringify(storesFromApi)
+      }
 
       const session: SessionData = {
         cookies,

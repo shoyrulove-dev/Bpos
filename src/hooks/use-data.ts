@@ -354,6 +354,10 @@ export function useKitchenOrders(params?: { brandId?: string; hubId?: string }) 
   sp.set('status', 'waiting_confirm,waiting_pickup')
   if (params?.brandId) sp.set('brandId', params.brandId)
   if (params?.hubId) sp.set('hubId', params.hubId)
-  return useQuery({ queryKey: ['kitchen-orders', params], queryFn: () => fetchJSON(`/api/orders?${sp}`), refetchInterval: 10_000 })
+  return useQuery({
+    queryKey: ['kitchen-orders', params],
+    queryFn: () => fetchJSON(`/api/orders?${sp}`).then((r: { orders: unknown[] }) => r.orders ?? []),
+    refetchInterval: 10_000,
+  })
 }
 

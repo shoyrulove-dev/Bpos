@@ -15,8 +15,8 @@ const SOURCES = [
   { value: 'be',       label: 'Be Food' },
   { value: 'shopee',   label: 'Shopee Food' },
   { value: 'xanh_sm',  label: 'Xanh SM' },
-  { value: 'internal', label: 'Noi bo' },
-  { value: 'other',    label: 'Khac' },
+  { value: 'internal', label: 'Nội bộ' },
+  { value: 'other',    label: 'Khác' },
 ]
 
 const emptyForm = { name: '', source: 'grab', brandId: '', hubId: '' }
@@ -61,7 +61,7 @@ export default function ChannelsPage() {
 
   const handleSave = async () => {
     if (!form.name.trim() || !form.source || !form.brandId) {
-      setSaveError('Vui long dien Ten kenh, San va Thuong hieu')
+      setSaveError('Vui lòng điền Tên kênh, Sàn và Thương hiệu')
       return
     }
     setSaveError('')
@@ -79,7 +79,7 @@ export default function ChannelsPage() {
       }
       setShowForm(false)
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Loi luu kenh ban')
+      setSaveError(e instanceof Error ? e.message : 'Lỗi lưu kênh bán')
     }
   }
 
@@ -88,25 +88,25 @@ export default function ChannelsPage() {
   }
 
   const handleDelete = (id: string) => {
-    if (confirm('Xoa kenh ban nay?')) deleteMutation.mutate(id)
+    if (confirm('Xóa kênh bán này?')) deleteMutation.mutate(id)
   }
 
   return (
     <div className="space-y-5">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Kenh ban</h1>
-          <p className="page-subtitle">{isLoading ? '...' : `${channels.length} kenh`}</p>
+          <h1 className="page-title">Kênh bán</h1>
+          <p className="page-subtitle">{isLoading ? '...' : `${channels.length} kênh`}</p>
         </div>
         <button onClick={openCreate} className="btn-primary">
-          <Plus className="w-4 h-4" /> Them kenh ban
+          <Plus className="w-4 h-4" /> Thêm kênh bán
         </button>
       </div>
 
       <div className="card card-body">
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input className="input pl-9 w-full" placeholder="Tim kenh ban..."
+          <input className="input pl-9 w-full" placeholder="Tìm kênh bán..."
             value={search} onChange={e => setSearch(e.target.value)} />
         </div>
       </div>
@@ -123,7 +123,7 @@ export default function ChannelsPage() {
                     {CHANNEL_SOURCE_LABEL[channel.source]}
                   </span>
                   <span className={cn('badge', channel.status === 'active' ? 'badge-green' : 'badge-red')}>
-                    {channel.status === 'active' ? 'Hoat dong' : 'Ngung'}
+                    {channel.status === 'active' ? 'Hoạt động' : 'Ngừng'}
                   </span>
                 </div>
                 <h3 className="font-semibold text-gray-900 truncate">{channel.name}</h3>
@@ -139,10 +139,10 @@ export default function ChannelsPage() {
             </div>
             <div className="space-y-2 pt-3 border-t border-gray-100">
               {([
-                { key: 'isPageActive',    label: 'Trang ban hang' },
-                { key: 'isStoreOpen',     label: 'Cua hang mo cua' },
-                { key: 'isManualConfirm', label: 'Xac nhan thu cong' },
-                { key: 'autoInvoice',     label: 'Tu dong HDDT' },
+                { key: 'isPageActive',    label: 'Trang bán hàng' },
+                { key: 'isStoreOpen',     label: 'Cửa hàng mở cửa' },
+                { key: 'isManualConfirm', label: 'Xác nhận thủ công' },
+                { key: 'autoInvoice',     label: 'Tự động HĐĐT' },
               ] as { key: keyof Channel; label: string }[]).map(({ key, label }) => (
                 <div key={key} className="flex items-center justify-between">
                   <span className="text-sm text-gray-600">{label}</span>
@@ -157,7 +157,7 @@ export default function ChannelsPage() {
         {!isLoading && channels.length === 0 && (
           <div className="col-span-2 text-center py-12 text-gray-400">
             <Link2 className="w-10 h-10 mx-auto mb-3 text-gray-200" />
-            <p>Chua co kenh ban nao.</p>
+            <p>Chưa có kênh bán nào.</p>
           </div>
         )}
       </div>
@@ -167,14 +167,14 @@ export default function ChannelsPage() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <h2 className="font-semibold">{editId ? 'Cap nhat kenh ban' : 'Them kenh ban'}</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Khong can Store ID hay API key</p>
+                <h2 className="font-semibold">{editId ? 'Cập nhật kênh bán' : 'Thêm kênh bán'}</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Không cần Store ID hay API key</p>
               </div>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="label">San ban hang *</label>
+                <label className="label">Sàn bán hàng *</label>
                 <div className="grid grid-cols-3 gap-2">
                   {SOURCES.map(s => (
                     <button key={s.value}
@@ -187,34 +187,34 @@ export default function ChannelsPage() {
                 </div>
               </div>
               <div>
-                <label className="label">Ten kenh ban *</label>
+                <label className="label">Tên kênh bán *</label>
                 <input className="input w-full" placeholder="VD: GrabFood - 3B Cau Giay"
                   value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
               </div>
               <div>
-                <label className="label">Thuong hieu *</label>
+                <label className="label">Thương hiệu *</label>
                 <select className="input w-full" value={form.brandId}
                   onChange={e => setForm(p => ({ ...p, brandId: e.target.value, hubId: '' }))}>
-                  <option value="">- Chon thuong hieu -</option>
+                  <option value="">- Chọn thương hiệu -</option>
                   {brands.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="label">Diem ban (tuy chon)</label>
+                <label className="label">Điểm bán (tùy chọn)</label>
                 <select className="input w-full" value={form.hubId}
                   onChange={e => setForm(p => ({ ...p, hubId: e.target.value }))}>
-                  <option value="">- Tat ca diem ban -</option>
+                  <option value="">- Tất cả điểm bán -</option>
                   {filteredHubs.map(h => <option key={h._id} value={h._id}>{h.name}</option>)}
                 </select>
               </div>
               {saveError && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{saveError}</div>}
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => setShowForm(false)} className="btn-outline">Huy</button>
+              <button onClick={() => setShowForm(false)} className="btn-outline">Hủy</button>
               <button onClick={handleSave} disabled={saving || !form.name.trim() || !form.brandId}
                 className="btn-primary disabled:opacity-50 flex items-center gap-1.5">
                 {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-                {editId ? 'Cap nhat' : 'Tao kenh'}
+                {editId ? 'Cập nhật' : 'Tạo kênh'}
               </button>
             </div>
           </div>

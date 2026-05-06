@@ -15,7 +15,7 @@ const brandTypeOptions = [
   { value: 'other', label: 'Khác' },
 ]
 
-const emptyForm = { name: '', phone: '', type: 'fnb', address: '', note: '', status: 'active' }
+const emptyForm = { name: '', phone: '', type: 'fnb', address: '', note: '', logo: '', status: 'active' }
 
 export default function BrandsPage() {
   const [search, setSearch] = useState('')
@@ -41,7 +41,7 @@ export default function BrandsPage() {
 
   const openEdit = (b: Brand) => {
     setEditBrand(b)
-    setForm({ name: b.name, phone: b.phone, type: b.type, address: b.address, note: b.note ?? '', status: b.status })
+    setForm({ name: b.name, phone: b.phone, type: b.type, address: b.address, note: b.note ?? '', logo: b.logo ?? '', status: b.status })
     setShowForm(true)
   }
 
@@ -101,10 +101,12 @@ export default function BrandsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {brands.map((brand: Brand) => (
             <div key={brand._id} className="card p-5 hover:shadow-md transition-shadow group">
-              {/* Logo placeholder */}
+              {/* Logo */}
               <div className="flex items-start justify-between mb-4">
-                <div className="w-12 h-12 rounded-xl bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-lg">
-                  {brand.name.charAt(0)}
+                <div className="w-12 h-12 rounded-xl bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-lg overflow-hidden">
+                  {brand.logo
+                    ? <img src={brand.logo} alt={brand.name} className="w-full h-full object-cover" />
+                    : brand.name.charAt(0)}
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => openEdit(brand)} className="btn-ghost btn-sm p-1.5">
@@ -174,6 +176,16 @@ export default function BrandsPage() {
               <div className="form-group">
                 <label className="label">Địa chỉ *</label>
                 <input className="input" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="123 Nguyễn Huệ, Q.1..." />
+              </div>
+              <div className="form-group">
+                <label className="label">Logo (URL hình ảnh)</label>
+                <input className="input" value={form.logo} onChange={e => setForm({ ...form, logo: e.target.value })} placeholder="https://..." />
+                {form.logo && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <img src={form.logo} alt="preview" className="w-10 h-10 rounded-lg object-cover border" onError={e => (e.currentTarget.style.display = 'none')} />
+                    <span className="text-xs text-gray-400">Preview</span>
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label className="label">Ghi chú</label>

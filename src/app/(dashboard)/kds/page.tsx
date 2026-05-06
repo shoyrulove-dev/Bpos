@@ -72,7 +72,7 @@ export default function KDSPage() {
           </div>
           <div>
             <h1 className="page-title mb-0">Kitchen Display</h1>
-            <p className="text-xs text-gray-400">Cập nhật mỗi 10 giây · {new Date(dataUpdatedAt).toLocaleTimeString('vi-VN')}</p>
+            <p className="text-xs text-gray-400">Cập nhật mỗi 10 giây · {dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString('vi-VN') : '--:--:--'}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -111,7 +111,7 @@ export default function KDSPage() {
                 </div>
                 <div className="text-sm font-medium text-gray-700 mb-1">{order.customerName}</div>
                 <div className="space-y-1 mb-3">
-                  {order.items.map((item, i) => (
+                  {(order.items ?? []).map((item, i) => (
                     <div key={i} className="flex items-center gap-2 text-sm">
                       <span className="font-bold text-primary-600 w-6 text-center">{item.quantity}x</span>
                       <span className="text-gray-700">{item.name}</span>
@@ -150,7 +150,7 @@ export default function KDSPage() {
                 </div>
                 <div className="text-sm font-medium text-gray-700 mb-1">{order.customerName}</div>
                 <div className="space-y-1 mb-3">
-                  {order.items.map((item, i) => (
+                  {(order.items ?? []).map((item, i) => (
                     <div key={i} className="flex items-center gap-2 text-sm">
                       <span className="font-bold text-blue-600 w-6 text-center">{item.quantity}x</span>
                       <span className="text-gray-700">{item.name}</span>

@@ -66,19 +66,15 @@ export async function GET(req: NextRequest) {
           : false
 
         if (!isExpired && adapter.fetchOrdersWithSession) {
-          try {
-            const session = decryptJSON(intg.sessionData) as SessionData
-            const storeId = intg.externalStoreId ?? session.extraHeaders?.['x-grab-store-id'] ?? ''
-            const result  = await adapter.fetchOrdersWithSession(session, storeId)
-            if (result !== null) {
-              orders = result
-            } else {
-              // Session returned null = likely expired; mark for refresh
-              await IntegrationModel.findByIdAndUpdate(intg._id, { sessionStatus: 'expired' })
-              throw new Error('Session hết hạn – cần đăng nhập lại')
-            }
-          } catch (sessionErr) {
-            throw sessionErr
+          const session = decryptJSON(intg.sessionData) as SessionData
+          const storeId = intg.externalStoreId ?? session.extraHeaders?.['x-grab-store-id'] ?? ''
+          const result  = await adapter.fetchOrdersWithSession(session, storeId)
+          if (result !== null) {
+            orders = result
+          } else {
+            // Session returned null = likely expired; mark for refresh
+            await IntegrationModel.findByIdAndUpdate(intg._id, { sessionStatus: 'expired' })
+            throw new Error('Session hết hạn – cần đăng nhập lại')
           }
         } else if (isExpired) {
           await IntegrationModel.findByIdAndUpdate(intg._id, { sessionStatus: 'expired' })
