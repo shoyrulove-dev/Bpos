@@ -151,7 +151,10 @@ export default function IntegrationsPage() {
 
   // Auto Login modal
   const [autoLoginId, setAutoLoginId]     = useState<string | null>(null)
+  const [autoLoginMode, setAutoLoginMode] = useState<'auto' | 'manual'>('auto')
   const [autoLoginForm, setAutoLoginForm] = useState<AutoLoginForm>({ username: '', password: '', otp: '' })
+  const [manualJwt, setManualJwt]         = useState('')
+  const [manualStoreId, setManualStoreId] = useState('')
   const [autoLoginWaiting, setAutoLoginWaiting] = useState<{ requiresOtp: boolean; otpTarget?: string; sessionKey?: string } | null>(null)
   const [autoLoginResult, setAutoLoginResult]   = useState<{ ok: boolean; message: string } | null>(null)
   const [autoLoginLoading, setAutoLoginLoading] = useState(false)
@@ -276,7 +279,10 @@ export default function IntegrationsPage() {
 
   const openAutoLogin = (integ: Integ) => {
     setAutoLoginId(integ._id)
+    setAutoLoginMode('auto')
     setAutoLoginForm({ username: integ.loginUsername ?? '', password: '', otp: '' })
+    setManualJwt('')
+    setManualStoreId(integ.externalStoreId ?? '')
     setAutoLoginWaiting(null)
     setAutoLoginResult(null)
   }
@@ -305,6 +311,33 @@ export default function IntegrationsPage() {
         qc.invalidateQueries({ queryKey: ['integrations'] })
       } else {
         setAutoLoginResult({ ok: false, message: data.error ?? 'Đăng nhập thất bại' })
+      }
+    } catch (e) {
+      setAutoLoginResult({ ok: false, message: e instanceof Error ? e.message : 'Lỗi mạng' })
+    } finally {
+      setAutoLoginLoading(false)
+    }
+  }
+
+  const handleManualSession = async () => {
+    if (!autoLoginId || !manualJwt.trim()) return
+    setAutoLoginLoading(true)
+    setAutoLoginResult(null)
+    try {
+      const res  = await fetch(`/api/integrations/${autoLoginId}/auto-login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          manualJwt:  manualJwt.trim(),
+          storeId:    manualStoreId.trim() || undefined,
+          username:   autoLoginForm.username || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (data.data?.success) {
+        setAutoLoginResult({ ok: true, message: 'Session đã được lưu! Cron sẽ tự pull đơn mỗi phút.' })
+        qc.invalidateQueries({ queryKey: ['integrations'] })
+      } else {
+        setAutoLoginResult({ ok: false, message: data.error ?? 'Lỗi lưu session' })
       }
     } catch (e) {
       setAutoLoginResult({ ok: false, message: e instanceof Error ? e.message : 'Lỗi mạng' })
@@ -862,75 +895,146 @@ export default function IntegrationsPage() {
       {/* ═══ MODAL: Auto Login ══════════════════════════════════════════════ */}
       {autoLoginId && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-xl">
-            <div>
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <KeyRound className="w-5 h-5 text-violet-500" /> Auto Login
-              </h2>
-              <p className="text-sm text-gray-500 mt-0.5">
-                Playwright sẽ tự động đăng nhập vào merchant portal và lưu session.
-              </p>
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-violet-500" /> Đăng nhập & Lưu Session
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">Chọn cách lấy session token</p>
+              </div>
+              <button onClick={() => { setAutoLoginId(null); setAutoLoginWaiting(null); setAutoLoginResult(null) }}
+                className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
 
-            {!autoLoginWaiting && !autoLoginResult && (
-              <div className="space-y-3">
-                <div>
-                  <label className="label">Tài khoản (tên đăng nhập / Email)</label>
-                  <input className="input w-full" type="text" placeholder="ooo.cashier.ds3"
-                    value={autoLoginForm.username}
-                    onChange={e => setAutoLoginForm(p => ({ ...p, username: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="label">Mật khẩu</label>
-                  <input className="input w-full" type="password" autoComplete="current-password"
-                    placeholder="••••••••"
-                    value={autoLoginForm.password}
-                    onChange={e => setAutoLoginForm(p => ({ ...p, password: e.target.value }))} />
-                </div>
-              </div>
-            )}
-
-            {autoLoginWaiting?.requiresOtp && !autoLoginResult && (
-              <div className="space-y-3">
-                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-sm text-yellow-800">
-                  📱 OTP đã được gửi đến <strong>{autoLoginWaiting.otpTarget}</strong>
-                </div>
-                <div>
-                  <label className="label">Mã OTP</label>
-                  <input className="input w-full text-center text-xl font-mono tracking-widest"
-                    type="text" maxLength={6} placeholder="000000"
-                    value={autoLoginForm.otp}
-                    onChange={e => setAutoLoginForm(p => ({ ...p, otp: e.target.value }))} />
+            {/* Mode tabs */}
+            {!autoLoginResult && (
+              <div className="px-6 pt-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => { setAutoLoginMode('auto'); setAutoLoginResult(null) }}
+                    className={cn('py-2 rounded-xl border-2 text-sm font-medium transition-all',
+                      autoLoginMode === 'auto'
+                        ? 'border-violet-400 bg-violet-50 text-violet-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
+                    🤖 Auto (Playwright)
+                  </button>
+                  <button onClick={() => { setAutoLoginMode('manual'); setAutoLoginWaiting(null); setAutoLoginResult(null) }}
+                    className={cn('py-2 rounded-xl border-2 text-sm font-medium transition-all',
+                      autoLoginMode === 'manual'
+                        ? 'border-blue-400 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
+                    📋 Manual (paste JWT)
+                  </button>
                 </div>
               </div>
             )}
 
-            {autoLoginLoading && (
-              <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-xl p-4 text-blue-700">
-                <Loader2 className="w-5 h-5 animate-spin shrink-0" />
-                <div>
-                  <p className="font-medium text-sm">Đang chạy automation…</p>
-                  <p className="text-xs mt-0.5">Playwright đang mở trình duyệt và đăng nhập. Vui lòng chờ (15–90s)</p>
+            <div className="p-6 space-y-4">
+
+              {/* ── AUTO mode ── */}
+              {autoLoginMode === 'auto' && !autoLoginResult && (
+                <>
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                    ⚠️ Yêu cầu VPS automation service đang chạy. Nếu VPS hết RAM, dùng chế độ <strong>Manual</strong>.
+                  </div>
+                  {!autoLoginWaiting && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="label">Tài khoản (Email hoặc username)</label>
+                        <input className="input w-full" type="text"
+                          placeholder="vd: ooo.cashier.ds3 hoặc email@example.com"
+                          value={autoLoginForm.username}
+                          onChange={e => setAutoLoginForm(p => ({ ...p, username: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="label">Mật khẩu</label>
+                        <input className="input w-full" type="password" autoComplete="current-password"
+                          placeholder="••••••••"
+                          value={autoLoginForm.password}
+                          onChange={e => setAutoLoginForm(p => ({ ...p, password: e.target.value }))} />
+                      </div>
+                    </div>
+                  )}
+                  {autoLoginWaiting?.requiresOtp && (
+                    <div className="space-y-3">
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-sm text-yellow-800">
+                        📱 OTP đã gửi đến <strong>{autoLoginWaiting.otpTarget}</strong>
+                      </div>
+                      <div>
+                        <label className="label">Mã OTP</label>
+                        <input className="input w-full text-center text-xl font-mono tracking-widest"
+                          type="text" maxLength={6} placeholder="000000"
+                          value={autoLoginForm.otp}
+                          onChange={e => setAutoLoginForm(p => ({ ...p, otp: e.target.value }))} />
+                      </div>
+                    </div>
+                  )}
+                  {autoLoginLoading && (
+                    <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-xl p-3 text-blue-700">
+                      <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                      <div>
+                        <p className="font-medium text-sm">Đang chạy Playwright…</p>
+                        <p className="text-xs mt-0.5">Mở trình duyệt, đăng nhập (15–90s)</p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* ── MANUAL mode ── */}
+              {autoLoginMode === 'manual' && !autoLoginResult && (
+                <div className="space-y-3">
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 space-y-1">
+                    <p className="font-medium">Cách lấy JWT token:</p>
+                    <p>1. Mở trình duyệt → đăng nhập vào merchant portal</p>
+                    <p>2. Nhấn <kbd className="bg-white border rounded px-1">F12</kbd> → tab <strong>Application</strong> → <strong>Local Storage</strong></p>
+                    <p>3. Tìm key <code className="bg-white rounded px-1">token</code> hoặc <code className="bg-white rounded px-1">access_token</code> → copy value</p>
+                    <p>4. Hoặc tab <strong>Network</strong> → tìm request → copy header <code className="bg-white rounded px-1">Authorization: Bearer …</code></p>
+                  </div>
+                  <div>
+                    <label className="label">JWT Token (Bearer token)</label>
+                    <textarea className="input w-full font-mono text-xs resize-none" rows={4}
+                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      value={manualJwt}
+                      onChange={e => setManualJwt(e.target.value)} />
+                    <p className="text-xs text-gray-400 mt-1">Có thể paste cả chuỗi &quot;Bearer eyJ…&quot; hoặc chỉ phần token sau Bearer</p>
+                  </div>
+                  <div>
+                    <label className="label">Store / Restaurant ID <span className="text-gray-400 font-normal">(tuỳ chọn — dùng để pull đơn)</span></label>
+                    <input className="input w-full font-mono" placeholder="VD: 129990 hoặc C73WNZCKANCXTN"
+                      value={manualStoreId}
+                      onChange={e => setManualStoreId(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="label">Tên đăng nhập (để hiển thị)</label>
+                    <input className="input w-full" placeholder="email hoặc username"
+                      value={autoLoginForm.username}
+                      onChange={e => setAutoLoginForm(p => ({ ...p, username: e.target.value }))} />
+                  </div>
+                  {autoLoginLoading && (
+                    <div className="flex items-center gap-2 text-sm text-blue-700">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Đang lưu session…
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              )}
 
-            {autoLoginResult && (
-              <div className={cn('flex items-start gap-2 rounded-xl p-4 text-sm',
-                autoLoginResult.ok
-                  ? 'bg-green-50 border border-green-100 text-green-700'
-                  : 'bg-red-50 border border-red-100 text-red-600')}>
-                {autoLoginResult.ok
-                  ? <CheckCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                  : <XCircle className="w-5 h-5 shrink-0 mt-0.5" />}
-                <span>{autoLoginResult.message}</span>
-              </div>
-            )}
+              {/* Result */}
+              {autoLoginResult && (
+                <div className={cn('flex items-start gap-2 rounded-xl p-4 text-sm',
+                  autoLoginResult.ok
+                    ? 'bg-green-50 border border-green-100 text-green-700'
+                    : 'bg-red-50 border border-red-100 text-red-600')}>
+                  {autoLoginResult.ok ? <CheckCircle className="w-5 h-5 shrink-0" /> : <XCircle className="w-5 h-5 shrink-0" />}
+                  <span>{autoLoginResult.message}</span>
+                </div>
+              )}
+            </div>
 
-            <div className="flex gap-2 pt-1">
+            <div className="px-6 pb-6 flex gap-2">
               <button onClick={() => { setAutoLoginId(null); setAutoLoginWaiting(null); setAutoLoginResult(null) }}
                 className="btn-outline flex-1">Đóng</button>
-              {!autoLoginResult && (
+              {!autoLoginResult && autoLoginMode === 'auto' && (
                 <button
                   onClick={() => autoLoginWaiting?.requiresOtp ? handleAutoLogin(true) : handleAutoLogin(false)}
                   disabled={
@@ -941,6 +1045,15 @@ export default function IntegrationsPage() {
                   className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50">
                   {autoLoginLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
                   {autoLoginWaiting?.requiresOtp ? 'Xác nhận OTP' : 'Bắt đầu Login'}
+                </button>
+              )}
+              {!autoLoginResult && autoLoginMode === 'manual' && (
+                <button
+                  onClick={handleManualSession}
+                  disabled={autoLoginLoading || !manualJwt.trim()}
+                  className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50">
+                  {autoLoginLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  Lưu Session
                 </button>
               )}
             </div>

@@ -64,7 +64,43 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const body = await req.json() as {
     username?: string; password?: string; otp?: string; sessionKey?: string
+    // Manual mode: user pastes JWT token directly from browser DevTools
+    manualJwt?: string; storeId?: string
   }
+
+  // ─── Manual session mode (no Playwright needed) ─────────────────────────
+  if (body.manualJwt) {
+    const jwt = body.manualJwt.replace(/^Bearer\s+/i, '').trim()
+    if (!jwt) return err('JWT token không hợp lệ')
+
+    const session: SessionData = {
+      cookies: [],
+      extraHeaders: { Authorization: `Bearer ${jwt}` },
+      capturedAt: new Date().toISOString(),
+      sessionTtlSeconds: 8 * 3600,  // assume 8h, user can re-login when expired
+    }
+    if (body.storeId) session.extraHeaders!['x-store-id'] = body.storeId
+
+    const encryptedSession = encryptJSON(session)
+    const capturedAt = new Date()
+    const expiresAt  = new Date(capturedAt.getTime() + 8 * 3600 * 1000)
+
+    const updates: Record<string, unknown> = {
+      loginMode: 'auto',
+      sessionData: encryptedSession,
+      sessionStatus: 'active',
+      sessionCapturedAt: capturedAt,
+      sessionExpiresAt: expiresAt,
+      sessionError: undefined,
+      automationRunning: false,
+    }
+    if (body.username) { updates.loginUsername = body.username }
+    if (body.storeId)  { updates.externalStoreId = body.storeId }
+
+    await IntegrationModel.updateOne({ _id: params.id }, updates)
+    return ok({ success: true, sessionExpiresAt: expiresAt, manual: true })
+  }
+  // ────────────────────────────────────────────────────────────────────────
 
   const username = body.username ?? integ.loginUsername ?? ''
   const password = body.password ?? (integ.loginPassword ? decrypt(integ.loginPassword) : '')
