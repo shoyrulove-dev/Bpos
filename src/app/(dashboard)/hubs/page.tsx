@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Plus, Search, MapPin, Edit, Trash2, Loader2 } from 'lucide-react'
 import { useHubs, useCreateHub, useUpdateHub, useDeleteHub } from '@/hooks/use-hubs'
+import { useBrands } from '@/hooks/use-brands'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn } from '@/lib/utils'
 import type { Hub } from '@/types'
@@ -16,6 +17,8 @@ export default function HubsPage() {
 
   const dq = useDebounce(search)
   const { data: rawHubs = [], isLoading, error } = useHubs({ q: dq })
+  const { data: rawBrands = [] } = useBrands()
+  const brands = rawBrands as { _id: string; name: string }[]
   const hubs = rawHubs as Hub[]
   const createMutation = useCreateHub()
   const updateMutation = useUpdateHub()
@@ -32,12 +35,13 @@ export default function HubsPage() {
 
   const openEdit = (h: Hub) => {
     setEditHub(h)
-    setForm({ code: h.code, name: h.name, address: h.address, brandId: h.brandId, servicePackage: h.servicePackage, status: h.status })
+    const bid = typeof h.brandId === 'object' && h.brandId ? (h.brandId as { _id: string })._id : String(h.brandId ?? '')
+    setForm({ code: h.code, name: h.name, address: h.address, brandId: bid, servicePackage: h.servicePackage, status: h.status })
     setShowForm(true)
   }
 
   const handleSave = async () => {
-    if (!form.code || !form.name || !form.address) return
+    if (!form.code || !form.name || !form.address || !form.brandId) return
     if (editHub) {
       await updateMutation.mutateAsync({ id: editHub._id, ...form })
     } else {
@@ -159,6 +163,13 @@ export default function HubsPage() {
                 <input className="input" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="123 Nguyễn Huệ, Q.1..." />
               </div>
               <div className="form-group">
+                <label className="label">Thương hiệu *</label>
+                <select className="input" value={form.brandId} onChange={e => setForm({ ...form, brandId: e.target.value })}>
+                  <option value="">— Chọn thương hiệu —</option>
+                  {brands.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
                 <label className="label">Trạng thái</label>
                 <select className="input" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
                   <option value="active">Hoạt động</option>
@@ -168,7 +179,10 @@ export default function HubsPage() {
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button onClick={() => setShowForm(false)} className="btn-outline">Hủy</button>
-              <button onClick={handleSave} className="btn-primary">Lưu</button>
+              <button onClick={handleSave} disabled={saving || !form.code || !form.name || !form.address || !form.brandId}
+                className="btn-primary disabled:opacity-50 flex items-center gap-1.5">
+                {saving && <Loader2 className="w-4 h-4 animate-spin" />}Lưu
+              </button>
             </div>
           </div>
         </div>
