@@ -17,6 +17,9 @@
 # misc
 .DS_Store
 *.pem
+grab-chunks-result.txt
+grab-parse-chunks.js
+-
 
 # debug
 npm-debug.log*
