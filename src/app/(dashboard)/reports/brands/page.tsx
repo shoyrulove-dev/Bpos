@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { Building2, Loader2 } from 'lucide-react'
@@ -17,14 +17,14 @@ export default function BrandsReportPage() {
     <div className="space-y-5">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Theo thương hiệu</h1>
-          <p className="page-subtitle">Doanh thu phân theo thương hiệu</p>
+          <h1 className="page-title">Theo thÆ°Æ¡ng hiá»‡u</h1>
+          <p className="page-subtitle">Doanh thu phÃ¢n theo thÆ°Æ¡ng hiá»‡u</p>
         </div>
         <div className="flex gap-1">
           {DAYS_OPTIONS.map(d => (
             <button key={d} onClick={() => setDays(d)}
               className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-all', days === d ? 'bg-primary-500 text-white border-primary-500' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}>
-              {d} ngày
+              {d} ngÃ y
             </button>
           ))}
         </div>
@@ -33,9 +33,9 @@ export default function BrandsReportPage() {
       {summary && (
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: 'Tổng doanh thu', value: formatCurrency(summary.totalRevenue ?? 0) },
-            { label: 'Tổng giảm giá', value: formatCurrency(summary.totalDiscount ?? 0) },
-            { label: 'Doanh thu thuần', value: formatCurrency(summary.totalNetRevenue ?? 0) },
+            { label: 'Tá»•ng doanh thu', value: formatCurrency(summary.totalRevenue ?? 0) },
+            { label: 'Tá»•ng giáº£m giÃ¡', value: formatCurrency(summary.totalDiscount ?? 0) },
+            { label: 'Doanh thu thuáº§n', value: formatCurrency(summary.totalNetRevenue ?? 0) },
           ].map(item => (
             <div key={item.label} className="card p-5">
               <div className="text-sm text-gray-500">{item.label}</div>
@@ -52,11 +52,11 @@ export default function BrandsReportPage() {
           <div className="table-wrapper">
             <table className="table">
               <thead>
-                <tr><th>Thương hiệu</th><th>Loại</th><th>Trạng thái</th><th className="text-right">Số đơn</th><th className="text-right">Doanh thu</th><th className="text-right">Giảm giá</th><th className="text-right">Doanh thu thuần</th></tr>
+                <tr><th>ThÆ°Æ¡ng hiá»‡u</th><th>Loáº¡i</th><th>Tráº¡ng thÃ¡i</th><th className="text-right">Sá»‘ Ä‘Æ¡n</th><th className="text-right">Doanh thu</th><th className="text-right">Giáº£m giÃ¡</th><th className="text-right">Doanh thu thuáº§n</th></tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-12 text-gray-400">Không có dữ liệu</td></tr>
+                  <tr><td colSpan={7} className="text-center py-12 text-gray-400">KhÃ´ng cÃ³ dá»¯ liá»‡u</td></tr>
                 ) : rows.map((b, i) => (
                   <tr key={String(b._id ?? i)}>
                     <td>
@@ -68,7 +68,7 @@ export default function BrandsReportPage() {
                       </div>
                     </td>
                     <td className="text-sm text-gray-500">{String(b.type ?? '')}</td>
-                    <td><span className={cn('badge', b.status === 'active' ? 'badge-green' : 'badge-gray')}>{b.status === 'active' ? 'Hoạt động' : 'Ngừng'}</span></td>
+                    <td><span className={cn('badge', b.status === 'active' ? 'badge-green' : 'badge-gray')}>{b.status === 'active' ? 'Hoáº¡t Ä‘á»™ng' : 'Ngá»«ng'}</span></td>
                     <td className="text-right font-semibold">{Number(b.orderCount ?? 0).toLocaleString('vi-VN')}</td>
                     <td className="text-right font-semibold">{formatCurrency(Number(b.revenue ?? 0))}</td>
                     <td className="text-right text-red-500">-{formatCurrency(Number(b.discount ?? 0))}</td>
@@ -79,50 +79,6 @@ export default function BrandsReportPage() {
             </table>
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-
-export default function BrandsReportPage() {
-  const data = mockBrands.map(brand => {
-    const brandOrders = mockOrders.filter(o => o.brandId === brand._id)
-    const revenue = brandOrders.reduce((sum, o) => sum + o.total, 0)
-    return { ...brand, orderCount: brandOrders.length, revenue }
-  })
-
-  return (
-    <div className="space-y-5">
-      <div className="page-header">
-        <div><h1 className="page-title">Theo thương hiệu</h1><p className="page-subtitle">Doanh thu phân theo thương hiệu</p></div>
-      </div>
-      <div className="card">
-        <div className="table-wrapper">
-          <table className="table">
-            <thead>
-              <tr><th>Thương hiệu</th><th>Loại</th><th>Số đơn</th><th>Doanh thu</th><th>Trạng thái</th></tr>
-            </thead>
-            <tbody>
-              {data.map(b => (
-                <tr key={b._id}>
-                  <td>
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center">
-                        <Building2 className="w-4 h-4 text-orange-500" />
-                      </div>
-                      <span className="font-medium text-gray-900">{b.name}</span>
-                    </div>
-                  </td>
-                  <td className="text-sm text-gray-500 capitalize">{b.type}</td>
-                  <td className="font-semibold">{b.orderCount}</td>
-                  <td className="font-semibold text-green-600">{formatCurrency(b.revenue)}</td>
-                  <td><span className={b.status === 'active' ? 'badge badge-green' : 'badge badge-red'}>{b.status === 'active' ? 'Hoạt động' : 'Ngừng'}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
     </div>
   )

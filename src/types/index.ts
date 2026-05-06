@@ -362,6 +362,7 @@ export interface NormalizedOrder {
   subtotal: number
   discount: number
   total: number
+  paymentMethod?: string
   deliveryInfo?: DeliveryInfo
   driverInfo?: DriverInfo
   orderStatus: OrderStatus

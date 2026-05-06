@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
@@ -17,14 +17,14 @@ export default function ChannelsReportPage() {
     <div className="space-y-5">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Theo kênh bán</h1>
-          <p className="page-subtitle">Doanh thu phân theo kênh đặt hàng</p>
+          <h1 className="page-title">Theo kÃªnh bÃ¡n</h1>
+          <p className="page-subtitle">Doanh thu phÃ¢n theo kÃªnh Ä‘áº·t hÃ ng</p>
         </div>
         <div className="flex gap-1">
           {DAYS_OPTIONS.map(d => (
             <button key={d} onClick={() => setDays(d)}
               className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-all', days === d ? 'bg-primary-500 text-white border-primary-500' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}>
-              {d} ngày
+              {d} ngÃ y
             </button>
           ))}
         </div>
@@ -33,9 +33,9 @@ export default function ChannelsReportPage() {
       {summary && (
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: 'Tổng đơn hàng', value: (summary.totalOrders ?? 0).toLocaleString('vi-VN') },
-            { label: 'Tổng doanh thu', value: formatCurrency(summary.totalRevenue ?? 0) },
-            { label: 'Phí nền tảng', value: formatCurrency(summary.totalPlatformFee ?? 0) },
+            { label: 'Tá»•ng Ä‘Æ¡n hÃ ng', value: (summary.totalOrders ?? 0).toLocaleString('vi-VN') },
+            { label: 'Tá»•ng doanh thu', value: formatCurrency(summary.totalRevenue ?? 0) },
+            { label: 'PhÃ­ ná»n táº£ng', value: formatCurrency(summary.totalPlatformFee ?? 0) },
           ].map(item => (
             <div key={item.label} className="card p-5">
               <div className="text-sm text-gray-500">{item.label}</div>
@@ -52,11 +52,11 @@ export default function ChannelsReportPage() {
           <div className="table-wrapper">
             <table className="table">
               <thead>
-                <tr><th>Kênh bán</th><th className="text-right">Số đơn</th><th className="text-right">Tổng tiền</th><th className="text-right">Giảm giá</th><th className="text-right">Phí nền tảng</th><th className="text-right">Doanh thu thuần</th></tr>
+                <tr><th>KÃªnh bÃ¡n</th><th className="text-right">Sá»‘ Ä‘Æ¡n</th><th className="text-right">Tá»•ng tiá»n</th><th className="text-right">Giáº£m giÃ¡</th><th className="text-right">PhÃ­ ná»n táº£ng</th><th className="text-right">Doanh thu thuáº§n</th></tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center py-12 text-gray-400">Không có dữ liệu</td></tr>
+                  <tr><td colSpan={6} className="text-center py-12 text-gray-400">KhÃ´ng cÃ³ dá»¯ liá»‡u</td></tr>
                 ) : rows.map((row, i) => (
                   <tr key={String(row._id ?? i)}>
                     <td>
@@ -75,40 +75,6 @@ export default function ChannelsReportPage() {
             </table>
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-
-export default function ChannelsReportPage() {
-  const sources: ChannelSource[] = ['shopee', 'grab', 'xanh_sm', 'be', 'internal', 'other']
-  const data = sources.map(src => {
-    const srcOrders = mockOrders.filter(o => o.source === src)
-    const revenue = srcOrders.reduce((s, o) => s + o.total, 0)
-    return { source: src, orderCount: srcOrders.length, revenue }
-  }).filter(d => d.orderCount > 0)
-
-  const total = data.reduce((s, d) => s + d.revenue, 0)
-
-  return (
-    <div className="space-y-5">
-      <div className="page-header">
-        <div><h1 className="page-title">Theo kênh bán</h1><p className="page-subtitle">Phân tích đóng góp từng kênh</p></div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {data.map(d => (
-          <div key={d.source} className="card p-5">
-            <span className={cn('badge mb-3', CHANNEL_SOURCE_COLOR[d.source])}>{CHANNEL_SOURCE_LABEL[d.source]}</span>
-            <p className="text-2xl font-bold text-gray-900">{d.orderCount}</p>
-            <p className="text-xs text-gray-400 mb-2">đơn hàng</p>
-            <p className="font-semibold text-green-600">{formatCurrency(d.revenue)}</p>
-            <div className="h-1.5 bg-gray-100 rounded mt-2">
-              <div className="h-full bg-primary-500 rounded" style={{ width: `${total ? (d.revenue / total) * 100 : 0}%` }} />
-            </div>
-            <p className="text-xs text-gray-400 mt-1">{total ? ((d.revenue / total) * 100).toFixed(1) : 0}% tổng doanh thu</p>
-          </div>
-        ))}
       </div>
     </div>
   )

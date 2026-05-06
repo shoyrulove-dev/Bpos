@@ -114,7 +114,7 @@ export const mockHubs: Hub[] = [
 // ============================================================
 // STAFFS (Nhân viên)
 // ============================================================
-export const mockStaffs: Staff[] = [
+export const mockStaffs = [
   {
     _id: 'staff-1',
     name: 'Nguyễn Văn An',
@@ -172,7 +172,7 @@ export const mockStaffs: Staff[] = [
 // ============================================================
 // PRODUCTS
 // ============================================================
-export const mockProducts: Product[] = [
+export const mockProducts = [
   {
     _id: 'prod-1',
     name: 'Trà Sữa Trân Châu Hoàng Kim',
@@ -268,7 +268,7 @@ export const mockProducts: Product[] = [
 // ============================================================
 // MENUS (Thực đơn)
 // ============================================================
-export const mockMenus: Menu[] = [
+export const mockMenus = [
   {
     _id: 'menu-1',
     name: 'Menu Chính - Phúc Long',
@@ -565,7 +565,7 @@ export const mockOrders: Order[] = [
 // ============================================================
 // PROMOTIONS
 // ============================================================
-export const mockPromotions: Promotion[] = [
+export const mockPromotions = [
   {
     _id: 'promo-1',
     name: 'Giảm 20% Cuối Tuần',

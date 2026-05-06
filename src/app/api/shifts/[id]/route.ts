@@ -23,8 +23,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (res) return res
   await connectDB()
   const body = await req.json()
-  const shift = await ShiftModel.findById(params.id).lean()
-  if (!shift) return err('Không tìm thấy ca', 404)
+  const shiftDoc = await ShiftModel.findById(params.id).lean()
+  if (!shiftDoc) return err('Không tìm thấy ca', 404)
+  const shift = shiftDoc as Record<string, unknown>
 
   // Close shift: calculate stats from orders in this period
   if (body.action === 'close') {

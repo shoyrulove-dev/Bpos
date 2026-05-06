@@ -14,8 +14,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  const { res, session } = await requireAuth(req)
+  const { res, token } = await requireAuth(req)
   if (res) return res
+  void token
   await connectDB()
   const body = await req.json()
 
@@ -42,7 +43,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       beforeQty,
       afterQty,
       note,
-      createdById: session?.user?.id,
+      createdById: token?.id,
     })
 
     inv.quantity = afterQty
