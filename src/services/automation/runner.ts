@@ -30,6 +30,3 @@ export function isSessionValid(expiresAt?: Date | null): boolean {
   // Consider expired 10 minutes before actual expiry
   return new Date(expiresAt.getTime() - 10 * 60 * 1000) > new Date()
 }
-  // Consider expired 10 minutes before actual expiry
-  return new Date(expiresAt.getTime() - 10 * 60 * 1000) > new Date()
-}
