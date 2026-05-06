@@ -69,7 +69,12 @@ type SyncResult   = { loading: boolean; ok?: boolean; upserted?: number; updated
 type QtResult     = { loading: boolean; ok?: boolean; message?: string; count?: number; sample?: unknown[] }
 type AutoLoginForm = { username: string; password: string; otp: string }
 
-const emptyForm = { provider: 'shopee', brandId: '', hubId: '', externalStoreId: '', externalStoreName: '' }
+const AUTO_PROVIDERS = ['grab', 'be']
+const emptyForm = {
+  provider: 'grab', brandId: '', hubId: '', externalStoreId: '', externalStoreName: '',
+  loginMode: 'auto' as 'api' | 'auto',
+  loginUsername: '', loginPassword: '',
+}
 
 const PLATFORM_GUIDES: Record<string, { steps: string[]; link: string; knownStores?: { id: string; name: string }[] }> = {
   be: {
@@ -188,8 +193,23 @@ export default function IntegrationsPage() {
 
   // ─── Handlers ────────────────────────────────────────────────────────────
   const handleCreate = async () => {
-    if (!form.brandId || !form.externalStoreId) return
-    await createMutation.mutateAsync(form)
+    const isAuto = AUTO_PROVIDERS.includes(form.provider)
+    if (!form.brandId) return
+    if (isAuto && (!form.loginUsername || !form.loginPassword)) return
+    if (!isAuto && !form.externalStoreId) return
+    const body: Record<string, unknown> = {
+      provider: form.provider, brandId: form.brandId,
+      hubId: form.hubId || undefined,
+      externalStoreName: form.externalStoreName || undefined,
+      loginMode: isAuto ? 'auto' : 'api',
+    }
+    if (isAuto) {
+      body.loginUsername = form.loginUsername
+      body.loginPassword = form.loginPassword
+    } else {
+      body.externalStoreId = form.externalStoreId
+    }
+    await createMutation.mutateAsync(body)
     setShowForm(false)
     setForm(emptyForm)
   }
@@ -495,57 +515,140 @@ export default function IntegrationsPage() {
       </div>
 
       {/* ═══ MODAL: Create ══════════════════════════════════════════════════ */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-xl">
-            <h2 className="text-lg font-semibold">Thêm tích hợp sàn</h2>
-            <div className="space-y-3">
+      {showForm && (() => {
+        const isAuto = AUTO_PROVIDERS.includes(form.provider)
+        const canSave = form.brandId && (isAuto
+          ? (form.loginUsername && form.loginPassword)
+          : form.externalStoreId)
+        return (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
+              <div>
+                <h2 className="text-lg font-semibold">Thêm tích hợp sàn</h2>
+                <p className="text-sm text-gray-400 mt-0.5">Kết nối tài khoản sàn bán hàng</p>
+              </div>
+
+              {/* Platform picker */}
               <div>
                 <label className="label">Sàn bán hàng</label>
-                <select className="input w-full" value={form.provider}
-                  onChange={e => setForm(p => ({ ...p, provider: e.target.value }))}>
-                  {PROVIDERS.map(pr => <option key={pr.value} value={pr.value}>{pr.label}</option>)}
-                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  {PROVIDERS.map(pr => (
+                    <button key={pr.value}
+                      onClick={() => setForm(p => ({
+                        ...p, provider: pr.value,
+                        loginMode: AUTO_PROVIDERS.includes(pr.value) ? 'auto' : 'api',
+                        loginUsername: '', loginPassword: '', externalStoreId: '',
+                      }))}
+                      className={cn('py-2.5 px-3 rounded-xl border-2 text-sm font-medium text-left transition-all',
+                        form.provider === pr.value
+                          ? 'border-primary-400 bg-primary-50 text-primary-700'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
+                      <span className={cn('badge badge-sm mr-2', pr.color)}>{pr.label}</span>
+                      <span className="text-xs text-gray-400">
+                        {AUTO_PROVIDERS.includes(pr.value) ? '🤖 Auto Login' : '🔑 API Key'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div>
-                <label className="label">Thương hiệu</label>
-                <select className="input w-full" value={form.brandId}
-                  onChange={e => setForm(p => ({ ...p, brandId: e.target.value, hubId: '' }))}>
-                  <option value="">— Chọn thương hiệu —</option>
-                  {brands.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
-                </select>
+
+              {/* Brand + Hub */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Thương hiệu <span className="text-red-400">*</span></label>
+                  <select className="input w-full" value={form.brandId}
+                    onChange={e => setForm(p => ({ ...p, brandId: e.target.value, hubId: '' }))}>
+                    <option value="">— Chọn —</option>
+                    {brands.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Điểm bán</label>
+                  <select className="input w-full" value={form.hubId}
+                    onChange={e => setForm(p => ({ ...p, hubId: e.target.value }))}>
+                    <option value="">— Tất cả —</option>
+                    {filteredHubs.map(h => <option key={h._id} value={h._id}>{h.name}</option>)}
+                  </select>
+                </div>
               </div>
-              <div>
-                <label className="label">Điểm bán (tuỳ chọn)</label>
-                <select className="input w-full" value={form.hubId}
-                  onChange={e => setForm(p => ({ ...p, hubId: e.target.value }))}>
-                  <option value="">— Tất cả điểm bán —</option>
-                  {filteredHubs.map(h => <option key={h._id} value={h._id}>{h.name}</option>)}
-                </select>
+
+              {/* Auto-login providers (Grab, BE): email + password */}
+              {isAuto && (
+                <div className="space-y-3">
+                  <div className="bg-violet-50 border border-violet-100 rounded-xl p-3 text-xs text-violet-700">
+                    🔐 Hệ thống tự động đăng nhập merchant portal để lấy đơn hàng.
+                    Mật khẩu được mã hoá AES-256 trước khi lưu.
+                  </div>
+                  <div>
+                    <label className="label">
+                      {form.provider === 'be'
+                        ? 'Email đăng nhập Be (merchant.be.com.vn)'
+                        : 'Email hoặc tên đăng nhập Grab portal'}
+                      <span className="text-red-400 ml-1">*</span>
+                    </label>
+                    <input className="input w-full" type="text"
+                      placeholder={form.provider === 'be'
+                        ? 'VD: luonghung.sg@gmail.com'
+                        : 'VD: ooo.cashier.ds3 hoặc ketoan@example.com'}
+                      value={form.loginUsername}
+                      onChange={e => setForm(p => ({ ...p, loginUsername: e.target.value }))} />
+                    {form.provider === 'grab' && form.loginUsername && !form.loginUsername.includes('@') && (
+                      <p className="text-xs text-violet-600 mt-1">✓ Đăng nhập bằng tên tài khoản (username)</p>
+                    )}
+                    {form.provider === 'grab' && form.loginUsername && form.loginUsername.includes('@') && (
+                      <p className="text-xs text-violet-600 mt-1">✓ Đăng nhập bằng email</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="label">Mật khẩu <span className="text-red-400">*</span></label>
+                    <input className="input w-full" type="password" autoComplete="new-password"
+                      placeholder="••••••••"
+                      value={form.loginPassword}
+                      onChange={e => setForm(p => ({ ...p, loginPassword: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="label">Tên cửa hàng <span className="text-gray-400 text-xs font-normal">(tuỳ chọn)</span></label>
+                    <input className="input w-full" placeholder="VD: 3B Food & Drink — Cầu Giấy"
+                      value={form.externalStoreName}
+                      onChange={e => setForm(p => ({ ...p, externalStoreName: e.target.value }))} />
+                  </div>
+                </div>
+              )}
+
+              {/* API providers (Shopee, Xanh SM): store ID */}
+              {!isAuto && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="label">Store ID <span className="text-red-400">*</span></label>
+                    <input className="input w-full" placeholder="ID cửa hàng trên sàn"
+                      value={form.externalStoreId}
+                      onChange={e => setForm(p => ({ ...p, externalStoreId: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="label">Tên cửa hàng <span className="text-gray-400 text-xs font-normal">(tuỳ chọn)</span></label>
+                    <input className="input w-full" placeholder="Tên hiển thị"
+                      value={form.externalStoreName}
+                      onChange={e => setForm(p => ({ ...p, externalStoreName: e.target.value }))} />
+                  </div>
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700">
+                    ℹ️ Sau khi tạo, vào <strong>Cài đặt</strong> trên card để nhập API credentials.
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => { setShowForm(false); setForm(emptyForm) }}
+                  className="btn-outline flex-1">Huỷ</button>
+                <button onClick={handleCreate} disabled={saving || !canSave}
+                  className="btn-primary flex-1 disabled:opacity-50">
+                  {saving && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+                  {isAuto ? 'Lưu & Đăng nhập sau' : 'Tạo tích hợp'}
+                </button>
               </div>
-              <div>
-                <label className="label">Store ID (trên sàn)</label>
-                <input className="input w-full" placeholder="ID cửa hàng trên sàn"
-                  value={form.externalStoreId}
-                  onChange={e => setForm(p => ({ ...p, externalStoreId: e.target.value }))} />
-              </div>
-              <div>
-                <label className="label">Tên cửa hàng (tuỳ chọn)</label>
-                <input className="input w-full" placeholder="Tên hiển thị trên sàn"
-                  value={form.externalStoreName}
-                  onChange={e => setForm(p => ({ ...p, externalStoreName: e.target.value }))} />
-              </div>
-            </div>
-            <div className="flex gap-2 pt-2">
-              <button onClick={() => setShowForm(false)} className="btn-outline flex-1">Huỷ</button>
-              <button onClick={handleCreate} disabled={saving || !form.brandId || !form.externalStoreId}
-                className="btn-primary flex-1 disabled:opacity-50">
-                {saving && <Loader2 className="w-4 h-4 animate-spin mr-1" />}Lưu
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ═══ MODAL: Quick Test ══════════════════════════════════════════════ */}
       {showQt && (

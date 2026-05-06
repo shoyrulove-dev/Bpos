@@ -1,5 +1,5 @@
 import type { NormalizedOrder, OrderItem, OrderStatus } from '@/types'
-import type { PlatformAdapter, AdapterConfig } from './types'
+import type { PlatformAdapter, AdapterConfig, SessionData } from './types'
 
 /**
  * Be Food adapter – beFood Partner Open API
@@ -170,5 +170,53 @@ export class BeAdapter implements PlatformAdapter {
       deliveredAt: raw.delivered_at ? String(raw.delivered_at) : undefined,
       rawPayload:  raw,
     }
+  }
+
+  /**
+   * Fetch orders using a captured browser session (auto-login mode).
+   * Uses the JWT extracted from merchant.be.com.vn portal localStorage.
+   * The JWT from the portal is the same credential used by the Be Partner API.
+   */
+  async fetchOrdersWithSession(session: SessionData, restaurantId: string): Promise<NormalizedOrder[] | null> {
+    const jwt = session.extraHeaders?.['Authorization']?.replace('Bearer ', '')
+    if (!jwt) return null
+
+    const base = BE_BASE_PROD
+    const resId = Number(restaurantId)
+    if (!resId) return null
+
+    try {
+      const [inProgress, pending] = await Promise.all([
+        this.fetchByTypeWithJwt(jwt, base, resId, 'in_progress'),
+        this.fetchByTypeWithJwt(jwt, base, resId, 'pending'),
+      ])
+
+      const seen = new Set<string>()
+      const all: NormalizedOrder[] = []
+      for (const [orders, fetchType] of [[inProgress, 'in_progress'], [pending, 'pending']] as [Record<string, unknown>[], string][]) {
+        for (const o of orders) {
+          const id = String(o.order_id ?? '')
+          if (!id || seen.has(id)) continue
+          seen.add(id)
+          all.push(this.normalizeOrder(o, fetchType))
+        }
+      }
+      return all
+    } catch {
+      return null
+    }
+  }
+
+  private async fetchByTypeWithJwt(
+    jwt: string, base: string, restaurantId: number, fetchType: string
+  ): Promise<Record<string, unknown>[]> {
+    const res = await fetch(`${base}/partner/v1/orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+      body: JSON.stringify({ restaurant_id: restaurantId, fetch_type: fetchType }),
+    })
+    if (!res.ok) return []
+    const data = await res.json() as { restaurant_orders?: Record<string, unknown>[] }
+    return data.restaurant_orders ?? []
   }
 }

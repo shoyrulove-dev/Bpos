@@ -1,28 +1,22 @@
 /**
  * Be Food Merchant Portal – Automation Login
  *
- * Portal: https://restaurant.be.com.vn  (or merchant.be.com.vn)
+ * Portal: https://merchant.be.com.vn/login
  * Login flow:
- *   - Phone + Password
- *   - OTP required (SMS to phone)
+ *   - Email + Password  (hoặc SĐT + Password)
+ *   - OTP SMS nếu cần
  *
- * Session TTL: ~2 hours (JWT from Be auth, same as official API)
- *   → Much shorter than other platforms, needs frequent refresh.
+ * Session TTL: ~8 hours (JWT lưu trong localStorage)
+ *   → Auto-refresh mỗi 15 phút bởi cron job.
  *
- * Internal API used after session capture:
- *   POST https://gw.be.com.vn/api/v1/be-food-gateway/partner/v1/orders
- *   Headers: Authorization: Bearer <JWT>, cookie: <captured>
- *
- * NOTE: Be uses short-lived JWTs. The automation needs to re-login every ~2h.
- * This is already handled by the cron refresh job.
- *
- * TODO: Verify portal URL and internal API endpoints via DevTools on restaurant.be.com.vn
+ * Sau khi login, JWT được trích từ localStorage và lưu vào extraHeaders['Authorization'].
+ * fetchOrdersWithSession() dùng JWT này để gọi Be Partner API endpoint.
  */
 import type { PlatformAutomation, AutomationCredentials, AutomationResult } from '../types'
 import type { SessionData, PlaywrightCookie } from '@/integrations/types'
 
-const PORTAL_URL  = 'https://restaurant.be.com.vn'
-const SESSION_TTL = 2 * 3600  // 2 hours (Be JWT expiry)
+const PORTAL_URL  = 'https://merchant.be.com.vn/login'
+const SESSION_TTL = 8 * 3600  // 8 hours (thực tế JWT Be ~8h)
 
 export class BeAutomation implements PlatformAutomation {
   provider = 'be' as const
@@ -48,21 +42,24 @@ export class BeAutomation implements PlatformAutomation {
       // ── 1. Navigate ────────────────────────────────────────────────────────
       await page.goto(PORTAL_URL, { waitUntil: 'networkidle', timeout: 30_000 })
 
-      // ── 2. Fill phone ──────────────────────────────────────────────────────
-      await page.waitForSelector('input[type="tel"], input[name="phone"], input[type="text"]', { timeout: 10_000 })
-      await page.fill('input[type="tel"], input[name="phone"]', credentials.username)
+      // ── 2. Fill email or phone ─────────────────────────────────────────────
+      // merchant.be.com.vn/login has email field (type="email" or name="email" or "username")
+      const emailSelector = 'input[type="email"], input[name="email"], input[name="username"], input[name="phone"], input[type="text"]:first-of-type'
+      await page.waitForSelector(emailSelector, { timeout: 15_000 })
+      await page.fill(emailSelector, credentials.username)
 
-      // ── 3. Password or OTP-first flow ──────────────────────────────────────
+      // ── 3. Fill password ───────────────────────────────────────────────────
       const passwordInput = await page.$('input[type="password"]')
       if (passwordInput) {
         await passwordInput.fill(credentials.password)
       }
 
+      // ── 4. Submit ──────────────────────────────────────────────────────────
       await page.click('button[type="submit"]')
-      await page.waitForTimeout(3000)
+      await page.waitForTimeout(4000)
 
-      // ── 4. Handle OTP ──────────────────────────────────────────────────────
-      const otpInput = await page.$('input[placeholder*="OTP"], input[placeholder*="mã"], input[maxlength="6"]')
+      // ── 5. Handle OTP if prompted ──────────────────────────────────────────
+      const otpInput = await page.$('input[placeholder*="OTP"], input[placeholder*="mã"], input[maxlength="6"], input[name="otp"]')
       if (otpInput) {
         if (!credentials.otp) {
           await browser.close()
@@ -73,23 +70,31 @@ export class BeAutomation implements PlatformAutomation {
         await page.waitForTimeout(4000)
       }
 
-      // ── 5. Verify success ──────────────────────────────────────────────────
+      // ── 6. Verify login succeeded (should redirect away from /login) ───────
       const finalUrl = page.url()
-      if (finalUrl.includes('login') || finalUrl.includes('auth')) {
-        const errorMsg = await page.textContent('[class*="error"], .alert').catch(() => null)
+      if (finalUrl.includes('/login') || finalUrl.includes('/auth')) {
+        const errorMsg = await page.textContent('[class*="error"], .alert, [role="alert"]').catch(() => null)
         await browser.close()
-        return { success: false, error: errorMsg?.trim() ?? 'Đăng nhập Be Food thất bại' }
+        return { success: false, error: errorMsg?.trim() ?? 'Đăng nhập Be Food thất bại – kiểm tra email/mật khẩu' }
       }
 
-      // ── 6. Extract JWT from localStorage ──────────────────────────────────
-      const jwtToken = await page.evaluate(() => {
-        return localStorage.getItem('token')
-          ?? localStorage.getItem('access_token')
-          ?? localStorage.getItem('be_token')
-          ?? sessionStorage.getItem('token')
-      })
+      // ── 7. Extract JWT from localStorage (Be stores token here) ───────────
+      const jwtToken = await page.evaluate(() =>
+        localStorage.getItem('token')
+        ?? localStorage.getItem('access_token')
+        ?? localStorage.getItem('be_token')
+        ?? localStorage.getItem('merchant_token')
+        ?? sessionStorage.getItem('token')
+      )
 
-      // ── 7. Capture cookies ─────────────────────────────────────────────────
+      // Also capture restaurantId from localStorage / URL if available
+      const restaurantId = await page.evaluate(() =>
+        localStorage.getItem('restaurant_id')
+        ?? localStorage.getItem('restaurantId')
+        ?? localStorage.getItem('store_id')
+      )
+
+      // ── 8. Capture cookies ─────────────────────────────────────────────────
       const rawCookies = await context.cookies()
       const cookies: PlaywrightCookie[] = rawCookies.map(c => ({
         name: c.name,
@@ -104,6 +109,7 @@ export class BeAutomation implements PlatformAutomation {
 
       const extraHeaders: Record<string, string> = {}
       if (jwtToken) extraHeaders['Authorization'] = `Bearer ${jwtToken}`
+      if (restaurantId) extraHeaders['x-restaurant-id'] = restaurantId
 
       const session: SessionData = {
         cookies,
