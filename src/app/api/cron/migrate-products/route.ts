@@ -43,7 +43,14 @@ export async function POST(req: NextRequest) {
   for (const t of billTemplates) {
     const exists = await BillTemplateModel.findOne({ name: t.name, brandId: t.brandId })
     if (!exists) {
-      await BillTemplateModel.create(t)
+      await BillTemplateModel.create({
+        name: t.name,
+        brandId: t.brandId,
+        type: t.type,
+        size: t.size,
+        isActive: t.isActive ?? t.isDefault ?? true,
+        templateContent: t.templateContent ?? t.content ?? '',
+      })
       templatesInserted++
     } else {
       templatesSkipped++

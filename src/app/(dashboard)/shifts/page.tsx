@@ -22,8 +22,8 @@ export default function ShiftsPage() {
   const [openForm, setOpenForm] = useState(emptyOpenForm)
   const [closeForm, setCloseForm] = useState(emptyCloseForm)
 
-  const { data: rawShifts = [], isLoading } = useShifts({ status: statusFilter || undefined })
-  const shifts = rawShifts as Shift[]
+  const { data, isLoading } = useShifts({ status: statusFilter || undefined })
+  const shifts = (Array.isArray(data) ? data : data?.shifts ?? []) as Shift[]
   const openShiftMutation = useOpenShift()
   const closeShiftMutation = useCloseShift()
 

@@ -17,6 +17,28 @@ const brandTypeOptions = [
 
 const emptyForm = { name: '', phone: '', type: 'fnb', address: '', note: '', logo: '', status: 'active' }
 
+function BrandLogoCard({ name, logo }: { name: string; logo?: string }) {
+  const [hasError, setHasError] = useState(false)
+  const showImage = Boolean(logo) && !hasError
+
+  return (
+    <div className="relative aspect-[16/9] w-full overflow-hidden rounded-2xl border border-gray-100 bg-gradient-to-br from-primary-50 via-white to-orange-50">
+      {showImage ? (
+        <img
+          src={logo}
+          alt={name}
+          className="h-full w-full object-contain p-4"
+          onError={() => setHasError(true)}
+        />
+      ) : (
+        <div className="flex h-full items-center justify-center text-5xl font-bold text-primary-600">
+          {name.charAt(0)}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function BrandsPage() {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
@@ -101,14 +123,9 @@ export default function BrandsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {brands.map((brand: Brand) => (
             <div key={brand._id} className="card p-5 hover:shadow-md transition-shadow group">
-              {/* Logo */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-12 h-12 rounded-xl bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-lg overflow-hidden">
-                  {brand.logo
-                    ? <img src={brand.logo} alt={brand.name} className="w-full h-full object-cover" />
-                    : brand.name.charAt(0)}
-                </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="relative mb-4">
+                <BrandLogoCard name={brand.name} logo={brand.logo} />
+                <div className="absolute right-3 top-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => openEdit(brand)} className="btn-ghost btn-sm p-1.5">
                     <Edit className="w-3.5 h-3.5" />
                   </button>
@@ -182,7 +199,7 @@ export default function BrandsPage() {
                 <input className="input" value={form.logo} onChange={e => setForm({ ...form, logo: e.target.value })} placeholder="https://..." />
                 {form.logo && (
                   <div className="mt-2 flex items-center gap-2">
-                    <img src={form.logo} alt="preview" className="w-10 h-10 rounded-lg object-cover border" onError={e => (e.currentTarget.style.display = 'none')} />
+                    <img src={form.logo} alt="preview" className="h-14 w-14 rounded-xl border object-contain bg-white p-1" onError={e => (e.currentTarget.style.display = 'none')} />
                     <span className="text-xs text-gray-400">Preview</span>
                   </div>
                 )}
