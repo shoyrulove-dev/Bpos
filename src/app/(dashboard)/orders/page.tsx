@@ -1,11 +1,20 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { Search, RefreshCw, Printer, Eye, X, Phone, MapPin, Package, Truck, Loader2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Search, RefreshCw, Printer, Eye, X, Phone, MapPin, Package, Truck, BellRing, Volume2 } from 'lucide-react'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn, formatCurrency, formatDate, ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
-import type { Order, OrderStatus } from '@/types'
+import {
+  buildReceiptPrintUrl,
+  DEFAULT_ORDER_ALERT_SETTINGS,
+  loadOrderAlertSettings,
+  ORDER_ALERT_POLL_INTERVAL_MS,
+  persistOrderAlertSettings,
+  playOrderAlert,
+  PRINTER_MODEL_LABEL,
+} from '@/lib/order-alerts'
+import type { Order } from '@/types'
 
 const ALL_STATUSES: { value: string; label: string }[] = [
   { value: '', label: 'Tất cả' },
@@ -31,11 +40,19 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [sourceFilter, setSourceFilter] = useState('')
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [soundEnabled, setSoundEnabled] = useState(DEFAULT_ORDER_ALERT_SETTINGS.soundEnabled)
+  const [autoPrintEnabled, setAutoPrintEnabled] = useState(DEFAULT_ORDER_ALERT_SETTINGS.autoPrintEnabled)
 
   const dq = useDebounce(search)
   const { data, isLoading, refetch } = useOrders({ q: dq, status: statusFilter, source: sourceFilter })
   const orders: Order[] = data?.orders ?? []
   const filtered = orders
+
+  useEffect(() => {
+    const settings = loadOrderAlertSettings()
+    setSoundEnabled(settings.soundEnabled)
+    setAutoPrintEnabled(settings.autoPrintEnabled)
+  }, [])
 
   // Count per status for tabs
   const countByStatus = useMemo(() => {
@@ -43,6 +60,22 @@ export default function OrdersPage() {
     orders.forEach(o => { counts[o.status] = (counts[o.status] || 0) + 1 })
     return counts
   }, [orders])
+
+  const updateAlertSettings = (nextSettings: { soundEnabled?: boolean; autoPrintEnabled?: boolean }) => {
+    const merged = {
+      soundEnabled: nextSettings.soundEnabled ?? soundEnabled,
+      autoPrintEnabled: nextSettings.autoPrintEnabled ?? autoPrintEnabled,
+    }
+
+    setSoundEnabled(merged.soundEnabled)
+    setAutoPrintEnabled(merged.autoPrintEnabled)
+    persistOrderAlertSettings(merged)
+  }
+
+  const handlePrintOrder = (orderId: string) => {
+    const printUrl = buildReceiptPrintUrl(orderId, { autoprint: true })
+    window.open(printUrl, '_blank', 'noopener,noreferrer,width=430,height=900')
+  }
 
   return (
     <div className="space-y-5">
@@ -100,6 +133,40 @@ export default function OrdersPage() {
           <select className="input w-40" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}>
             {SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
+        </div>
+      </div>
+
+      <div className="card card-body space-y-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="space-y-2 max-w-3xl">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Tự động in và chuông đơn mới</h2>
+              <p className="text-sm text-gray-500">
+                Đơn mới đang được kiểm tra mỗi {ORDER_ALERT_POLL_INTERVAL_MS / 1000} giây. Khi bật tự động in, hệ thống sẽ đẩy phiếu 80mm theo mẫu mới sang máy {PRINTER_MODEL_LABEL}.
+              </p>
+            </div>
+            <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+              Muốn máy in ra ngay không hiện hộp thoại, máy Windows cần đặt {PRINTER_MODEL_LABEL} làm default printer và mở Chrome bằng chế độ --kiosk-printing. Âm thanh sẽ phát qua loa đang là Default Output của Windows, nên chỉ cần cắm loa vào máy tính và chọn loa đó trong Sound Settings.
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => updateAlertSettings({ soundEnabled: !soundEnabled })}
+              className={cn('btn-outline', soundEnabled && 'border-green-300 bg-green-50 text-green-700')}
+            >
+              <BellRing className="w-4 h-4" /> {soundEnabled ? 'Âm thanh bật' : 'Âm thanh tắt'}
+            </button>
+            <button
+              onClick={() => updateAlertSettings({ autoPrintEnabled: !autoPrintEnabled })}
+              className={cn('btn-outline', autoPrintEnabled && 'border-blue-300 bg-blue-50 text-blue-700')}
+            >
+              <Printer className="w-4 h-4" /> {autoPrintEnabled ? 'Tự in bật' : 'Tự in tắt'}
+            </button>
+            <button onClick={() => playOrderAlert(2)} className="btn-outline">
+              <Volume2 className="w-4 h-4" /> Test chuông
+            </button>
+          </div>
         </div>
       </div>
 
@@ -173,7 +240,7 @@ export default function OrdersPage() {
                       >
                         <Eye className="w-3.5 h-3.5" />
                       </button>
-                      <button className="btn-ghost btn-sm p-1.5" title="In đơn">
+                      <button onClick={() => handlePrintOrder(order._id)} className="btn-ghost btn-sm p-1.5" title="In đơn">
                         <Printer className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -187,13 +254,13 @@ export default function OrdersPage() {
 
       {/* Order Detail Modal */}
       {selectedOrder && (
-        <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
+        <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} onPrint={handlePrintOrder} />
       )}
     </div>
   )
 }
 
-function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => void }) {
+function OrderDetailModal({ order, onClose, onPrint }: { order: Order; onClose: () => void; onPrint: (orderId: string) => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -335,7 +402,7 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
         </div>
 
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-          <button className="btn-outline btn-sm"><Printer className="w-4 h-4" /> In đơn</button>
+          <button onClick={() => onPrint(order._id)} className="btn-outline btn-sm"><Printer className="w-4 h-4" /> In đơn</button>
           <button className="btn-outline btn-sm"><Printer className="w-4 h-4" /> In tem</button>
           <button onClick={onClose} className="btn-primary btn-sm">Đóng</button>
         </div>

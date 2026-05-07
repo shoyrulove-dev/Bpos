@@ -4,6 +4,17 @@ import { createContext, useContext, useEffect, useRef, useState, useCallback } f
 import { Bell, X, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import {
+  buildReceiptPrintUrl,
+  DEFAULT_ORDER_ALERT_SETTINGS,
+  getRecentPrintedOrderIds,
+  loadOrderAlertSettings,
+  ORDER_ALERT_POLL_INTERVAL_MS,
+  persistOrderAlertSettings,
+  playOrderAlert,
+  primeOrderAlertAudio,
+  rememberPrintedOrders,
+} from '@/lib/order-alerts'
 
 interface Notification {
   id: string
@@ -27,32 +38,10 @@ const NotificationContext = createContext<NotificationContextValue>({
 
 export const useNotifications = () => useContext(NotificationContext)
 
-function playBell(times = 3) {
-  let i = 0
-  const ring = () => {
-    try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-      const ctx = new AudioCtx()
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.type = 'sine'
-      osc.frequency.setValueAtTime(880, ctx.currentTime)
-      osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3)
-      gain.gain.setValueAtTime(0.4, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
-      osc.start(ctx.currentTime)
-      osc.stop(ctx.currentTime + 0.6)
-    } catch { /* ignore AudioContext restriction */ }
-    i++
-    if (i < times) setTimeout(ring, 500)
-  }
-  ring()
-}
-
 export default function NotificationProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [settings, setSettings] = useState(DEFAULT_ORDER_ALERT_SETTINGS)
+  const [printQueue, setPrintQueue] = useState<string[]>([])
   const seenIds = useRef<Set<string>>(new Set())
   const initialized = useRef(false)
 
@@ -65,8 +54,16 @@ export default function NotificationProvider({ children }: { children: React.Rea
       dismissed: false,
     }
     setNotifications(prev => [notif, ...prev].slice(0, 5))
-    playBell(3)
+    if (settings.soundEnabled) {
+      playOrderAlert(3)
+    }
     newIds.forEach(id => seenIds.current.add(id))
+  }, [settings.soundEnabled])
+
+  useEffect(() => {
+    const nextSettings = loadOrderAlertSettings()
+    setSettings(nextSettings)
+    persistOrderAlertSettings(nextSettings)
   }, [])
 
   const pollOrders = useCallback(async () => {
@@ -78,7 +75,21 @@ export default function NotificationProvider({ children }: { children: React.Rea
       const newOrders = orders.filter(o => !seenIds.current.has(o._id))
       if (newOrders.length > 0) {
         if (initialized.current) {
-          addNotification(newOrders.length, newOrders.map(o => o._id))
+          const newOrderIds = newOrders.map(o => o._id)
+          addNotification(newOrders.length, newOrderIds)
+
+          if (settings.autoPrintEnabled) {
+            const alreadyPrinted = new Set(getRecentPrintedOrderIds())
+            const printableIds = [...newOrderIds].reverse().filter(orderId => !alreadyPrinted.has(orderId))
+
+            if (printableIds.length > 0) {
+              rememberPrintedOrders(printableIds)
+              setPrintQueue(prev => {
+                const queuedIds = new Set(prev)
+                return [...prev, ...printableIds.filter(orderId => !queuedIds.has(orderId))]
+              })
+            }
+          }
         } else {
           // First poll — seed seen IDs without notification
           orders.forEach(o => seenIds.current.add(o._id))
@@ -89,13 +100,68 @@ export default function NotificationProvider({ children }: { children: React.Rea
         initialized.current = true
       }
     } catch { /* network error — ignore */ }
-  }, [addNotification])
+  }, [addNotification, settings.autoPrintEnabled])
 
   useEffect(() => {
     pollOrders()
-    const interval = setInterval(pollOrders, 30_000)
+    const interval = setInterval(pollOrders, ORDER_ALERT_POLL_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [pollOrders])
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || !event.key.startsWith('bpos.order-alert.')) return
+      setSettings(loadOrderAlertSettings())
+    }
+
+    const onReceiptPrinted = (event: MessageEvent) => {
+      const payload = event.data as { type?: string; orderId?: string } | null
+      if (!payload || typeof payload !== 'object') return
+      if (payload.type !== 'bpos-receipt-printed' && payload.type !== 'bpos-receipt-print-failed') return
+      if (!payload.orderId) return
+
+      setPrintQueue(prev => prev.filter(orderId => orderId !== payload.orderId))
+    }
+
+    window.addEventListener('storage', onStorage)
+    window.addEventListener('message', onReceiptPrinted)
+
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('message', onReceiptPrinted)
+    }
+  }, [])
+
+  useEffect(() => {
+    let primed = false
+
+    const primeAudio = () => {
+      if (primed) return
+      primed = true
+      primeOrderAlertAudio()
+      window.removeEventListener('pointerdown', primeAudio)
+      window.removeEventListener('keydown', primeAudio)
+    }
+
+    window.addEventListener('pointerdown', primeAudio)
+    window.addEventListener('keydown', primeAudio)
+
+    return () => {
+      window.removeEventListener('pointerdown', primeAudio)
+      window.removeEventListener('keydown', primeAudio)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!printQueue.length) return
+
+    const activeOrderId = printQueue[0]
+    const timeout = window.setTimeout(() => {
+      setPrintQueue(prev => prev[0] === activeOrderId ? prev.slice(1) : prev.filter(orderId => orderId !== activeOrderId))
+    }, 20_000)
+
+    return () => window.clearTimeout(timeout)
+  }, [printQueue])
 
   const dismiss = useCallback((id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, dismissed: true } : n))
@@ -111,6 +177,14 @@ export default function NotificationProvider({ children }: { children: React.Rea
   return (
     <NotificationContext.Provider value={{ notifications, dismiss, dismissAll }}>
       {children}
+
+      {printQueue[0] && (
+        <iframe
+          title={`receipt-print-${printQueue[0]}`}
+          src={buildReceiptPrintUrl(printQueue[0], { autoprint: true, embedded: true })}
+          style={{ position: 'fixed', width: 0, height: 0, border: 0, opacity: 0, pointerEvents: 'none' }}
+        />
+      )}
 
       {/* Toast panel */}
       <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 items-end pointer-events-none">
@@ -138,3 +212,4 @@ export default function NotificationProvider({ children }: { children: React.Rea
     </NotificationContext.Provider>
   )
 }
+
