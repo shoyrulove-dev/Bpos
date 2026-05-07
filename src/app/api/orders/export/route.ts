@@ -48,8 +48,9 @@ export async function GET(req: NextRequest) {
 
   const buffer = createWorkbookBuffer([{ name: 'Orders', rows }])
   const filename = getDownloadFilename(`orders-${searchParams.get('fromDate') || 'all'}-${searchParams.get('toDate') || 'all'}`)
+  const body = new Uint8Array(buffer)
 
-  return new NextResponse(buffer, {
+  return new NextResponse(body, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${filename}"`,
