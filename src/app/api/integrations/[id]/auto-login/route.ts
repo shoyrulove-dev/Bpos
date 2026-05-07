@@ -15,7 +15,7 @@ import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { encryptJSON, encrypt, decrypt } from '@/lib/crypto'
-import { normalizeAutomationSession } from '@/lib/automation-session'
+import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/automation-session'
 import { isSessionValid } from '@/services/automation/runner'
 import type { SessionData } from '@/integrations/types'
 
@@ -159,7 +159,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return ok({ requiresOtp: true, otpTarget: data.otpTarget, sessionKey: data.sessionKey })
     }
 
-    const session = normalizeAutomationSession(data)
+    const normalizedSession = normalizeAutomationSession(data)
+    const session = normalizedSession
+      ? applySessionStoreDefaults(normalizedSession, {
+          provider: integ.provider,
+          externalStoreId: integ.externalStoreId ?? body.storeId ?? null,
+          externalStoreName: integ.externalStoreName ?? null,
+        })
+      : null
 
     if (data.success && session) {
       const encryptedSession = encryptJSON(session)

@@ -56,8 +56,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     await IntegrationModel.findByIdAndUpdate(params.id, { syncStatus: 'syncing' })
 
     // ── Auto-login (session) mode ─────────────────────────────────────────────
-    if (intg.loginMode === 'auto' && intg.sessionData && adapter.fetchOrdersWithSession) {
-      if (intg.sessionStatus !== 'active') {
+    if (intg.loginMode === 'auto') {
+      if (!adapter.fetchOrdersWithSession) {
+        return err('Provider này không hỗ trợ session auto-login', 400)
+      }
+      if (!intg.sessionData || intg.sessionStatus !== 'active') {
         return err('Session chưa active – vui lòng đăng nhập lại', 400)
       }
       const isExpired = intg.sessionExpiresAt

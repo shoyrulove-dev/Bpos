@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { decrypt, encryptJSON } from '@/lib/crypto'
-import { normalizeAutomationSession } from '@/lib/automation-session'
+import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/automation-session'
 import type { SessionData } from '@/integrations/types'
 
 const AUTOMATION_URL    = process.env.AUTOMATION_SERVICE_URL ?? ''
@@ -74,6 +74,7 @@ export async function GET(req: NextRequest) {
     automationRunning: false,
     $or: [
       { sessionStatus: 'expired' },
+      { sessionStatus: 'error' },
       { sessionStatus: 'active', sessionExpiresAt: { $lt: thirtyMinFromNow } },
     ],
   }
@@ -145,7 +146,14 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      const session = normalizeAutomationSession(data)
+      const normalizedSession = normalizeAutomationSession(data)
+      const session = normalizedSession
+        ? applySessionStoreDefaults(normalizedSession, {
+            provider: integ.provider,
+            externalStoreId: integ.externalStoreId ?? null,
+            externalStoreName: integ.externalStoreName ?? null,
+          })
+        : null
 
       if (data.success && session) {
         const capturedAt = new Date()

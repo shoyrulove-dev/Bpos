@@ -63,11 +63,11 @@ export class BeAdapter implements PlatformAdapter {
     }
   }
 
-  private async resolveMerchantContext(accessToken: string, restaurantId: number): Promise<{ merchantId: number; userId: number } | null> {
-    const payload = this.parseJwtPayload(accessToken)
-    const userId = Number(payload?.sub ?? 0)
-    if (!userId) return null
-
+  private async getUserProfiles(accessToken: string, userId: number): Promise<Array<{
+    merchant_id?: number
+    merchant_name?: string
+    store_profiles?: Array<{ store_id?: number; store_name?: string }>
+  }> | null> {
     const res = await fetch(`${BE_MERCHANT_BASE}/get_user_profiles`, {
       method: 'POST',
       headers: this.buildMerchantHeaders(),
@@ -86,11 +86,21 @@ export class BeAdapter implements PlatformAdapter {
     const data = await res.json() as {
       data?: Array<{
         merchant_id?: number
-        store_profiles?: Array<{ store_id?: number }>
+        merchant_name?: string
+        store_profiles?: Array<{ store_id?: number; store_name?: string }>
       }>
     }
 
-    const profile = data.data?.find((entry) =>
+    return data.data ?? null
+  }
+
+  private async resolveMerchantContext(accessToken: string, restaurantId: number): Promise<{ merchantId: number; userId: number } | null> {
+    const payload = this.parseJwtPayload(accessToken)
+    const userId = Number(payload?.sub ?? 0)
+    if (!userId) return null
+
+    const profiles = await this.getUserProfiles(accessToken, userId)
+    const profile = profiles?.find((entry) =>
       entry.store_profiles?.some((store) => Number(store.store_id ?? 0) === restaurantId)
     )
 
@@ -98,6 +108,40 @@ export class BeAdapter implements PlatformAdapter {
     if (!merchantId) return null
 
     return { merchantId, userId }
+  }
+
+  private async resolveSessionRestaurant(accessToken: string, restaurantId: string): Promise<{
+    restaurantId: number
+    merchantContext: { merchantId: number; userId: number }
+  } | null> {
+    const configuredRestaurantId = Number(restaurantId)
+    if (configuredRestaurantId) {
+      const merchantContext = await this.resolveMerchantContext(accessToken, configuredRestaurantId)
+      if (!merchantContext) return null
+      return { restaurantId: configuredRestaurantId, merchantContext }
+    }
+
+    const payload = this.parseJwtPayload(accessToken)
+    const userId = Number(payload?.sub ?? 0)
+    if (!userId) return null
+
+    const profiles = await this.getUserProfiles(accessToken, userId)
+    const stores = (profiles ?? []).flatMap((profile) =>
+      (profile.store_profiles ?? []).map((store) => ({
+        merchantId: Number(profile.merchant_id ?? 0),
+        restaurantId: Number(store.store_id ?? 0),
+      }))
+    ).filter((store) => store.merchantId && store.restaurantId)
+
+    if (stores.length !== 1) return null
+
+    return {
+      restaurantId: stores[0].restaurantId,
+      merchantContext: {
+        merchantId: stores[0].merchantId,
+        userId,
+      },
+    }
   }
 
   private getBase(config: AdapterConfig): string {
@@ -249,11 +293,10 @@ export class BeAdapter implements PlatformAdapter {
     const accessToken = this.getSessionAccessToken(session)
     if (!accessToken) return null
 
-    const resId = Number(restaurantId)
-    if (!resId) return null
+    const sessionRestaurant = await this.resolveSessionRestaurant(accessToken, restaurantId)
+    if (!sessionRestaurant) return null
 
-    const merchantContext = await this.resolveMerchantContext(accessToken, resId)
-    if (!merchantContext) return null
+    const { restaurantId: resId, merchantContext } = sessionRestaurant
 
     try {
       const [inProgress, onDelivery, pending] = await Promise.all([

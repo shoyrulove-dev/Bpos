@@ -10,6 +10,12 @@ type LegacyAutomationResponse = {
   storeName?: string
 }
 
+type SessionDefaults = {
+  provider?: string
+  externalStoreId?: string | null
+  externalStoreName?: string | null
+}
+
 function parseTtlSeconds(expiresAt?: string | number): number | undefined {
   if (expiresAt === undefined || expiresAt === null) return undefined
 
@@ -47,5 +53,34 @@ export function normalizeAutomationSession(data: LegacyAutomationResponse): Sess
     extraHeaders,
     capturedAt: new Date().toISOString(),
     sessionTtlSeconds: parseTtlSeconds(data.expiresAt) ?? 8 * 3600,
+  }
+}
+
+export function applySessionStoreDefaults(session: SessionData, defaults: SessionDefaults): SessionData {
+  const extraHeaders = { ...(session.extraHeaders ?? {}) }
+  const storeInfo = { ...(session.storeInfo ?? {}) }
+  const storeId = defaults.externalStoreId?.trim() ?? ''
+  const storeName = defaults.externalStoreName?.trim() ?? ''
+
+  if (!storeId && !storeName) return session
+
+  if (defaults.provider === 'grab') {
+    if (storeId && !extraHeaders['x-grab-store-id']) extraHeaders['x-grab-store-id'] = storeId
+    if (storeName && !extraHeaders['x-grab-store-name']) extraHeaders['x-grab-store-name'] = storeName
+  } else if (defaults.provider === 'be') {
+    if (storeId && !extraHeaders['x-restaurant-id']) extraHeaders['x-restaurant-id'] = storeId
+    if (storeName && !extraHeaders['x-restaurant-name']) extraHeaders['x-restaurant-name'] = storeName
+  } else {
+    if (storeId && !extraHeaders['x-store-id']) extraHeaders['x-store-id'] = storeId
+    if (storeName && !extraHeaders['x-store-name']) extraHeaders['x-store-name'] = storeName
+  }
+
+  if (storeId && !storeInfo.storeId) storeInfo.storeId = storeId
+  if (storeName && !storeInfo.storeName) storeInfo.storeName = storeName
+
+  return {
+    ...session,
+    extraHeaders,
+    storeInfo,
   }
 }

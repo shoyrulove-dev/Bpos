@@ -59,26 +59,31 @@ export async function GET(req: NextRequest) {
       let orders: NormalizedOrder[] = []
 
       // ── Auto-login (session) mode ─────────────────────────────────────────
-      if (intg.loginMode === 'auto' && intg.sessionData && intg.sessionStatus === 'active') {
-        // Check session not expired
+      if (intg.loginMode === 'auto') {
+        if (!adapter.fetchOrdersWithSession) {
+          throw new Error('Provider này không hỗ trợ session auto-login')
+        }
+        if (!intg.sessionData || intg.sessionStatus !== 'active') {
+          throw new Error('Session chưa active – đang chờ refresh hoặc đăng nhập lại')
+        }
+
         const isExpired = intg.sessionExpiresAt
           ? new Date(intg.sessionExpiresAt) < new Date()
           : false
 
-        if (!isExpired && adapter.fetchOrdersWithSession) {
-          const session = decryptJSON(intg.sessionData) as SessionData
-          const storeId = intg.externalStoreId ?? session.extraHeaders?.['x-grab-store-id'] ?? ''
-          const result  = await adapter.fetchOrdersWithSession(session, storeId)
-          if (result !== null) {
-            orders = result
-          } else {
-            // Session returned null = likely expired; mark for refresh
-            await IntegrationModel.findByIdAndUpdate(intg._id, { sessionStatus: 'expired' })
-            throw new Error('Session hết hạn – cần đăng nhập lại')
-          }
-        } else if (isExpired) {
+        if (isExpired) {
           await IntegrationModel.findByIdAndUpdate(intg._id, { sessionStatus: 'expired' })
           throw new Error('Session đã hết hạn – đang chờ refresh')
+        }
+
+        const session = decryptJSON(intg.sessionData) as SessionData
+        const storeId = intg.externalStoreId ?? session.extraHeaders?.['x-grab-store-id'] ?? ''
+        const result  = await adapter.fetchOrdersWithSession(session, storeId)
+        if (result !== null) {
+          orders = result
+        } else {
+          await IntegrationModel.findByIdAndUpdate(intg._id, { sessionStatus: 'expired' })
+          throw new Error('Session hết hạn – cần đăng nhập lại')
         }
       } else {
         // ── API credentials mode ──────────────────────────────────────────
