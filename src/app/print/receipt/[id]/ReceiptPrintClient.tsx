@@ -59,6 +59,11 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
   const searchParams = useSearchParams()
   const autoPrint = searchParams.get('autoprint') === '1'
   const embedded = searchParams.get('embedded') === '1'
+  const paperSize = searchParams.get('paperSize') === '58mm'
+    ? '58mm'
+    : searchParams.get('paperSize') === 'A4'
+    ? 'A4'
+    : '80mm'
 
   const [order, setOrder] = useState<PrintableOrder | null>(null)
   const [error, setError] = useState('')
@@ -153,15 +158,15 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
   }, [order])
 
   if (loading) {
-    return <ReceiptShell><div className="receipt-state">Đang tải phiếu in...</div></ReceiptShell>
+    return <ReceiptShell paperSize={paperSize}><div className="receipt-state">Đang tải phiếu in...</div></ReceiptShell>
   }
 
   if (!order || !viewModel) {
-    return <ReceiptShell><div className="receipt-state receipt-state-error">{error || 'Không tìm thấy đơn hàng'}</div></ReceiptShell>
+    return <ReceiptShell paperSize={paperSize}><div className="receipt-state receipt-state-error">{error || 'Không tìm thấy đơn hàng'}</div></ReceiptShell>
   }
 
   return (
-    <ReceiptShell>
+    <ReceiptShell paperSize={paperSize}>
       <div className="receipt-wrap">
         <header className="receipt-header">
           <div className="receipt-title">PHIẾU LÀM MÓN</div>
@@ -207,12 +212,18 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
   )
 }
 
-function ReceiptShell({ children }: { children: ReactNode }) {
+function ReceiptShell({ children, paperSize }: { children: ReactNode; paperSize: '80mm' | '58mm' | 'A4' }) {
+  const layout = paperSize === '58mm'
+    ? { pageSize: '58mm auto', bodyWidth: '58mm', wrapWidth: '50mm' }
+    : paperSize === 'A4'
+    ? { pageSize: '210mm auto', bodyWidth: '210mm', wrapWidth: '190mm' }
+    : { pageSize: '80mm auto', bodyWidth: '80mm', wrapWidth: '72mm' }
+
   return (
     <>
       <style jsx global>{`
         @page {
-          size: 80mm auto;
+          size: ${layout.pageSize};
           margin: 4mm;
         }
 
@@ -225,12 +236,12 @@ function ReceiptShell({ children }: { children: ReactNode }) {
         }
 
         body {
-          width: 80mm;
+          width: ${layout.bodyWidth};
         }
 
         .receipt-wrap {
           box-sizing: border-box;
-          width: 72mm;
+          width: ${layout.wrapWidth};
           margin: 0 auto;
           padding: 2mm 0 4mm;
         }

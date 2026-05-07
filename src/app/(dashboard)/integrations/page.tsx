@@ -70,6 +70,25 @@ type QtResult     = { loading: boolean; ok?: boolean; message?: string; count?: 
 type AutoLoginForm = { username: string; password: string; otp: string }
 
 const AUTO_PROVIDERS = ['grab', 'be']
+const SESSION_LOGIN_PROVIDERS = ['shopee', 'grab', 'xanh_sm', 'be']
+const LOGIN_PORTAL_LINKS: Record<string, string> = {
+  shopee: 'https://merchant.shopee.vn/portal/login',
+  grab: 'https://portal.grab.com',
+  xanh_sm: 'https://merchant.xanhsm.com/login',
+  be: 'https://merchant.be.com.vn',
+}
+const TARGET_PROVIDER_COUNTS: Partial<Record<string, number>> = {
+  grab: 5,
+  be: 5,
+}
+
+const PROVIDER_NOTES: Partial<Record<string, string>> = {
+  grab: 'Các account Grab đang dùng auto-login merchant portal để lấy đơn và sync lịch sử gần đây.',
+  be: 'Các account Be đang dùng auto-login merchant portal. Có thể login lại từng account ngay trong cột này.',
+  shopee: 'Hôm nay chỉ chuẩn bị khu vực Shopee để quản lý theo sàn. OTP và session Shopee sẽ nhập ở bước sau.',
+  xanh_sm: 'Giữ riêng một cột cho Xanh SM để sau này thêm account không bị trộn với Grab hoặc Be.',
+}
+
 const emptyForm = {
   provider: 'grab', brandId: '', hubId: '', externalStoreId: '', externalStoreName: '',
   loginMode: 'auto' as 'api' | 'auto',
@@ -154,6 +173,7 @@ export default function IntegrationsPage() {
   const [autoLoginMode, setAutoLoginMode] = useState<'auto' | 'manual'>('auto')
   const [autoLoginForm, setAutoLoginForm] = useState<AutoLoginForm>({ username: '', password: '', otp: '' })
   const [manualJwt, setManualJwt]         = useState('')
+  const [manualCookieString, setManualCookieString] = useState('')
   const [manualStoreId, setManualStoreId] = useState('')
   const [autoLoginWaiting, setAutoLoginWaiting] = useState<{ requiresOtp: boolean; otpTarget?: string; sessionKey?: string } | null>(null)
   const [autoLoginResult, setAutoLoginResult]   = useState<{ ok: boolean; message: string } | null>(null)
@@ -164,6 +184,8 @@ export default function IntegrationsPage() {
   const [qtProvider, setQtProvider] = useState('be')
   const [qtCreds, setQtCreds]       = useState<Record<string, string>>({})
   const [qtResult, setQtResult]     = useState<QtResult | null>(null)
+  const [activeProviderTab, setActiveProviderTab] = useState(PROVIDERS[0].value)
+  const autoLoginInteg = autoLoginId ? integrations.find(i => i._id === autoLoginId) ?? null : null
 
   // Live "time ago" ticker — re-renders every 30s so lastSyncAt label refreshes
   const [, setTick] = useState(0)
@@ -175,6 +197,17 @@ export default function IntegrationsPage() {
   // ─── Helpers ─────────────────────────────────────────────────────────────
   const provInfo  = (v: string) => PROVIDERS.find(p => p.value === v)
   const filteredHubs = form.brandId ? hubs.filter(h => h.brandId === form.brandId) : hubs
+  const providerCounts = PROVIDERS.reduce((acc, provider) => {
+    acc[provider.value] = integrations.filter((integration) => integration.provider === provider.value).length
+    return acc
+  }, {} as Record<string, number>)
+  const providerSections = PROVIDERS.map((provider) => ({
+    ...provider,
+    integrations: integrations.filter((integration) => integration.provider === provider.value),
+    target: TARGET_PROVIDER_COUNTS[provider.value],
+    note: PROVIDER_NOTES[provider.value],
+  }))
+  const activeProviderSection = providerSections.find((section) => section.value === activeProviderTab) ?? providerSections[0]
 
   const getBrandName = (integ: Integ) =>
     typeof integ.brandId === 'object' && integ.brandId ? integ.brandId.name : String(integ.brandId ?? '—')
@@ -192,6 +225,157 @@ export default function IntegrationsPage() {
     if (secs < 3600)  return `${Math.floor(secs / 60)}p trước`
     if (secs < 86400) return `${Math.floor(secs / 3600)}h trước`
     return new Date(isoStr).toLocaleDateString('vi-VN')
+  }
+
+  function openCreateModal(provider = 'grab') {
+    setForm({
+      ...emptyForm,
+      provider,
+      loginMode: AUTO_PROVIDERS.includes(provider) ? 'auto' : 'api',
+    })
+    setShowForm(true)
+  }
+
+  function renderIntegrationCard(integ: Integ) {
+    const prov = provInfo(integ.provider)
+    const tr = testResults[integ._id]
+    const sr = syncResults[integ._id]
+    const isPendingSetup = integ.isActive === false
+    const supportsSessionLogin = SESSION_LOGIN_PROVIDERS.includes(integ.provider)
+
+    return (
+      <div key={integ._id} className={cn('rounded-2xl border border-gray-200 bg-white p-4 flex flex-col gap-3 shadow-sm', integ.isActive === false && 'opacity-60')}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+              <ShoppingBag className="w-5 h-5 text-gray-500" />
+            </div>
+            <div className="min-w-0">
+              <span className={cn('badge text-xs', prov?.color ?? 'badge-gray')}>
+                {prov?.label ?? integ.provider}
+              </span>
+              <p className="mt-1 text-sm font-medium text-gray-900 truncate">
+                {integ.externalStoreName || integ.externalStoreId || 'Chưa cấu hình cửa hàng'}
+              </p>
+              <p className="text-xs text-gray-400 truncate">
+                {integ.loginUsername
+                  ? integ.loginUsername
+                  : integ.externalStoreId || 'Chưa có mã cửa hàng'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => { if (confirm('Xóa tích hợp này?')) deleteMutation.mutate(integ._id) }}
+            className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50 shrink-0"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="grid gap-1 text-sm text-gray-600">
+          <p><span className="font-medium">Thương hiệu:</span> {getBrandName(integ)}</p>
+          <p><span className="font-medium">Điểm bán:</span> {getHubName(integ)}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={cn('badge badge-sm',
+              isPendingSetup ? 'badge-gray' :
+              integ.syncStatus === 'success' ? 'badge-green' :
+              integ.syncStatus === 'error' ? 'badge-red' :
+              integ.syncStatus === 'syncing' ? 'badge-blue' : 'badge-gray')}>
+              {isPendingSetup ? 'Chờ cấu hình' :
+               integ.syncStatus === 'success' ? 'Đồng bộ OK' :
+               integ.syncStatus === 'error' ? 'Lỗi đồng bộ' :
+               integ.syncStatus === 'syncing' ? 'Đang sync…' : 'Chưa đồng bộ'}
+            </span>
+            {integ.lastSyncAt && (
+              <span className="text-xs text-gray-400" title={new Date(integ.lastSyncAt).toLocaleString('vi-VN')}>
+                {timeAgo(integ.lastSyncAt)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {isPendingSetup && (
+          <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+            Account này đang được tạo chờ sẵn để nhập OTP hoặc cấu hình chính thức sau. Hiện chưa bật sync tự động.
+          </div>
+        )}
+
+        {integ.loginMode === 'auto' && (
+          <div className={cn('flex items-center gap-1.5 text-xs rounded-lg px-2.5 py-1.5 border',
+            integ.automationRunning
+              ? 'bg-blue-50 border-blue-200 text-blue-700'
+              : integ.sessionStatus === 'active'
+              ? 'bg-green-50 border-green-200 text-green-700'
+              : integ.sessionStatus === 'error'
+              ? 'bg-red-50 border-red-200 text-red-600'
+              : integ.sessionStatus === 'expired'
+              ? 'bg-amber-50 border-amber-200 text-amber-700'
+              : 'bg-gray-50 border-gray-200 text-gray-500')}>
+            {integ.automationRunning
+              ? <><Loader2 className="w-3 h-3 animate-spin shrink-0" /><span>Đang login…</span></>
+              : integ.sessionStatus === 'active'
+              ? <><Wifi className="w-3 h-3 shrink-0" /><span>Session active{integ.sessionExpiresAt ? ` · hết hạn ${new Date(integ.sessionExpiresAt).toLocaleDateString('vi-VN')}` : ''}</span></>
+              : integ.sessionStatus === 'expired'
+              ? <><Clock className="w-3 h-3 shrink-0" /><span>Session hết hạn – cần login lại</span></>
+              : integ.sessionStatus === 'error'
+              ? <><WifiOff className="w-3 h-3 shrink-0" /><span className="truncate">{integ.sessionError ?? 'Lỗi login'}</span></>
+              : <><Clock className="w-3 h-3 shrink-0" /><span>Chưa có session</span></>}
+          </div>
+        )}
+
+        {sr && !sr.loading && (
+          <div className={cn('flex items-start gap-1.5 text-xs rounded-lg px-3 py-2', sr.ok ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-600')}>
+            {sr.ok
+              ? <><RefreshCw className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>+{sr.upserted} mới, {sr.updated} cập nhật</span></>
+              : <><XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>{sr.message}</span></>}
+          </div>
+        )}
+
+        {tr && !tr.loading && (
+          <div className={cn('flex items-start gap-1.5 text-xs rounded-lg px-3 py-2', tr.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>
+            {tr.ok
+              ? <CheckCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              : <XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+            <span>
+              {tr.ok
+                ? `${tr.message ?? 'Kết nối thành công'}${tr.count !== undefined ? ` — ${tr.count} đơn` : ''}`
+                : tr.message}
+            </span>
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-1 border-t border-gray-100">
+          <button onClick={() => openSettings(integ)} className="btn-outline btn-sm flex items-center gap-1 px-2">
+            <Settings className="w-3.5 h-3.5" /> Cài đặt
+          </button>
+          {supportsSessionLogin ? (
+            <button
+              onClick={() => openAutoLogin(integ)}
+              className="btn-outline btn-sm flex items-center gap-1 px-2 text-violet-600 border-violet-200 hover:bg-violet-50"
+            >
+              <KeyRound className="w-3.5 h-3.5" /> Login
+            </button>
+          ) : (
+            <button
+              onClick={() => handleTest(integ._id)}
+              disabled={isPendingSetup || !!tr?.loading}
+              className="btn-outline btn-sm flex items-center gap-1 px-2 text-primary-600 border-primary-200 hover:bg-primary-50 disabled:opacity-50"
+            >
+              {tr?.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlayCircle className="w-3.5 h-3.5" />}
+              {isPendingSetup ? 'Chờ cấu hình' : 'Test'}
+            </button>
+          )}
+          <button
+            onClick={() => handleSync(integ._id)}
+            disabled={isPendingSetup || !!sr?.loading}
+            className="btn-primary btn-sm flex-1 flex items-center gap-1 justify-center disabled:opacity-50"
+          >
+            {sr?.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            {isPendingSetup ? 'Chờ bật' : 'Sync'}
+          </button>
+        </div>
+      </div>
+    )
   }
 
   // ─── Handlers ────────────────────────────────────────────────────────────
@@ -279,10 +463,11 @@ export default function IntegrationsPage() {
 
   const openAutoLogin = (integ: Integ) => {
     setAutoLoginId(integ._id)
-    setAutoLoginMode('auto')
+    setAutoLoginMode(integ.provider === 'shopee' || integ.provider === 'xanh_sm' ? 'manual' : 'auto')
     setAutoLoginForm({ username: integ.loginUsername ?? '', password: '', otp: '' })
     setManualJwt('')
-    setManualStoreId(integ.externalStoreId ?? '')
+    setManualCookieString('')
+    setManualStoreId(integ.provider === 'shopee' || integ.provider === 'xanh_sm' ? '' : integ.externalStoreId ?? '')
     setAutoLoginWaiting(null)
     setAutoLoginResult(null)
   }
@@ -320,24 +505,65 @@ export default function IntegrationsPage() {
   }
 
   const handleManualSession = async () => {
-    if (!autoLoginId || !manualJwt.trim()) return
+    if (!autoLoginId) return
     setAutoLoginLoading(true)
     setAutoLoginResult(null)
     try {
-      const res  = await fetch(`/api/integrations/${autoLoginId}/auto-login`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          manualJwt:  manualJwt.trim(),
-          storeId:    manualStoreId.trim() || undefined,
-          username:   autoLoginForm.username || undefined,
-        }),
-      })
-      const data = await res.json()
-      if (data.data?.success) {
-        setAutoLoginResult({ ok: true, message: 'Session đã được lưu! Cron sẽ tự pull đơn mỗi phút.' })
+      const provider = autoLoginInteg?.provider ?? ''
+
+      if (provider === 'shopee' || provider === 'xanh_sm') {
+        const extraHeaders: Record<string, string> = {}
+        const trimmedToken = manualJwt.trim()
+
+        if (!manualCookieString.trim() && !trimmedToken) {
+          throw new Error('Cần paste cookie hoặc token để lưu session thủ công')
+        }
+
+        if (provider === 'shopee' && trimmedToken) {
+          extraHeaders['x-csrftoken'] = trimmedToken
+        }
+        if (provider === 'xanh_sm' && trimmedToken) {
+          extraHeaders.Authorization = trimmedToken.startsWith('Bearer ') ? trimmedToken : `Bearer ${trimmedToken}`
+        }
+
+        const res = await fetch(`/api/integrations/${autoLoginId}/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cookieString: manualCookieString.trim() || undefined,
+            extraHeaders: Object.keys(extraHeaders).length ? extraHeaders : undefined,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? 'Lỗi lưu session')
+
+        await updateMutation.mutateAsync({
+          id: autoLoginId,
+          loginMode: 'auto',
+          loginUsername: autoLoginForm.username || undefined,
+          externalStoreId: manualStoreId.trim() || undefined,
+        })
+
+        setAutoLoginResult({ ok: true, message: 'Session đã được lưu vào DB. Có thể dùng session này để kiểm thử automation ở bước tiếp theo.' })
         qc.invalidateQueries({ queryKey: ['integrations'] })
       } else {
-        setAutoLoginResult({ ok: false, message: data.error ?? 'Lỗi lưu session' })
+        if (!manualJwt.trim()) throw new Error('Cần JWT token để lưu session thủ công')
+
+        const res  = await fetch(`/api/integrations/${autoLoginId}/auto-login`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            manualJwt:  manualJwt.trim(),
+            storeId:    manualStoreId.trim() || undefined,
+            username:   autoLoginForm.username || undefined,
+          }),
+        })
+        const data = await res.json()
+        if (data.data?.success) {
+          setAutoLoginResult({ ok: true, message: 'Session đã được lưu! Cron sẽ tự pull đơn mỗi phút.' })
+          qc.invalidateQueries({ queryKey: ['integrations'] })
+        } else {
+          setAutoLoginResult({ ok: false, message: data.error ?? 'Lỗi lưu session' })
+        }
       }
     } catch (e) {
       setAutoLoginResult({ ok: false, message: e instanceof Error ? e.message : 'Lỗi mạng' })
@@ -379,7 +605,10 @@ export default function IntegrationsPage() {
         <div>
           <h1 className="page-title">Tích hợp sàn</h1>
           <p className="page-subtitle">
-            {isLoading ? '…' : `${integrations.length} kết nối`} · tự động làm mới mỗi 30s
+            {isLoading
+              ? '…'
+              : `${integrations.length} kết nối · Grab ${providerCounts.grab ?? 0}${TARGET_PROVIDER_COUNTS.grab ? `/${TARGET_PROVIDER_COUNTS.grab}` : ''} · Be ${providerCounts.be ?? 0}${TARGET_PROVIDER_COUNTS.be ? `/${TARGET_PROVIDER_COUNTS.be}` : ''} · Shopee ${providerCounts.shopee ?? 0} · Xanh SM ${providerCounts.xanh_sm ?? 0}`}
+            {' '}· tự động làm mới mỗi 30s
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -394,11 +623,27 @@ export default function IntegrationsPage() {
               Sync tất cả
             </button>
           )}
-          <button onClick={() => setShowForm(true)} className="btn-primary">
+          <button onClick={() => openCreateModal()} className="btn-primary">
             <Plus className="w-4 h-4" /> Thêm tích hợp
           </button>
         </div>
       </div>
+
+      {!isLoading && (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {providerSections.map((section) => (
+            <div key={`${section.value}-summary`} className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className={cn('badge text-xs', section.color)}>{section.label}</span>
+                <span className="text-sm font-semibold text-gray-900">
+                  {section.integrations.length}{section.target ? `/${section.target}` : ''}
+                </span>
+              </div>
+              <p className="mt-3 text-sm text-gray-500">{section.note}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {isLoading && (
         <div className="flex justify-center py-8">
@@ -406,145 +651,80 @@ export default function IntegrationsPage() {
         </div>
       )}
 
-      {/* ── Integration Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {integrations.map(integ => {
-          const prov = provInfo(integ.provider)
-          const tr   = testResults[integ._id]
-          const sr   = syncResults[integ._id]
-          return (
-            <div key={integ._id} className={cn('card p-5 flex flex-col gap-3', integ.isActive === false && 'opacity-60')}>
-
-              {/* Card header */}
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
-                    <ShoppingBag className="w-5 h-5 text-gray-500" />
-                  </div>
-                  <div className="min-w-0">
-                    <span className={cn('badge text-xs', prov?.color ?? 'badge-gray')}>
-                      {prov?.label ?? integ.provider}
-                    </span>
-                    <p className="text-xs text-gray-400 mt-0.5 truncate">
-                      {integ.loginMode === 'auto' && integ.loginUsername
-                        ? <span className="font-mono">{integ.loginUsername}</span>
-                        : integ.externalStoreName || integ.externalStoreId || 'Chưa cấu hình'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => { if (confirm('Xóa tích hợp này?')) deleteMutation.mutate(integ._id) }}
-                  className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50 shrink-0">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Meta info */}
-              <div className="space-y-1 text-sm text-gray-600">
-                <p><span className="font-medium">Thương hiệu:</span> {getBrandName(integ)}</p>
-                <p><span className="font-medium">Điểm bán:</span> {getHubName(integ)}</p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={cn('badge badge-sm',
-                    integ.syncStatus === 'success' ? 'badge-green' :
-                    integ.syncStatus === 'error'   ? 'badge-red'   :
-                    integ.syncStatus === 'syncing' ? 'badge-blue'  : 'badge-gray')}>
-                    {integ.syncStatus === 'success' ? 'Đồng bộ OK' :
-                     integ.syncStatus === 'error'   ? 'Lỗi đồng bộ' :
-                     integ.syncStatus === 'syncing' ? 'Đang sync…'  : 'Chưa đồng bộ'}
-                  </span>
-                  {integ.lastSyncAt && (
-                    <span className="text-xs text-gray-400"
-                      title={new Date(integ.lastSyncAt).toLocaleString('vi-VN')}>
-                      {timeAgo(integ.lastSyncAt)}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Session status badge (auto-login mode) */}
-              {integ.loginMode === 'auto' && (
-                <div className={cn('flex items-center gap-1.5 text-xs rounded-lg px-2.5 py-1.5 border',
-                  integ.automationRunning
-                    ? 'bg-blue-50 border-blue-200 text-blue-700'
-                    : integ.sessionStatus === 'active'
-                    ? 'bg-green-50 border-green-200 text-green-700'
-                    : integ.sessionStatus === 'error'
-                    ? 'bg-red-50 border-red-200 text-red-600'
-                    : integ.sessionStatus === 'expired'
-                    ? 'bg-amber-50 border-amber-200 text-amber-700'
-                    : 'bg-gray-50 border-gray-200 text-gray-500')}>
-                  {integ.automationRunning
-                    ? <><Loader2 className="w-3 h-3 animate-spin shrink-0" /><span>Đang login…</span></>
-                    : integ.sessionStatus === 'active'
-                    ? <><Wifi className="w-3 h-3 shrink-0" /><span>Session active{integ.sessionExpiresAt ? ` · hết hạn ${new Date(integ.sessionExpiresAt).toLocaleDateString('vi-VN')}` : ''}</span></>
-                    : integ.sessionStatus === 'expired'
-                    ? <><Clock className="w-3 h-3 shrink-0" /><span>Session hết hạn – cần login lại</span></>
-                    : integ.sessionStatus === 'error'
-                    ? <><WifiOff className="w-3 h-3 shrink-0" /><span className="truncate">{integ.sessionError ?? 'Lỗi login'}</span></>
-                    : <><Clock className="w-3 h-3 shrink-0" /><span>Chưa có session</span></>
-                  }
-                </div>
-              )}
-
-              {/* Sync result feedback */}
-              {sr && !sr.loading && (
-                <div className={cn('flex items-start gap-1.5 text-xs rounded-lg px-3 py-2',
-                  sr.ok ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-600')}>
-                  {sr.ok
-                    ? <><RefreshCw className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>+{sr.upserted} mới, {sr.updated} cập nhật</span></>
-                    : <><XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>{sr.message}</span></>}
-                </div>
-              )}
-
-              {/* Test result feedback (API mode) */}
-              {tr && !tr.loading && (
-                <div className={cn('flex items-start gap-1.5 text-xs rounded-lg px-3 py-2',
-                  tr.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>
-                  {tr.ok
-                    ? <CheckCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                    : <XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
-                  <span>
-                    {tr.ok
-                      ? `${tr.message ?? 'Kết nối thành công'}${tr.count !== undefined ? ` — ${tr.count} đơn` : ''}`
-                      : tr.message}
-                  </span>
-                </div>
-              )}
-
-              {/* Actions */}
-              <div className="flex gap-2 pt-1 border-t border-gray-100">
-                <button onClick={() => openSettings(integ)}
-                  className="btn-outline btn-sm flex items-center gap-1 px-2">
-                  <Settings className="w-3.5 h-3.5" /> Cài đặt
-                </button>
-                {integ.loginMode === 'auto' ? (
-                  <button onClick={() => openAutoLogin(integ)}
-                    className="btn-outline btn-sm flex items-center gap-1 px-2 text-violet-600 border-violet-200 hover:bg-violet-50">
-                    <KeyRound className="w-3.5 h-3.5" /> Login
-                  </button>
-                ) : (
-                  <button onClick={() => handleTest(integ._id)} disabled={!!tr?.loading}
-                    className="btn-outline btn-sm flex items-center gap-1 px-2 text-primary-600 border-primary-200 hover:bg-primary-50 disabled:opacity-50">
-                    {tr?.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlayCircle className="w-3.5 h-3.5" />}
-                    Test
-                  </button>
+      <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm space-y-4">
+        <div className="flex flex-wrap gap-2 border-b border-gray-100 pb-4">
+          {providerSections.map((section) => {
+            const active = section.value === activeProviderSection.value
+            return (
+              <button
+                key={section.value}
+                onClick={() => setActiveProviderTab(section.value)}
+                className={cn(
+                  'flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-medium transition-all',
+                  active
+                    ? 'border-gray-900 bg-gray-900 text-white shadow-sm'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                 )}
-                <button onClick={() => handleSync(integ._id)} disabled={!!sr?.loading}
-                  className="btn-primary btn-sm flex-1 flex items-center gap-1 justify-center disabled:opacity-50">
-                  {sr?.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                  Sync
-                </button>
-              </div>
-            </div>
-          )
-        })}
+              >
+                <span className={cn('badge text-xs', active ? 'bg-white/15 text-white' : section.color)}>{section.label}</span>
+                <span>{section.integrations.length}{section.target ? `/${section.target}` : ''}</span>
+              </button>
+            )
+          })}
+        </div>
 
-        {!isLoading && integrations.length === 0 && (
-          <div className="col-span-3 text-center py-12 text-gray-400">
-            <ShoppingBag className="w-10 h-10 mx-auto mb-3 text-gray-200" />
-            <p>Chưa có tích hợp sàn nào. Nhấn &quot;Thêm tích hợp&quot; để bắt đầu.</p>
+        <section key={activeProviderSection.value} className="flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <span className={cn('badge text-xs', activeProviderSection.color)}>{activeProviderSection.label}</span>
+              <h2 className="mt-2 text-lg font-semibold text-gray-900">
+                {activeProviderSection.integrations.length} kết nối{activeProviderSection.target ? ` / ${activeProviderSection.target}` : ''}
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">{activeProviderSection.note}</p>
+            </div>
+            <button onClick={() => openCreateModal(activeProviderSection.value)} className="btn-outline btn-sm shrink-0">
+              <Plus className="w-4 h-4" /> Thêm
+            </button>
           </div>
-        )}
+
+          {(activeProviderSection.value === 'shopee' || activeProviderSection.value === 'xanh_sm') && (
+            <div className={cn(
+              'rounded-2xl border px-4 py-3 text-sm',
+              activeProviderSection.value === 'shopee'
+                ? 'border-amber-200 bg-amber-50 text-amber-900'
+                : 'border-teal-200 bg-teal-50 text-teal-900'
+            )}>
+              <p>
+                {activeProviderSection.value === 'shopee'
+                  ? 'Shopee đang ở trạng thái chờ OTP. Hiện mới lưu account placeholder để sau đó anh tự đăng nhập và nhập OTP.'
+                  : 'Xanh SM cũng đang ở trạng thái chờ OTP giống Shopee. Tôi đã tách riêng tab này để lưu account trước, sau đó anh đăng nhập và nhập OTP ở bước tiếp theo.'}
+              </p>
+              <a
+                href={activeProviderSection.value === 'shopee' ? 'https://open.shopeefood.vn/' : 'https://merchant.xanhsm.com/login'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex text-sm font-medium underline underline-offset-2"
+              >
+                {activeProviderSection.value === 'shopee' ? 'Mở trang Shopee để lấy OTP / account' : 'Mở trang đăng nhập Xanh SM'}
+              </a>
+            </div>
+          )}
+
+          <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+            {activeProviderSection.integrations.length > 0 ? (
+              activeProviderSection.integrations.map((integration) => renderIntegrationCard(integration))
+            ) : (
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500 lg:col-span-2 2xl:col-span-3">
+                <ShoppingBag className="w-8 h-8 mx-auto mb-3 text-gray-300" />
+                {activeProviderSection.value === 'shopee'
+                  ? 'Chưa tạo bản ghi Shopee nào. Khi có OTP, có thể thêm hoặc cập nhật account ngay trong tab này.'
+                  : activeProviderSection.value === 'xanh_sm'
+                  ? 'Chưa tạo bản ghi Xanh SM nào. Có thể lưu account chờ OTP ngay trong tab này.'
+                  : 'Chưa có tích hợp nào trong tab này.'}
+              </div>
+            )}
+          </div>
+        </section>
       </div>
 
       {/* ═══ MODAL: Create ══════════════════════════════════════════════════ */}
@@ -561,7 +741,6 @@ export default function IntegrationsPage() {
                 <p className="text-sm text-gray-400 mt-0.5">Kết nối tài khoản sàn bán hàng</p>
               </div>
 
-              {/* Platform picker */}
               <div>
                 <label className="label">Sàn bán hàng</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -585,7 +764,6 @@ export default function IntegrationsPage() {
                 </div>
               </div>
 
-              {/* Brand + Hub */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Thương hiệu <span className="text-red-400">*</span></label>
@@ -605,7 +783,6 @@ export default function IntegrationsPage() {
                 </div>
               </div>
 
-              {/* Auto-login providers (Grab, BE): email + password */}
               {isAuto && (
                 <div className="space-y-3">
                   <div className="bg-violet-50 border border-violet-100 rounded-xl p-3 text-xs text-violet-700">
@@ -648,7 +825,6 @@ export default function IntegrationsPage() {
                 </div>
               )}
 
-              {/* API providers (Shopee, Xanh SM): store ID */}
               {!isAuto && (
                 <div className="space-y-3">
                   <div>
@@ -923,7 +1099,7 @@ export default function IntegrationsPage() {
                       autoLoginMode === 'manual'
                         ? 'border-blue-400 bg-blue-50 text-blue-700'
                         : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
-                    📋 Manual (paste JWT)
+                    📋 Manual (login tay + lưu session)
                   </button>
                 </div>
               </div>
@@ -984,20 +1160,55 @@ export default function IntegrationsPage() {
               {/* ── MANUAL mode ── */}
               {autoLoginMode === 'manual' && !autoLoginResult && (
                 <div className="space-y-3">
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 space-y-1">
-                    <p className="font-medium">Cách lấy JWT token:</p>
-                    <p>1. Mở trình duyệt → đăng nhập vào merchant portal</p>
-                    <p>2. Nhấn <kbd className="bg-white border rounded px-1">F12</kbd> → tab <strong>Application</strong> → <strong>Local Storage</strong></p>
-                    <p>3. Tìm key <code className="bg-white rounded px-1">token</code> hoặc <code className="bg-white rounded px-1">access_token</code> → copy value</p>
-                    <p>4. Hoặc tab <strong>Network</strong> → tìm request → copy header <code className="bg-white rounded px-1">Authorization: Bearer …</code></p>
-                  </div>
+                  {(autoLoginInteg?.provider === 'shopee' || autoLoginInteg?.provider === 'xanh_sm') ? (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 space-y-2">
+                      <p className="font-medium">Flow login tay cho {autoLoginInteg?.provider === 'shopee' ? 'Shopee' : 'Xanh SM'}:</p>
+                      <p>1. Mở trang đăng nhập chính thức và đăng nhập tay bằng tài khoản của anh.</p>
+                      <p>2. Khi sàn yêu cầu OTP, nhập OTP trực tiếp trên portal.</p>
+                      <p>3. Sau khi vào được dashboard, mở DevTools để copy cookie hoặc token rồi dán vào form này để lưu session vào DB.</p>
+                      <a href={LOGIN_PORTAL_LINKS[autoLoginInteg.provider]} target="_blank" rel="noopener noreferrer" className="inline-flex font-medium underline underline-offset-2">
+                        Mở trang đăng nhập {autoLoginInteg.provider === 'shopee' ? 'Shopee Merchant' : 'Xanh SM Merchant'}
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 space-y-1">
+                      <p className="font-medium">Cách lấy JWT token:</p>
+                      <p>1. Mở trình duyệt → đăng nhập vào merchant portal</p>
+                      <p>2. Nhấn <kbd className="bg-white border rounded px-1">F12</kbd> → tab <strong>Application</strong> → <strong>Local Storage</strong></p>
+                      <p>3. Tìm key <code className="bg-white rounded px-1">token</code> hoặc <code className="bg-white rounded px-1">access_token</code> → copy value</p>
+                      <p>4. Hoặc tab <strong>Network</strong> → tìm request → copy header <code className="bg-white rounded px-1">Authorization: Bearer …</code></p>
+                    </div>
+                  )}
+                  {(autoLoginInteg?.provider === 'shopee' || autoLoginInteg?.provider === 'xanh_sm') && (
+                    <div>
+                      <label className="label">Cookie string <span className="text-gray-400 font-normal">(copy từ DevTools)</span></label>
+                      <textarea className="input w-full font-mono text-xs resize-none" rows={4}
+                        placeholder="SPC_CDS=...; SPC_F=...; ..."
+                        value={manualCookieString}
+                        onChange={e => setManualCookieString(e.target.value)} />
+                      <p className="text-xs text-gray-400 mt-1">
+                        Với Shopee nên copy toàn bộ cookie sau khi qua OTP. Với Xanh SM có thể dán cookie hoặc chỉ token ở ô bên dưới.
+                      </p>
+                    </div>
+                  )}
                   <div>
-                    <label className="label">JWT Token (Bearer token)</label>
+                    <label className="label">
+                      {autoLoginInteg?.provider === 'shopee' ? 'CSRF token / SPC_F' : autoLoginInteg?.provider === 'xanh_sm' ? 'JWT token / access token' : 'JWT Token (Bearer token)'}
+                      {(autoLoginInteg?.provider === 'shopee' || autoLoginInteg?.provider === 'xanh_sm') && (
+                        <span className="text-gray-400 font-normal"> {autoLoginInteg?.provider === 'shopee' ? '(tuỳ chọn)' : '(khuyến nghị)'}</span>
+                      )}
+                    </label>
                     <textarea className="input w-full font-mono text-xs resize-none" rows={4}
-                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      placeholder={autoLoginInteg?.provider === 'shopee'
+                        ? 'SPC_F hoặc x-csrftoken nếu cần'
+                        : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'}
                       value={manualJwt}
                       onChange={e => setManualJwt(e.target.value)} />
-                    <p className="text-xs text-gray-400 mt-1">Có thể paste cả chuỗi &quot;Bearer eyJ…&quot; hoặc chỉ phần token sau Bearer</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {autoLoginInteg?.provider === 'shopee'
+                        ? 'Nếu không nhập, hệ thống sẽ tự thử lấy x-csrftoken từ cookie SPC_F.'
+                        : 'Có thể paste cả chuỗi "Bearer eyJ…" hoặc chỉ phần token sau Bearer.'}
+                    </p>
                   </div>
                   <div>
                     <label className="label">Store / Restaurant ID <span className="text-gray-400 font-normal">(tuỳ chọn — dùng để pull đơn)</span></label>
@@ -1050,7 +1261,7 @@ export default function IntegrationsPage() {
               {!autoLoginResult && autoLoginMode === 'manual' && (
                 <button
                   onClick={handleManualSession}
-                  disabled={autoLoginLoading || !manualJwt.trim()}
+                  disabled={autoLoginLoading || ((autoLoginInteg?.provider === 'shopee' || autoLoginInteg?.provider === 'xanh_sm') ? (!manualCookieString.trim() && !manualJwt.trim()) : !manualJwt.trim())}
                   className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50">
                   {autoLoginLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                   Lưu Session

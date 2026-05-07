@@ -10,6 +10,7 @@ import {
   DEFAULT_ORDER_ALERT_SETTINGS,
   loadOrderAlertSettings,
   ORDER_ALERT_POLL_INTERVAL_MS,
+  ORDER_ALERT_VOICE_MESSAGE,
   persistOrderAlertSettings,
   playOrderAlert,
   PRINTER_MODEL_LABEL,
@@ -42,6 +43,8 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [soundEnabled, setSoundEnabled] = useState(DEFAULT_ORDER_ALERT_SETTINGS.soundEnabled)
   const [autoPrintEnabled, setAutoPrintEnabled] = useState(DEFAULT_ORDER_ALERT_SETTINGS.autoPrintEnabled)
+  const [printerName, setPrinterName] = useState(DEFAULT_ORDER_ALERT_SETTINGS.printerName)
+  const [printerPaperSize, setPrinterPaperSize] = useState(DEFAULT_ORDER_ALERT_SETTINGS.printerPaperSize)
 
   const dq = useDebounce(search)
   const { data, isLoading, refetch } = useOrders({ q: dq, status: statusFilter, source: sourceFilter })
@@ -52,6 +55,8 @@ export default function OrdersPage() {
     const settings = loadOrderAlertSettings()
     setSoundEnabled(settings.soundEnabled)
     setAutoPrintEnabled(settings.autoPrintEnabled)
+    setPrinterName(settings.printerName)
+    setPrinterPaperSize(settings.printerPaperSize)
   }, [])
 
   // Count per status for tabs
@@ -61,19 +66,28 @@ export default function OrdersPage() {
     return counts
   }, [orders])
 
-  const updateAlertSettings = (nextSettings: { soundEnabled?: boolean; autoPrintEnabled?: boolean }) => {
+  const updateAlertSettings = (nextSettings: {
+    soundEnabled?: boolean
+    autoPrintEnabled?: boolean
+    printerName?: string
+    printerPaperSize?: typeof DEFAULT_ORDER_ALERT_SETTINGS.printerPaperSize
+  }) => {
     const merged = {
       soundEnabled: nextSettings.soundEnabled ?? soundEnabled,
       autoPrintEnabled: nextSettings.autoPrintEnabled ?? autoPrintEnabled,
+      printerName: (nextSettings.printerName ?? printerName).trim() || DEFAULT_ORDER_ALERT_SETTINGS.printerName,
+      printerPaperSize: nextSettings.printerPaperSize ?? printerPaperSize,
     }
 
     setSoundEnabled(merged.soundEnabled)
     setAutoPrintEnabled(merged.autoPrintEnabled)
+    setPrinterName(merged.printerName)
+    setPrinterPaperSize(merged.printerPaperSize)
     persistOrderAlertSettings(merged)
   }
 
   const handlePrintOrder = (orderId: string) => {
-    const printUrl = buildReceiptPrintUrl(orderId, { autoprint: true })
+    const printUrl = buildReceiptPrintUrl(orderId, { autoprint: true, paperSize: printerPaperSize })
     window.open(printUrl, '_blank', 'noopener,noreferrer,width=430,height=900')
   }
 
@@ -142,11 +156,48 @@ export default function OrdersPage() {
             <div>
               <h2 className="text-base font-semibold text-gray-900">Tự động in và chuông đơn mới</h2>
               <p className="text-sm text-gray-500">
-                Đơn mới đang được kiểm tra mỗi {ORDER_ALERT_POLL_INTERVAL_MS / 1000} giây. Khi bật tự động in, hệ thống sẽ đẩy phiếu 80mm theo mẫu mới sang máy {PRINTER_MODEL_LABEL}.
+                Đơn mới đang được kiểm tra mỗi {ORDER_ALERT_POLL_INTERVAL_MS / 1000} giây. Khi bật tự động in, hệ thống sẽ đẩy phiếu {printerPaperSize} theo mẫu mới sang máy {printerName || PRINTER_MODEL_LABEL}.
               </p>
             </div>
             <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
-              Muốn máy in ra ngay không hiện hộp thoại, máy Windows cần đặt {PRINTER_MODEL_LABEL} làm default printer và mở Chrome bằng chế độ --kiosk-printing. Âm thanh sẽ phát qua loa đang là Default Output của Windows, nên chỉ cần cắm loa vào máy tính và chọn loa đó trong Sound Settings.
+              Muốn máy in ra ngay không hiện hộp thoại, máy Windows cần đặt {printerName || PRINTER_MODEL_LABEL} làm default printer và mở Chrome bằng chế độ --kiosk-printing. Âm thanh sẽ phát bằng giọng nữ đọc câu “{ORDER_ALERT_VOICE_MESSAGE}” qua loa đang là Default Output của Windows.
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Settings máy in</h3>
+                <p className="text-sm text-gray-500">
+                  Nếu dùng máy in khác, nhập lại tên máy, chọn đúng khổ giấy rồi lưu lại. Trình duyệt không thể tự quét danh sách máy in Windows, nên khi đổi máy anh chỉ cần đặt máy đó làm Default Printer là BPOS sẽ in theo cấu hình này.
+                </p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_180px_auto]">
+                <label className="form-group">
+                  <span className="label">Tên máy in</span>
+                  <input
+                    className="input"
+                    value={printerName}
+                    onChange={(event) => setPrinterName(event.target.value)}
+                    onBlur={() => updateAlertSettings({ printerName })}
+                    placeholder={PRINTER_MODEL_LABEL}
+                  />
+                </label>
+                <label className="form-group">
+                  <span className="label">Khổ giấy</span>
+                  <select
+                    className="input"
+                    value={printerPaperSize}
+                    onChange={(event) => updateAlertSettings({ printerPaperSize: event.target.value as typeof DEFAULT_ORDER_ALERT_SETTINGS.printerPaperSize })}
+                  >
+                    <option value="80mm">80mm</option>
+                    <option value="58mm">58mm</option>
+                    <option value="A4">A4</option>
+                  </select>
+                </label>
+                <div className="flex items-end">
+                  <button onClick={() => updateAlertSettings({ printerName, printerPaperSize })} className="btn-outline w-full md:w-auto">
+                    <Printer className="w-4 h-4" /> Lưu máy in
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -163,8 +214,8 @@ export default function OrdersPage() {
             >
               <Printer className="w-4 h-4" /> {autoPrintEnabled ? 'Tự in bật' : 'Tự in tắt'}
             </button>
-            <button onClick={() => playOrderAlert(2)} className="btn-outline">
-              <Volume2 className="w-4 h-4" /> Test chuông
+            <button onClick={() => playOrderAlert(1)} className="btn-outline">
+              <Volume2 className="w-4 h-4" /> Test giọng nói
             </button>
           </div>
         </div>

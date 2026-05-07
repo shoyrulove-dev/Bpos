@@ -1,19 +1,26 @@
 export interface OrderAlertSettings {
   soundEnabled: boolean
   autoPrintEnabled: boolean
+  printerName: string
+  printerPaperSize: '80mm' | '58mm' | 'A4'
 }
 
 export const ORDER_ALERT_POLL_INTERVAL_MS = 5_000
 export const PRINTER_MODEL_LABEL = 'Xprinter XP-T80L (80mm / ESC/POS)'
+export const ORDER_ALERT_VOICE_MESSAGE = 'Anh ơi, Anh có đơn hàng mới ạ!'
 
 const SOUND_SETTING_KEY = 'bpos.order-alert.sound-enabled'
 const AUTO_PRINT_SETTING_KEY = 'bpos.order-alert.auto-print-enabled'
+const PRINTER_NAME_SETTING_KEY = 'bpos.order-alert.printer-name'
+const PRINTER_PAPER_SIZE_SETTING_KEY = 'bpos.order-alert.printer-paper-size'
 const PRINTED_IDS_KEY = 'bpos.order-alert.printed-order-ids'
 const MAX_RECENT_PRINTED_IDS = 120
 
 export const DEFAULT_ORDER_ALERT_SETTINGS: OrderAlertSettings = {
   soundEnabled: true,
   autoPrintEnabled: true,
+  printerName: PRINTER_MODEL_LABEL,
+  printerPaperSize: '80mm',
 }
 
 function getAudioContextClass() {
@@ -32,6 +39,16 @@ function readBooleanSetting(key: string, defaultValue: boolean) {
 function writeBooleanSetting(key: string, value: boolean) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(key, value ? '1' : '0')
+}
+
+function readStringSetting(key: string, defaultValue: string) {
+  if (typeof window === 'undefined') return defaultValue
+  return window.localStorage.getItem(key) || defaultValue
+}
+
+function writeStringSetting(key: string, value: string) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(key, value)
 }
 
 function readRecentPrintedIds() {
@@ -56,19 +73,76 @@ function writeRecentPrintedIds(orderIds: string[]) {
 }
 
 export function loadOrderAlertSettings(): OrderAlertSettings {
+  const printerPaperSize = readStringSetting(PRINTER_PAPER_SIZE_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.printerPaperSize)
+
   return {
     soundEnabled: readBooleanSetting(SOUND_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.soundEnabled),
     autoPrintEnabled: readBooleanSetting(AUTO_PRINT_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.autoPrintEnabled),
+    printerName: readStringSetting(PRINTER_NAME_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.printerName),
+    printerPaperSize: printerPaperSize === '58mm' || printerPaperSize === 'A4' ? printerPaperSize : '80mm',
   }
 }
 
 export function persistOrderAlertSettings(settings: OrderAlertSettings) {
   writeBooleanSetting(SOUND_SETTING_KEY, settings.soundEnabled)
   writeBooleanSetting(AUTO_PRINT_SETTING_KEY, settings.autoPrintEnabled)
+  writeStringSetting(PRINTER_NAME_SETTING_KEY, settings.printerName.trim() || DEFAULT_ORDER_ALERT_SETTINGS.printerName)
+  writeStringSetting(PRINTER_PAPER_SIZE_SETTING_KEY, settings.printerPaperSize)
+}
+
+function pickPreferredVietnameseVoice() {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null
+
+  const voices = window.speechSynthesis.getVoices()
+  const vietnameseVoices = voices.filter((voice) => {
+    const lang = voice.lang.toLowerCase()
+    const name = voice.name.toLowerCase()
+    return lang.includes('vi') || name.includes('viet') || name.includes('hoaimy')
+  })
+
+  const preferredPatterns = ['hoaimy', 'female', 'woman', 'girl', 'natural']
+  for (const pattern of preferredPatterns) {
+    const match = vietnameseVoices.find((voice) => voice.name.toLowerCase().includes(pattern))
+    if (match) return match
+  }
+
+  return vietnameseVoices[0] ?? voices[0] ?? null
+}
+
+function speakAlertMessage(times: number) {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return false
+
+  const synth = window.speechSynthesis
+  const voice = pickPreferredVietnameseVoice()
+  if (!voice) return false
+
+  synth.cancel()
+
+  let spoken = 0
+  const speakOnce = () => {
+    const utterance = new SpeechSynthesisUtterance(ORDER_ALERT_VOICE_MESSAGE)
+    utterance.lang = voice.lang || 'vi-VN'
+    utterance.voice = voice
+    utterance.rate = 0.95
+    utterance.pitch = 1.05
+    utterance.volume = 1
+    utterance.onend = () => {
+      spoken += 1
+      if (spoken < Math.max(1, times)) {
+        window.setTimeout(speakOnce, 250)
+      }
+    }
+    synth.speak(utterance)
+  }
+
+  speakOnce()
+  return true
 }
 
 export function playOrderAlert(times = 3) {
   if (typeof window === 'undefined') return
+
+  if (speakAlertMessage(times)) return
 
   let currentRing = 0
 
@@ -109,6 +183,10 @@ export function primeOrderAlertAudio() {
   if (typeof window === 'undefined') return
 
   try {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.getVoices()
+    }
+
     const AudioContextClass = getAudioContextClass()
     if (!AudioContextClass) return
 
@@ -131,11 +209,13 @@ export function primeOrderAlertAudio() {
   }
 }
 
-export function buildReceiptPrintUrl(orderId: string, options?: { autoprint?: boolean; embedded?: boolean }) {
+export function buildReceiptPrintUrl(orderId: string, options?: { autoprint?: boolean; embedded?: boolean; paperSize?: OrderAlertSettings['printerPaperSize'] }) {
   const searchParams = new URLSearchParams()
+  const settings = loadOrderAlertSettings()
 
   if (options?.autoprint) searchParams.set('autoprint', '1')
   if (options?.embedded) searchParams.set('embedded', '1')
+  searchParams.set('paperSize', options?.paperSize ?? settings.printerPaperSize)
 
   const query = searchParams.toString()
   return query ? `/print/receipt/${orderId}?${query}` : `/print/receipt/${orderId}`

@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     cookieString?: string  // raw "name=value; name2=value2" format from DevTools
   }
 
-  let cookies: PlaywrightCookie[]
+  let cookies: PlaywrightCookie[] = []
 
   if (body.cookies && body.cookies.length > 0) {
     cookies = body.cookies
@@ -48,8 +48,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         sameSite: 'Lax' as const,
       }
     }).filter(c => c.name)
-  } else {
-    return err('Thiếu cookies – gửi kèm cookies hoặc cookieString')
+  }
+
+  const extraHeaders = { ...(body.extraHeaders ?? {}) }
+  if (integ.provider === 'shopee' && !extraHeaders['x-csrftoken']) {
+    const csrfCookie = cookies.find(cookie => cookie.name === 'SPC_F')
+    if (csrfCookie?.value) extraHeaders['x-csrftoken'] = csrfCookie.value
+  }
+
+  if (!cookies.length && !Object.keys(extraHeaders).length) {
+    return err('Thiếu session – gửi cookieString, cookies hoặc extraHeaders')
   }
 
   const automation = getAutomation(integ.provider)
@@ -57,7 +65,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const session: SessionData = {
     cookies,
-    extraHeaders: body.extraHeaders,
+    extraHeaders: Object.keys(extraHeaders).length ? extraHeaders : undefined,
     capturedAt: new Date().toISOString(),
     sessionTtlSeconds: ttl,
   }
@@ -71,6 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     sessionCapturedAt: capturedAt,
     sessionExpiresAt:  expiresAt,
     sessionError:      undefined,
+    automationRunning: false,
     loginMode:         'auto',
   })
 

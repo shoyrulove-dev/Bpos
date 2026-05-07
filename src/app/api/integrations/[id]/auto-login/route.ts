@@ -21,6 +21,7 @@ import type { SessionData } from '@/integrations/types'
 
 const AUTOMATION_URL    = process.env.AUTOMATION_SERVICE_URL ?? ''
 const AUTOMATION_SECRET = process.env.AUTOMATION_SECRET ?? ''
+const SESSION_LOGIN_PROVIDERS = new Set(['shopee', 'grab', 'xanh_sm', 'be'])
 
 // ─── GET – session status ─────────────────────────────────────────────────────
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -55,8 +56,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const integ = await IntegrationModel.findById(params.id).select('+loginPassword')
   if (!integ) return err('Không tìm thấy integration', 404)
 
-  if (integ.loginMode !== 'auto') {
-    return err('Integration này đang ở chế độ API – hãy chuyển sang Auto Login mode trước')
+  if (!SESSION_LOGIN_PROVIDERS.has(integ.provider)) {
+    return err('Provider này chưa hỗ trợ lưu session đăng nhập')
   }
 
   if (integ.automationRunning) {
