@@ -17,14 +17,14 @@ export default function ProductsReportPage() {
     <div className="space-y-5">
       <div className="page-header">
         <div>
-          <h1 className="page-title">HÃ ng bÃ¡n</h1>
-          <p className="page-subtitle">Doanh thu theo sáº£n pháº©m</p>
+          <h1 className="page-title">Hàng bán</h1>
+          <p className="page-subtitle">Doanh thu theo sản phẩm</p>
         </div>
         <div className="flex gap-1">
           {DAYS_OPTIONS.map(d => (
             <button key={d} onClick={() => setDays(d)}
               className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-all', days === d ? 'bg-primary-500 text-white border-primary-500' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}>
-              {d} ngÃ y
+              {d} ngày
             </button>
           ))}
         </div>
@@ -33,9 +33,9 @@ export default function ProductsReportPage() {
       {summary && (
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: 'Sáº£n pháº©m Ä‘Ã£ bÃ¡n', value: (summary.totalProducts ?? 0).toLocaleString('vi-VN') },
-            { label: 'Tá»•ng sá»‘ lÆ°á»£ng', value: (summary.totalQty ?? 0).toLocaleString('vi-VN') },
-            { label: 'Tá»•ng doanh thu', value: formatCurrency(summary.totalRevenue ?? 0) },
+            { label: 'Sản phẩm đã bán', value: (summary.totalProducts ?? 0).toLocaleString('vi-VN') },
+            { label: 'Tổng số lượng', value: (summary.totalQty ?? 0).toLocaleString('vi-VN') },
+            { label: 'Tổng doanh thu', value: formatCurrency(summary.totalRevenue ?? 0) },
           ].map(item => (
             <div key={item.label} className="card p-5">
               <div className="text-sm text-gray-500">{item.label}</div>
@@ -52,11 +52,11 @@ export default function ProductsReportPage() {
           <div className="table-wrapper">
             <table className="table">
               <thead>
-                <tr><th>Háº¡ng</th><th>Sáº£n pháº©m</th><th className="text-right">Sá»‘ lÆ°á»£ng bÃ¡n</th><th className="text-right">Doanh thu</th><th className="text-right">% Tá»•ng DT</th></tr>
+                <tr><th>Hạng</th><th>Sản phẩm</th><th className="text-right">Số lượng bán</th><th className="text-right">Doanh thu</th><th className="text-right">% Tổng DT</th></tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
-                  <tr><td colSpan={5} className="text-center py-12 text-gray-400">KhÃ´ng cÃ³ dá»¯ liá»‡u</td></tr>
+                  <tr><td colSpan={5} className="text-center py-12 text-gray-400">Không có dữ liệu</td></tr>
                 ) : rows.map((p, i) => {
                   const totalRev = summary?.totalRevenue ?? 1
                   const pct = ((Number(p.revenue ?? 0) / totalRev) * 100).toFixed(1)
@@ -71,7 +71,7 @@ export default function ProductsReportPage() {
                             {String(p.name ?? '?')[0]}
                           </div>
                           <div>
-                            <div className="font-medium text-gray-900 text-sm">{String(p.name ?? 'â€”')}</div>
+                            <div className="font-medium text-gray-900 text-sm">{String(p.name ?? '-')}</div>
                             <div className="text-xs font-mono text-gray-400">{String(p.code ?? '')}</div>
                           </div>
                         </div>

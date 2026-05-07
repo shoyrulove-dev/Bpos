@@ -17,14 +17,14 @@ export default function HubsReportPage() {
     <div className="space-y-5">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Theo cá»­a hÃ ng</h1>
-          <p className="page-subtitle">Doanh thu phÃ¢n theo cá»­a hÃ ng</p>
+          <h1 className="page-title">Theo cửa hàng</h1>
+          <p className="page-subtitle">Doanh thu phân theo cửa hàng</p>
         </div>
         <div className="flex gap-1">
           {DAYS_OPTIONS.map(d => (
             <button key={d} onClick={() => setDays(d)}
               className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-all', days === d ? 'bg-primary-500 text-white border-primary-500' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}>
-              {d} ngÃ y
+              {d} ngày
             </button>
           ))}
         </div>
@@ -33,9 +33,9 @@ export default function HubsReportPage() {
       {summary && (
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: 'Tá»•ng Ä‘Æ¡n hÃ ng', value: (summary.totalOrders ?? 0).toLocaleString('vi-VN') },
-            { label: 'Tá»•ng doanh thu', value: formatCurrency(summary.totalRevenue ?? 0) },
-            { label: 'Doanh thu thuáº§n', value: formatCurrency(summary.totalNetRevenue ?? 0) },
+            { label: 'Tổng đơn hàng', value: (summary.totalOrders ?? 0).toLocaleString('vi-VN') },
+            { label: 'Tổng doanh thu', value: formatCurrency(summary.totalRevenue ?? 0) },
+            { label: 'Doanh thu thuần', value: formatCurrency(summary.totalNetRevenue ?? 0) },
           ].map(item => (
             <div key={item.label} className="card p-5">
               <div className="text-sm text-gray-500">{item.label}</div>
@@ -52,11 +52,11 @@ export default function HubsReportPage() {
           <div className="table-wrapper">
             <table className="table">
               <thead>
-                <tr><th>Cá»­a hÃ ng</th><th>GÃ³i dá»‹ch vá»¥</th><th>ThÆ°Æ¡ng hiá»‡u</th><th className="text-right">Sá»‘ Ä‘Æ¡n</th><th className="text-right">Doanh thu</th><th className="text-right">Giáº£m giÃ¡</th><th className="text-right">PhÃ­ NTáº£ng</th></tr>
+                <tr><th>Cửa hàng</th><th>Gói dịch vụ</th><th>Thương hiệu</th><th className="text-right">Số đơn</th><th className="text-right">Doanh thu</th><th className="text-right">Giảm giá</th><th className="text-right">Phí nền tảng</th></tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-12 text-gray-400">KhÃ´ng cÃ³ dá»¯ liá»‡u</td></tr>
+                  <tr><td colSpan={7} className="text-center py-12 text-gray-400">Không có dữ liệu</td></tr>
                 ) : rows.map((hub, i) => (
                   <tr key={String(hub._id ?? i)}>
                     <td>
@@ -67,8 +67,8 @@ export default function HubsReportPage() {
                         <span className="font-medium text-gray-900">{String(hub.name ?? hub._id)}</span>
                       </div>
                     </td>
-                    <td><span className="badge badge-blue text-xs">{String(hub.servicePackage ?? 'â€”')}</span></td>
-                    <td className="text-sm text-gray-500">{String(hub.brandName ?? 'â€”')}</td>
+                    <td><span className="badge badge-blue text-xs">{String(hub.servicePackage ?? '-')}</span></td>
+                    <td className="text-sm text-gray-500">{String(hub.brandName ?? '-')}</td>
                     <td className="text-right font-semibold">{Number(hub.orderCount ?? 0).toLocaleString('vi-VN')}</td>
                     <td className="text-right font-semibold">{formatCurrency(Number(hub.revenue ?? 0))}</td>
                     <td className="text-right text-red-500">-{formatCurrency(Number(hub.discount ?? 0))}</td>
