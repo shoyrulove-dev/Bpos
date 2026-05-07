@@ -5,6 +5,7 @@ import OrderModel from '@/models/Order'
 import SyncLogModel from '@/models/SyncLog'
 import { getAdapter } from '@/integrations/registry'
 import { decryptJSON } from '@/lib/crypto'
+import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
 import { generateId } from '@/lib/utils'
 import type { NormalizedOrder } from '@/types'
 import type { SessionData } from '@/integrations/types'
@@ -77,10 +78,10 @@ export async function GET(req: NextRequest) {
         }
 
         const session = decryptJSON(intg.sessionData) as SessionData
-        const storeId = intg.externalStoreId ?? session.extraHeaders?.['x-grab-store-id'] ?? ''
+        const storeId = buildSessionStoreId(intg.externalStoreId, session)
         const result  = await adapter.fetchOrdersWithSession(session, storeId)
         if (result !== null) {
-          orders = result
+          orders = await mergeSessionOrdersWithRecentHistory(adapter, session, storeId, result)
         } else {
           await IntegrationModel.findByIdAndUpdate(intg._id, { sessionStatus: 'expired' })
           throw new Error('Session hết hạn – cần đăng nhập lại')
@@ -95,11 +96,14 @@ export async function GET(req: NextRequest) {
             ? (rawCreds as Record<string, string>)
             : {}
 
-        orders = await adapter.fetchOrders({
+        const config = {
           ...credObj,
           storeId: credObj.storeId ?? intg.externalStoreId,
           shopId:  credObj.shopId  ?? intg.externalStoreId,
-        })
+        }
+
+        orders = await adapter.fetchOrders(config)
+        orders = await mergeApiOrdersWithRecentHistory(adapter, config, orders)
       }
 
       // ── Upsert orders ─────────────────────────────────────────────────────
@@ -129,6 +133,7 @@ export async function GET(req: NextRequest) {
                 source:        normalized.source,
                 externalOrderId: normalized.externalOrderId,
                 externalStoreId: normalized.externalStoreId,
+                deliveredAt: normalized.deliveredAt ? new Date(normalized.deliveredAt) : undefined,
               },
             },
             { upsert: true, new: true, includeResultMetadata: true }

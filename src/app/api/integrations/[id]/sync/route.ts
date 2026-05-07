@@ -6,6 +6,7 @@ import SyncLogModel from '@/models/SyncLog'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { getAdapter } from '@/integrations/registry'
 import { decryptJSON } from '@/lib/crypto'
+import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
 import { generateId } from '@/lib/utils'
 import type { NormalizedOrder } from '@/types'
 import type { SessionData } from '@/integrations/types'
@@ -72,13 +73,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }
 
       const session = decryptJSON<SessionData>(intg.sessionData)
-      const storeId = intg.externalStoreId ?? session.extraHeaders?.['x-grab-store-id'] ?? ''
+      const storeId = buildSessionStoreId(intg.externalStoreId, session)
       const result  = await adapter.fetchOrdersWithSession(session, storeId)
       if (result === null) {
         await IntegrationModel.findByIdAndUpdate(params.id, { sessionStatus: 'expired' })
         return err('Session hết hạn – đăng nhập lại để tiếp tục', 401)
       }
-      orders = result
+      orders = await mergeSessionOrdersWithRecentHistory(adapter, session, storeId, result)
     } else {
       // ── API credentials mode ────────────────────────────────────────────────
       const rawCreds = intg.credentials as unknown
@@ -89,11 +90,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           ? (rawCreds as Record<string, string>)
           : {}
 
-      orders = await adapter.fetchOrders({
+      const config = {
         ...credObj,
         storeId: credObj.storeId ?? intg.externalStoreId,
         shopId:  credObj.shopId  ?? intg.externalStoreId,
-      })
+      }
+
+      orders = await adapter.fetchOrders(config)
+      orders = await mergeApiOrdersWithRecentHistory(adapter, config, orders)
     }
 
     // ── Upsert orders ─────────────────────────────────────────────────────────
@@ -124,6 +128,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
               source:          normalized.source,
               externalOrderId: normalized.externalOrderId,
               externalStoreId: normalized.externalStoreId,
+              deliveredAt: normalized.deliveredAt ? new Date(normalized.deliveredAt) : undefined,
             },
           },
           { upsert: true, new: true, includeResultMetadata: true }

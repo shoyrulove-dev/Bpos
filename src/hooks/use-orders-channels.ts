@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { ORDER_ALERT_POLL_INTERVAL_MS } from '@/lib/order-alerts'
 
 async function fetchJSON(url: string, opts?: RequestInit) {
   const res = await fetch(url, opts)
@@ -17,7 +18,8 @@ export function useOrders(params?: { q?: string; status?: string; source?: strin
   return useQuery({
     queryKey: ['orders', params],
     queryFn:  () => fetchJSON(`/api/orders?${sp}`),
-    refetchInterval: 30_000,  // near-realtime: poll every 30s for new orders
+    refetchInterval: ORDER_ALERT_POLL_INTERVAL_MS,
+    refetchIntervalInBackground: true,
   })
 }
 
