@@ -14,8 +14,9 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get('status') || ''
   const source = searchParams.get('source') || ''
   const brandId = searchParams.get('brandId') || ''
-  const page = parseInt(searchParams.get('page') || '1')
-  const limit = parseInt(searchParams.get('limit') || '50')
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
+  const requestedLimit = parseInt(searchParams.get('limit') || '10', 10) || 10
+  const limit = Math.min(500, Math.max(1, requestedLimit))
   const filter: Record<string, unknown> = {}
   if (q) filter.$or = [
     { shortId: { $regex: q, $options: 'i' } },
@@ -55,7 +56,9 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  return ok({ orders, total, page, limit, statusCounts })
+  const totalPages = Math.max(1, Math.ceil(total / limit))
+
+  return ok({ orders, total, page, limit, totalPages, statusCounts })
 }
 
 export async function POST(req: NextRequest) {

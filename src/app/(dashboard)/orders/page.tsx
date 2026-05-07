@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Search, RefreshCw, Printer, Eye, X, Phone, MapPin, Package, Truck, BellRing, Volume2, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react'
+import { Search, RefreshCw, Printer, Eye, X, Phone, MapPin, Package, Truck, BellRing, Volume2, ChevronDown, ChevronUp, SlidersHorizontal, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn, formatCurrency, formatDate, ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
@@ -16,6 +16,17 @@ import {
   PRINTER_MODEL_LABEL,
 } from '@/lib/order-alerts'
 import type { Order } from '@/types'
+
+const PAGE_SIZE_OPTIONS = [10, 30, 50, 100, 200, 500] as const
+
+type OrdersResponse = {
+  orders: Order[]
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+  statusCounts?: Record<string, number>
+}
 
 const ALL_STATUSES: { value: string; label: string }[] = [
   { value: '', label: 'Tất cả' },
@@ -40,6 +51,8 @@ export default function OrdersPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [sourceFilter, setSourceFilter] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [showAlertPanel, setShowAlertPanel] = useState(false)
   const [soundEnabled, setSoundEnabled] = useState(DEFAULT_ORDER_ALERT_SETTINGS.soundEnabled)
@@ -48,8 +61,9 @@ export default function OrdersPage() {
   const [printerPaperSize, setPrinterPaperSize] = useState(DEFAULT_ORDER_ALERT_SETTINGS.printerPaperSize)
 
   const dq = useDebounce(search)
-  const { data, isLoading, refetch } = useOrders({ q: dq, status: statusFilter, source: sourceFilter })
-  const orders: Order[] = data?.orders ?? []
+  const { data, isLoading, refetch } = useOrders({ q: dq, status: statusFilter, source: sourceFilter, page, limit: pageSize })
+  const ordersData = data as OrdersResponse | undefined
+  const orders: Order[] = ordersData?.orders ?? []
   const filtered = orders
 
   useEffect(() => {
@@ -60,16 +74,36 @@ export default function OrdersPage() {
     setPrinterPaperSize(settings.printerPaperSize)
   }, [])
 
+  useEffect(() => {
+    setPage(1)
+  }, [dq, statusFilter, sourceFilter, pageSize])
+
+  useEffect(() => {
+    const nextTotalPages = Math.max(1, ordersData?.totalPages ?? 1)
+    if (page > nextTotalPages) {
+      setPage(nextTotalPages)
+    }
+  }, [ordersData?.totalPages, page])
+
   // Count per status for tabs
   const countByStatus = useMemo(() => {
-    const counts: Record<string, number> = { ...(data?.statusCounts ?? {}) }
+    const counts: Record<string, number> = { ...(ordersData?.statusCounts ?? {}) }
 
     if (statusFilter && typeof counts[statusFilter] !== 'number') {
-      counts[statusFilter] = data?.total ?? 0
+      counts[statusFilter] = ordersData?.total ?? 0
     }
 
     return counts
-  }, [data?.statusCounts, data?.total, statusFilter])
+  }, [ordersData?.statusCounts, ordersData?.total, statusFilter])
+
+  const totalOrders = useMemo(() => {
+    const sum = Object.values(countByStatus).reduce((acc, value) => acc + Number(value || 0), 0)
+    return sum || ordersData?.total || 0
+  }, [countByStatus, ordersData?.total])
+
+  const totalPages = Math.max(1, ordersData?.totalPages ?? 1)
+  const currentFrom = ordersData?.total ? (page - 1) * pageSize + 1 : 0
+  const currentTo = ordersData?.total ? Math.min(page * pageSize, ordersData.total) : 0
 
   const updateAlertSettings = (nextSettings: {
     soundEnabled?: boolean
@@ -122,7 +156,7 @@ export default function OrdersPage() {
       {/* Status tabs */}
       <div className="flex overflow-x-auto gap-1 pb-1">
         {ALL_STATUSES.map(s => {
-          const count = s.value ? (countByStatus[s.value] || 0) : orders.length
+          const count = s.value ? (countByStatus[s.value] || 0) : totalOrders
           const active = statusFilter === s.value
           return (
             <button
@@ -167,6 +201,18 @@ export default function OrdersPage() {
 
       {/* Table */}
       <div className="card">
+        <div className="border-b border-gray-100 px-4 py-3">
+          <PaginationControls
+            page={page}
+            pageSize={pageSize}
+            total={ordersData?.total ?? 0}
+            totalPages={totalPages}
+            currentFrom={currentFrom}
+            currentTo={currentTo}
+            onPageChange={setPage}
+            onPageSizeChange={(nextSize) => setPageSize(nextSize)}
+          />
+        </div>
         <div className="table-wrapper">
           <table className="table">
             <thead>
@@ -244,6 +290,18 @@ export default function OrdersPage() {
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="border-t border-gray-100 px-4 py-3">
+          <PaginationControls
+            page={page}
+            pageSize={pageSize}
+            total={ordersData?.total ?? 0}
+            totalPages={totalPages}
+            currentFrom={currentFrom}
+            currentTo={currentTo}
+            onPageChange={setPage}
+            onPageSizeChange={(nextSize) => setPageSize(nextSize)}
+          />
         </div>
       </div>
 
@@ -329,7 +387,7 @@ export default function OrdersPage() {
                 </div>
                 <div className="max-h-40 space-y-3 overflow-y-auto pr-2 text-sm text-orange-900">
                   <p>
-                    Âm thanh đang ưu tiên giọng nữ tiếng Việt mềm và đọc chậm hơn với câu: “{ORDER_ALERT_VOICE_MESSAGE}”. Nếu máy có nhiều voice, trình duyệt sẽ ưu tiên các voice kiểu Hoài My hoặc Linh trước.
+                    BPOS đang ưu tiên phát file âm thanh tiếng Việt đã đóng gói sẵn với câu: “{ORDER_ALERT_VOICE_MESSAGE}”. Khi file này không phát được, hệ thống mới fallback sang voice của trình duyệt.
                   </p>
                   <p>
                     Muốn in thẳng không hiện hộp thoại, máy Windows cần đặt {printerName || PRINTER_MODEL_LABEL} làm default printer và mở Chrome bằng chế độ `--kiosk-printing`.
@@ -348,6 +406,66 @@ export default function OrdersPage() {
       {selectedOrder && (
         <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} onPrint={handlePrintOrder} />
       )}
+    </div>
+  )
+}
+
+function PaginationControls({
+  page,
+  pageSize,
+  total,
+  totalPages,
+  currentFrom,
+  currentTo,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  page: number
+  pageSize: (typeof PAGE_SIZE_OPTIONS)[number]
+  total: number
+  totalPages: number
+  currentFrom: number
+  currentTo: number
+  onPageChange: (page: number) => void
+  onPageSizeChange: (size: (typeof PAGE_SIZE_OPTIONS)[number]) => void
+}) {
+  return (
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
+        <span>
+          {total > 0 ? `Hiển thị ${currentFrom}-${currentTo} / ${total} đơn` : 'Chưa có đơn hàng'}
+        </span>
+        <label className="flex items-center gap-2">
+          <span>Mỗi trang</span>
+          <select
+            className="input h-9 w-24 py-1"
+            value={pageSize}
+            onChange={(event) => onPageSizeChange(Number(event.target.value) as (typeof PAGE_SIZE_OPTIONS)[number])}
+          >
+            {PAGE_SIZE_OPTIONS.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => onPageChange(1)} disabled={page <= 1} className="btn-outline btn-sm disabled:opacity-50">
+          <ChevronsLeft className="w-4 h-4" /> Đầu
+        </button>
+        <button onClick={() => onPageChange(page - 1)} disabled={page <= 1} className="btn-outline btn-sm disabled:opacity-50">
+          <ChevronLeft className="w-4 h-4" /> Trước
+        </button>
+        <span className="px-2 text-sm font-medium text-gray-700">
+          Trang {page} / {totalPages}
+        </span>
+        <button onClick={() => onPageChange(page + 1)} disabled={page >= totalPages} className="btn-outline btn-sm disabled:opacity-50">
+          Sau <ChevronRight className="w-4 h-4" />
+        </button>
+        <button onClick={() => onPageChange(totalPages)} disabled={page >= totalPages} className="btn-outline btn-sm disabled:opacity-50">
+          Cuối <ChevronsRight className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   )
 }

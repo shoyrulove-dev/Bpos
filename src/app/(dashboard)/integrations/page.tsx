@@ -72,7 +72,7 @@ type AutoLoginForm = { username: string; password: string; otp: string }
 const AUTO_PROVIDERS = ['grab', 'be']
 const SESSION_LOGIN_PROVIDERS = ['shopee', 'grab', 'xanh_sm', 'be']
 const LOGIN_PORTAL_LINKS: Record<string, string> = {
-  shopee: 'https://merchant.shopee.vn/portal/login',
+  shopee: 'https://merchant.shopeefood.vn/account/login',
   grab: 'https://portal.grab.com',
   xanh_sm: 'https://merchant.xanhsm.com/login',
   be: 'https://merchant.be.com.vn',
@@ -607,7 +607,7 @@ export default function IntegrationsPage() {
           <p className="page-subtitle">
             {isLoading
               ? '…'
-              : `${integrations.length} kết nối · Grab ${providerCounts.grab ?? 0}${TARGET_PROVIDER_COUNTS.grab ? `/${TARGET_PROVIDER_COUNTS.grab}` : ''} · Be ${providerCounts.be ?? 0}${TARGET_PROVIDER_COUNTS.be ? `/${TARGET_PROVIDER_COUNTS.be}` : ''} · Shopee ${providerCounts.shopee ?? 0} · Xanh SM ${providerCounts.xanh_sm ?? 0}`}
+              : `${integrations.length} kết nối · Grab ${providerCounts.grab ?? 0} · Be ${providerCounts.be ?? 0} · Shopee ${providerCounts.shopee ?? 0} · Xanh SM ${providerCounts.xanh_sm ?? 0}`}
             {' '}· tự động làm mới mỗi 30s
           </p>
         </div>
@@ -628,22 +628,6 @@ export default function IntegrationsPage() {
           </button>
         </div>
       </div>
-
-      {!isLoading && (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {providerSections.map((section) => (
-            <div key={`${section.value}-summary`} className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className={cn('badge text-xs', section.color)}>{section.label}</span>
-                <span className="text-sm font-semibold text-gray-900">
-                  {section.integrations.length}{section.target ? `/${section.target}` : ''}
-                </span>
-              </div>
-              <p className="mt-3 text-sm text-gray-500">{section.note}</p>
-            </div>
-          ))}
-        </div>
-      )}
 
       {isLoading && (
         <div className="flex justify-center py-8">
@@ -700,7 +684,7 @@ export default function IntegrationsPage() {
                   : 'Xanh SM cũng đang ở trạng thái chờ OTP giống Shopee. Tôi đã tách riêng tab này để lưu account trước, sau đó anh đăng nhập và nhập OTP ở bước tiếp theo.'}
               </p>
               <a
-                href={activeProviderSection.value === 'shopee' ? 'https://open.shopeefood.vn/' : 'https://merchant.xanhsm.com/login'}
+                href={activeProviderSection.value === 'shopee' ? LOGIN_PORTAL_LINKS.shopee : LOGIN_PORTAL_LINKS.xanh_sm}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-2 inline-flex text-sm font-medium underline underline-offset-2"

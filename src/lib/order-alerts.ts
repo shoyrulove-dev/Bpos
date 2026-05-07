@@ -8,6 +8,7 @@ export interface OrderAlertSettings {
 export const ORDER_ALERT_POLL_INTERVAL_MS = 5_000
 export const PRINTER_MODEL_LABEL = 'Xprinter XP-T80L (80mm / ESC/POS)'
 export const ORDER_ALERT_VOICE_MESSAGE = 'Anh ơi. Mình có đơn hàng mới. Anh kiểm tra giúp em nhé.'
+const ORDER_ALERT_AUDIO_URL = '/audio/order-alert-vi.mp3?v=20260508'
 
 const SOUND_SETTING_KEY = 'bpos.order-alert.sound-enabled'
 const AUTO_PRINT_SETTING_KEY = 'bpos.order-alert.auto-print-enabled'
@@ -22,6 +23,8 @@ export const DEFAULT_ORDER_ALERT_SETTINGS: OrderAlertSettings = {
   printerName: PRINTER_MODEL_LABEL,
   printerPaperSize: '80mm',
 }
+
+let activeAlertAudio: HTMLAudioElement | null = null
 
 function getAudioContextClass() {
   return window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
@@ -109,6 +112,61 @@ function pickPreferredVietnameseVoice() {
   return vietnameseVoices[0] ?? voices[0] ?? null
 }
 
+function stopActiveAlertAudio() {
+  if (!activeAlertAudio) return
+  activeAlertAudio.pause()
+  activeAlertAudio.currentTime = 0
+  activeAlertAudio = null
+}
+
+function playBundledAlertAudio(times: number, onFailure: () => void) {
+  if (typeof window === 'undefined' || typeof Audio === 'undefined') return false
+
+  stopActiveAlertAudio()
+
+  let played = 0
+
+  const playOnce = () => {
+    const audio = new Audio(ORDER_ALERT_AUDIO_URL)
+    audio.preload = 'auto'
+    audio.volume = 1
+    activeAlertAudio = audio
+
+    audio.onended = () => {
+      played += 1
+      if (played < Math.max(1, times)) {
+        window.setTimeout(playOnce, 220)
+      } else if (activeAlertAudio === audio) {
+        activeAlertAudio = null
+      }
+    }
+
+    audio.onerror = () => {
+      if (activeAlertAudio === audio) {
+        activeAlertAudio = null
+      }
+      if (played === 0) {
+        onFailure()
+      }
+    }
+
+    const playPromise = audio.play()
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {
+        if (activeAlertAudio === audio) {
+          activeAlertAudio = null
+        }
+        if (played === 0) {
+          onFailure()
+        }
+      })
+    }
+  }
+
+  playOnce()
+  return true
+}
+
 function speakAlertMessage(times: number) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return false
 
@@ -142,47 +200,59 @@ function speakAlertMessage(times: number) {
 export function playOrderAlert(times = 3) {
   if (typeof window === 'undefined') return
 
-  if (speakAlertMessage(times)) return
+  const ringFallback = () => {
+    let currentRing = 0
 
-  let currentRing = 0
+    const ring = () => {
+      try {
+        const AudioContextClass = getAudioContextClass()
+        if (!AudioContextClass) return
 
-  const ring = () => {
-    try {
-      const AudioContextClass = getAudioContextClass()
-      if (!AudioContextClass) return
+        const context = new AudioContextClass()
+        const oscillator = context.createOscillator()
+        const gain = context.createGain()
 
-      const context = new AudioContextClass()
-      const oscillator = context.createOscillator()
-      const gain = context.createGain()
+        oscillator.connect(gain)
+        gain.connect(context.destination)
 
-      oscillator.connect(gain)
-      gain.connect(context.destination)
+        oscillator.type = 'sine'
+        oscillator.frequency.setValueAtTime(988, context.currentTime)
+        oscillator.frequency.exponentialRampToValueAtTime(523.25, context.currentTime + 0.35)
+        gain.gain.setValueAtTime(0.45, context.currentTime)
+        gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.6)
 
-      oscillator.type = 'sine'
-      oscillator.frequency.setValueAtTime(988, context.currentTime)
-      oscillator.frequency.exponentialRampToValueAtTime(523.25, context.currentTime + 0.35)
-      gain.gain.setValueAtTime(0.45, context.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.6)
+        oscillator.start(context.currentTime)
+        oscillator.stop(context.currentTime + 0.6)
+      } catch {
+        return
+      }
 
-      oscillator.start(context.currentTime)
-      oscillator.stop(context.currentTime + 0.6)
-    } catch {
-      return
+      currentRing += 1
+      if (currentRing < times) {
+        window.setTimeout(ring, 450)
+      }
     }
 
-    currentRing += 1
-    if (currentRing < times) {
-      window.setTimeout(ring, 450)
-    }
+    ring()
   }
 
-  ring()
+  const fallbackToSpeech = () => {
+    if (speakAlertMessage(times)) return
+    ringFallback()
+  }
+
+  if (playBundledAlertAudio(times, fallbackToSpeech)) return
+  fallbackToSpeech()
 }
 
 export function primeOrderAlertAudio() {
   if (typeof window === 'undefined') return
 
   try {
+    const alertAudio = new Audio(ORDER_ALERT_AUDIO_URL)
+    alertAudio.preload = 'auto'
+    alertAudio.load()
+
     if ('speechSynthesis' in window) {
       window.speechSynthesis.getVoices()
     }
