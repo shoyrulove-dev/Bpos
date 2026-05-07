@@ -1,34 +1,45 @@
 ﻿'use client'
 
-import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useCustomersReport } from '@/hooks/use-data'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
-
-const DAYS_OPTIONS = [7, 30, 90]
+import ReportToolbar from '@/components/reports/ReportToolbar'
+import { useReportDateRange } from '@/hooks/use-report-date-range'
+import { downloadWorkbook } from '@/lib/excel'
 
 export default function CustomersReportPage() {
-  const [days, setDays] = useState(30)
-  const { data, isLoading } = useCustomersReport({ days })
+  const { fromDate, toDate, setFromDate, setToDate, setQuickRange } = useReportDateRange(30)
+  const { data, isLoading } = useCustomersReport({ fromDate, toDate })
   const customers = (data?.rows ?? []) as Record<string, unknown>[]
   const summary = data?.summary as Record<string, number> | undefined
 
+  const handleExport = () => {
+    downloadWorkbook(`bao-cao-khach-hang-${fromDate}-${toDate}`, [{
+      name: 'Khach hang',
+      rows: customers.map((customer, index) => ({
+        'Hạng': index + 1,
+        'Khách hàng': String(customer.name ?? ''),
+        'Số điện thoại': String(customer.phone ?? ''),
+        'Nguồn': String(customer.source ?? ''),
+        'Số đơn': Number(customer.orderCount ?? 0),
+        'Tổng chi tiêu': Number(customer.revenue ?? 0),
+        'Đơn cuối': customer.lastOrderAt ? formatDate(String(customer.lastOrderAt), 'dd/MM/yyyy') : '',
+      })),
+    }])
+  }
+
   return (
     <div className="space-y-5">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Khách hàng</h1>
-          <p className="page-subtitle">{isLoading ? '...' : `${customers.length} khách hàng`}</p>
-        </div>
-        <div className="flex gap-1">
-          {DAYS_OPTIONS.map(d => (
-            <button key={d} onClick={() => setDays(d)}
-              className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-all', days === d ? 'bg-primary-500 text-white border-primary-500' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}>
-              {d} ngày
-            </button>
-          ))}
-        </div>
-      </div>
+      <ReportToolbar
+        title="Khách hàng"
+        subtitle={isLoading ? 'Đang tải dữ liệu khách hàng' : `${customers.length} khách hàng`}
+        fromDate={fromDate}
+        toDate={toDate}
+        onFromDateChange={setFromDate}
+        onToDateChange={setToDate}
+        onQuickRangeChange={setQuickRange}
+        onExport={handleExport}
+      />
 
       {summary && (
         <div className="grid grid-cols-3 gap-4">

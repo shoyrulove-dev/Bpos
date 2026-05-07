@@ -1,34 +1,45 @@
 ﻿'use client'
 
-import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useChannelsReport } from '@/hooks/use-data'
 import { cn, formatCurrency, CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
-
-const DAYS_OPTIONS = [7, 30, 90]
+import ReportToolbar from '@/components/reports/ReportToolbar'
+import { useReportDateRange } from '@/hooks/use-report-date-range'
+import { downloadWorkbook } from '@/lib/excel'
 
 export default function ChannelsReportPage() {
-  const [days, setDays] = useState(30)
-  const { data, isLoading } = useChannelsReport({ days })
+  const { fromDate, toDate, setFromDate, setToDate, setQuickRange } = useReportDateRange(30)
+  const { data, isLoading } = useChannelsReport({ fromDate, toDate })
   const rows = (data?.rows ?? []) as Record<string, unknown>[]
   const summary = data?.summary as Record<string, number> | undefined
 
+  const handleExport = () => {
+    downloadWorkbook(`bao-cao-kenh-ban-${fromDate}-${toDate}`, [{
+      name: 'Kenh ban',
+      rows: rows.map((row) => ({
+        'Kênh bán': String(row.name ?? ''),
+        'Nguồn': CHANNEL_SOURCE_LABEL[String(row.source)] ?? String(row.source ?? ''),
+        'Số đơn': Number(row.orderCount ?? 0),
+        'Doanh thu': Number(row.revenue ?? 0),
+        'Giảm giá': Number(row.discount ?? 0),
+        'Phí nền tảng': Number(row.platformFee ?? 0),
+        'Doanh thu thuần': Number(row.netRevenue ?? 0),
+      })),
+    }])
+  }
+
   return (
     <div className="space-y-5">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Theo kênh bán</h1>
-          <p className="page-subtitle">Doanh thu phân theo kênh đặt hàng</p>
-        </div>
-        <div className="flex gap-1">
-          {DAYS_OPTIONS.map(d => (
-            <button key={d} onClick={() => setDays(d)}
-              className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-all', days === d ? 'bg-primary-500 text-white border-primary-500' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}>
-              {d} ngày
-            </button>
-          ))}
-        </div>
-      </div>
+      <ReportToolbar
+        title="Theo kênh bán"
+        subtitle="Doanh thu phân theo kênh đặt hàng"
+        fromDate={fromDate}
+        toDate={toDate}
+        onFromDateChange={setFromDate}
+        onToDateChange={setToDate}
+        onQuickRangeChange={setQuickRange}
+        onExport={handleExport}
+      />
 
       {summary && (
         <div className="grid grid-cols-3 gap-4">
@@ -60,9 +71,12 @@ export default function ChannelsReportPage() {
                 ) : rows.map((row, i) => (
                   <tr key={String(row._id ?? i)}>
                     <td>
-                      <span className={cn('badge', CHANNEL_SOURCE_COLOR[String(row._id)] ?? 'badge-gray')}>
-                        {CHANNEL_SOURCE_LABEL[String(row._id)] ?? String(row._id)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900">{String(row.name ?? '-')}</span>
+                        <span className={cn('badge', CHANNEL_SOURCE_COLOR[String(row.source)] ?? 'badge-gray')}>
+                          {CHANNEL_SOURCE_LABEL[String(row.source)] ?? String(row.source ?? '')}
+                        </span>
+                      </div>
                     </td>
                     <td className="text-right font-semibold">{Number(row.orderCount ?? 0).toLocaleString('vi-VN')}</td>
                     <td className="text-right">{formatCurrency(Number(row.revenue ?? 0))}</td>

@@ -157,66 +157,82 @@ export function useStats() {
 }
 
 // ---- Revenue report ----
-export function useRevenueReport(params?: { days?: number; brandId?: string }) {
+export function useRevenueReport(params?: { days?: number; brandId?: string; fromDate?: string; toDate?: string }) {
   const sp = new URLSearchParams()
   if (params?.days) sp.set('days', String(params.days))
   if (params?.brandId) sp.set('brandId', params.brandId)
+  if (params?.fromDate) sp.set('fromDate', params.fromDate)
+  if (params?.toDate) sp.set('toDate', params.toDate)
   return useQuery({ queryKey: ['report-revenue', params], queryFn: () => fetchJSON(`/api/reports/revenue?${sp}`) })
 }
 
 // ---- Orders report ----
-export function useOrdersReport(params?: { days?: number; brandId?: string; hubId?: string }) {
+export function useOrdersReport(params?: { days?: number; brandId?: string; hubId?: string; fromDate?: string; toDate?: string }) {
   const sp = new URLSearchParams()
   if (params?.days) sp.set('days', String(params.days))
   if (params?.brandId) sp.set('brandId', params.brandId)
   if (params?.hubId) sp.set('hubId', params.hubId)
+  if (params?.fromDate) sp.set('fromDate', params.fromDate)
+  if (params?.toDate) sp.set('toDate', params.toDate)
   return useQuery({ queryKey: ['report-orders', params], queryFn: () => fetchJSON(`/api/reports/orders?${sp}`) })
 }
 
 // ---- Brands report ----
-export function useBrandsReport(params?: { days?: number }) {
+export function useBrandsReport(params?: { days?: number; fromDate?: string; toDate?: string }) {
   const sp = new URLSearchParams()
   if (params?.days) sp.set('days', String(params.days))
+  if (params?.fromDate) sp.set('fromDate', params.fromDate)
+  if (params?.toDate) sp.set('toDate', params.toDate)
   return useQuery({ queryKey: ['report-brands', params], queryFn: () => fetchJSON(`/api/reports/brands?${sp}`) })
 }
 
 // ---- Channels report ----
-export function useChannelsReport(params?: { days?: number; brandId?: string }) {
+export function useChannelsReport(params?: { days?: number; brandId?: string; fromDate?: string; toDate?: string }) {
   const sp = new URLSearchParams()
   if (params?.days) sp.set('days', String(params.days))
   if (params?.brandId) sp.set('brandId', params.brandId)
+  if (params?.fromDate) sp.set('fromDate', params.fromDate)
+  if (params?.toDate) sp.set('toDate', params.toDate)
   return useQuery({ queryKey: ['report-channels', params], queryFn: () => fetchJSON(`/api/reports/channels?${sp}`) })
 }
 
 // ---- Hubs report ----
-export function useHubsReport(params?: { days?: number; brandId?: string }) {
+export function useHubsReport(params?: { days?: number; brandId?: string; fromDate?: string; toDate?: string }) {
   const sp = new URLSearchParams()
   if (params?.days) sp.set('days', String(params.days))
   if (params?.brandId) sp.set('brandId', params.brandId)
+  if (params?.fromDate) sp.set('fromDate', params.fromDate)
+  if (params?.toDate) sp.set('toDate', params.toDate)
   return useQuery({ queryKey: ['report-hubs', params], queryFn: () => fetchJSON(`/api/reports/hubs?${sp}`) })
 }
 
 // ---- Products report ----
-export function useProductsReport(params?: { days?: number; brandId?: string }) {
+export function useProductsReport(params?: { days?: number; brandId?: string; fromDate?: string; toDate?: string }) {
   const sp = new URLSearchParams()
   if (params?.days) sp.set('days', String(params.days))
   if (params?.brandId) sp.set('brandId', params.brandId)
+  if (params?.fromDate) sp.set('fromDate', params.fromDate)
+  if (params?.toDate) sp.set('toDate', params.toDate)
   return useQuery({ queryKey: ['report-products', params], queryFn: () => fetchJSON(`/api/reports/products?${sp}`) })
 }
 
 // ---- Customers report ----
-export function useCustomersReport(params?: { days?: number; brandId?: string }) {
+export function useCustomersReport(params?: { days?: number; brandId?: string; fromDate?: string; toDate?: string }) {
   const sp = new URLSearchParams()
   if (params?.days) sp.set('days', String(params.days))
   if (params?.brandId) sp.set('brandId', params.brandId)
+  if (params?.fromDate) sp.set('fromDate', params.fromDate)
+  if (params?.toDate) sp.set('toDate', params.toDate)
   return useQuery({ queryKey: ['report-customers', params], queryFn: () => fetchJSON(`/api/reports/customers?${sp}`) })
 }
 
 // ---- Cancelled report ----
-export function useCancelledReport(params?: { days?: number; brandId?: string }) {
+export function useCancelledReport(params?: { days?: number; brandId?: string; fromDate?: string; toDate?: string }) {
   const sp = new URLSearchParams()
   if (params?.days) sp.set('days', String(params.days))
   if (params?.brandId) sp.set('brandId', params.brandId)
+  if (params?.fromDate) sp.set('fromDate', params.fromDate)
+  if (params?.toDate) sp.set('toDate', params.toDate)
   return useQuery({ queryKey: ['report-cancelled', params], queryFn: () => fetchJSON(`/api/reports/cancelled?${sp}`) })
 }
 

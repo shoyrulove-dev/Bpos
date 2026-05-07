@@ -1,12 +1,12 @@
 ﻿'use client'
 
-import { useState } from 'react'
 import { useRevenueReport } from '@/hooks/use-data'
 import { formatCurrency, formatNumber } from '@/lib/utils'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { TrendingUp, ShoppingCart, DollarSign, Receipt, Loader2 } from 'lucide-react'
-
-const RANGES = [{ label: '7 ngày', days: 7 }, { label: '30 ngày', days: 30 }, { label: '90 ngày', days: 90 }]
+import ReportToolbar from '@/components/reports/ReportToolbar'
+import { useReportDateRange } from '@/hooks/use-report-date-range'
+import { downloadWorkbook } from '@/lib/excel'
 
 const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) => {
   if (active && payload && payload.length) {
@@ -21,8 +21,8 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
 }
 
 export default function RevenueReportPage() {
-  const [days, setDays] = useState(30)
-  const { data: report, isLoading } = useRevenueReport({ days })
+  const { fromDate, toDate, setFromDate, setToDate, setQuickRange } = useReportDateRange(30)
+  const { data: report, isLoading } = useRevenueReport({ fromDate, toDate })
 
   const summary = (report?.summary ?? {}) as Record<string, number>
   const rows = (report?.data ?? []) as Record<string, number>[]
@@ -40,19 +40,43 @@ export default function RevenueReportPage() {
     phiSan: Math.round((d.platformFee ?? 0) / 1000),
   }))
 
+  const handleExport = () => {
+    downloadWorkbook(`bao-cao-doanh-thu-${fromDate}-${toDate}`, [
+      {
+        name: 'Tong quan',
+        rows: [{
+          'Tổng đơn hàng': summary.totalOrders ?? 0,
+          'Doanh thu gộp': summary.revenue ?? 0,
+          'Giảm giá': summary.discount ?? 0,
+          'Phí nền tảng': summary.platformFee ?? 0,
+          'Doanh thu thực': (summary.revenue ?? 0) - (summary.platformFee ?? 0) - (summary.discount ?? 0),
+        }],
+      },
+      {
+        name: 'Theo ngay',
+        rows: rows.map((row) => ({
+          'Ngày': String(row.date ?? ''),
+          'Số đơn': Number(row.orders ?? 0),
+          'Doanh thu': Number(row.revenue ?? 0),
+          'Giảm giá': Number(row.discount ?? 0),
+          'Phí nền tảng': Number(row.platformFee ?? 0),
+        })),
+      },
+    ])
+  }
+
   return (
     <div className="space-y-5">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Doanh thu tổng quan</h1>
-          <p className="page-subtitle">Số liệu {days} ngày qua</p>
-        </div>
-        <div className="flex gap-2">
-          {RANGES.map(r => (
-            <button key={r.days} onClick={() => setDays(r.days)} className={days === r.days ? 'btn-primary btn-sm' : 'btn-outline btn-sm'}>{r.label}</button>
-          ))}
-        </div>
-      </div>
+      <ReportToolbar
+        title="Doanh thu tổng quan"
+        subtitle="Doanh thu theo khoảng ngày đã chọn"
+        fromDate={fromDate}
+        toDate={toDate}
+        onFromDateChange={setFromDate}
+        onToDateChange={setToDate}
+        onQuickRangeChange={setQuickRange}
+        onExport={handleExport}
+      />
 
       {isLoading && <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-primary-400" /></div>}
 

@@ -1,34 +1,47 @@
 ﻿'use client'
 
-import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useOrdersReport } from '@/hooks/use-data'
 import { cn, formatCurrency, formatDate, ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
-
-const DAYS_OPTIONS = [7, 30, 90]
+import ReportToolbar from '@/components/reports/ReportToolbar'
+import { useReportDateRange } from '@/hooks/use-report-date-range'
+import { downloadWorkbook } from '@/lib/excel'
 
 export default function OrdersReportPage() {
-  const [days, setDays] = useState(30)
-  const { data, isLoading } = useOrdersReport({ days })
+  const { fromDate, toDate, setFromDate, setToDate, setQuickRange } = useReportDateRange(30)
+  const { data, isLoading } = useOrdersReport({ fromDate, toDate })
   const orders = (data?.rows ?? []) as Record<string, unknown>[]
   const summary = data?.summary as Record<string, number> | undefined
 
+  const handleExport = () => {
+    downloadWorkbook(`bao-cao-don-hang-${fromDate}-${toDate}`, [{
+      name: 'Don hang',
+      rows: orders.map((order) => ({
+        'Mã đơn': String(order.shortId ?? ''),
+        'Khách hàng': String(order.customerName ?? ''),
+        'Kênh': CHANNEL_SOURCE_LABEL[String(order.source)] ?? String(order.source ?? ''),
+        'Thương hiệu': String(order.brandName ?? ''),
+        'Tổng tiền': Number(order.total ?? 0),
+        'Giảm giá': Number(order.discount ?? 0),
+        'Phí nền tảng': Number(order.platformFee ?? 0),
+        'Ngày đặt': order.placedAt ? formatDate(String(order.placedAt), 'dd/MM/yyyy HH:mm') : '',
+        'Trạng thái': ORDER_STATUS_LABEL[String(order.status)] ?? String(order.status ?? ''),
+      })),
+    }])
+  }
+
   return (
     <div className="space-y-5">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Doanh thu theo đơn hàng</h1>
-          <p className="page-subtitle">{isLoading ? '...' : `${orders.length} đơn trong kỳ`}</p>
-        </div>
-        <div className="flex gap-1">
-          {DAYS_OPTIONS.map(d => (
-            <button key={d} onClick={() => setDays(d)}
-              className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-all', days === d ? 'bg-primary-500 text-white border-primary-500' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}>
-              {d} ngày
-            </button>
-          ))}
-        </div>
-      </div>
+      <ReportToolbar
+        title="Doanh thu theo đơn hàng"
+        subtitle={isLoading ? 'Đang tải dữ liệu đơn hàng' : `${orders.length} đơn trong kỳ`}
+        fromDate={fromDate}
+        toDate={toDate}
+        onFromDateChange={setFromDate}
+        onToDateChange={setToDate}
+        onQuickRangeChange={setQuickRange}
+        onExport={handleExport}
+      />
 
       {summary && (
         <div className="grid grid-cols-4 gap-4">

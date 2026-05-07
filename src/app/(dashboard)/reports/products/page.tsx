@@ -1,34 +1,43 @@
 ﻿'use client'
 
-import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useProductsReport } from '@/hooks/use-data'
 import { cn, formatCurrency } from '@/lib/utils'
-
-const DAYS_OPTIONS = [7, 30, 90]
+import ReportToolbar from '@/components/reports/ReportToolbar'
+import { useReportDateRange } from '@/hooks/use-report-date-range'
+import { downloadWorkbook } from '@/lib/excel'
 
 export default function ProductsReportPage() {
-  const [days, setDays] = useState(30)
-  const { data, isLoading } = useProductsReport({ days })
+  const { fromDate, toDate, setFromDate, setToDate, setQuickRange } = useReportDateRange(30)
+  const { data, isLoading } = useProductsReport({ fromDate, toDate })
   const rows = (data?.rows ?? []) as Record<string, unknown>[]
   const summary = data?.summary as Record<string, number> | undefined
 
+  const handleExport = () => {
+    downloadWorkbook(`bao-cao-hang-ban-${fromDate}-${toDate}`, [{
+      name: 'Hang ban',
+      rows: rows.map((product, index) => ({
+        'Hạng': index + 1,
+        'Sản phẩm': String(product.name ?? ''),
+        'Mã': String(product.code ?? ''),
+        'Số lượng bán': Number(product.soldQty ?? 0),
+        'Doanh thu': Number(product.revenue ?? 0),
+      })),
+    }])
+  }
+
   return (
     <div className="space-y-5">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Hàng bán</h1>
-          <p className="page-subtitle">Doanh thu theo sản phẩm</p>
-        </div>
-        <div className="flex gap-1">
-          {DAYS_OPTIONS.map(d => (
-            <button key={d} onClick={() => setDays(d)}
-              className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-all', days === d ? 'bg-primary-500 text-white border-primary-500' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}>
-              {d} ngày
-            </button>
-          ))}
-        </div>
-      </div>
+      <ReportToolbar
+        title="Hàng bán"
+        subtitle="Doanh thu theo sản phẩm"
+        fromDate={fromDate}
+        toDate={toDate}
+        onFromDateChange={setFromDate}
+        onToDateChange={setToDate}
+        onQuickRangeChange={setQuickRange}
+        onExport={handleExport}
+      />
 
       {summary && (
         <div className="grid grid-cols-3 gap-4">

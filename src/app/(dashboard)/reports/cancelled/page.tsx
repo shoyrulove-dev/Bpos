@@ -1,34 +1,44 @@
 ﻿'use client'
 
-import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useCancelledReport } from '@/hooks/use-data'
 import { cn, formatCurrency, formatDate, CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
-
-const DAYS_OPTIONS = [7, 30, 90]
+import ReportToolbar from '@/components/reports/ReportToolbar'
+import { useReportDateRange } from '@/hooks/use-report-date-range'
+import { downloadWorkbook } from '@/lib/excel'
 
 export default function CancelledReportPage() {
-  const [days, setDays] = useState(30)
-  const { data, isLoading } = useCancelledReport({ days })
+  const { fromDate, toDate, setFromDate, setToDate, setQuickRange } = useReportDateRange(30)
+  const { data, isLoading } = useCancelledReport({ fromDate, toDate })
   const rows = (data?.rows ?? []) as Record<string, unknown>[]
   const summary = data?.summary as { totalCancelled?: number; totalLostRevenue?: number; reasons?: { reason: string; count: number }[] } | undefined
 
+  const handleExport = () => {
+    downloadWorkbook(`bao-cao-don-huy-${fromDate}-${toDate}`, [{
+      name: 'Don huy',
+      rows: rows.map((order) => ({
+        'Mã đơn': String(order.shortId ?? ''),
+        'Khách hàng': String(order.customerName ?? ''),
+        'Kênh': CHANNEL_SOURCE_LABEL[String(order.source)] ?? String(order.source ?? ''),
+        'Tổng tiền': Number(order.total ?? 0),
+        'Lý do hủy': String(order.cancelReason ?? ''),
+        'Thời gian hủy': order.cancelledAt ? formatDate(String(order.cancelledAt), 'dd/MM/yyyy HH:mm') : '',
+      })),
+    }])
+  }
+
   return (
     <div className="space-y-5">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Báo cáo đơn hủy</h1>
-          <p className="page-subtitle">{isLoading ? '...' : `${rows.length} đơn bị hủy`}</p>
-        </div>
-        <div className="flex gap-1">
-          {DAYS_OPTIONS.map(d => (
-            <button key={d} onClick={() => setDays(d)}
-              className={cn('px-3 py-1.5 rounded-lg text-sm font-medium border transition-all', days === d ? 'bg-primary-500 text-white border-primary-500' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50')}>
-              {d} ngày
-            </button>
-          ))}
-        </div>
-      </div>
+      <ReportToolbar
+        title="Báo cáo đơn hủy"
+        subtitle={isLoading ? 'Đang tải đơn hủy' : `${rows.length} đơn bị hủy`}
+        fromDate={fromDate}
+        toDate={toDate}
+        onFromDateChange={setFromDate}
+        onToDateChange={setToDate}
+        onQuickRangeChange={setQuickRange}
+        onExport={handleExport}
+      />
 
       <div className="grid grid-cols-3 gap-4">
         <div className="card p-5">

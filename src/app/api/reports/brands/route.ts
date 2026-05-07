@@ -3,21 +3,22 @@ import { connectDB } from '@/lib/db'
 import OrderModel from '@/models/Order'
 import BrandModel from '@/models/Brand'
 import { ok, requireAuth } from '@/lib/api-helpers'
+import { resolveDateRange } from '@/lib/date-range'
 
 export async function GET(req: NextRequest) {
   const { res } = await requireAuth(req)
   if (res) return res
   await connectDB()
   const { searchParams } = new URL(req.url)
-  const days = parseInt(searchParams.get('days') || '30')
-  const from = new Date()
-  from.setDate(from.getDate() - days)
-  from.setHours(0, 0, 0, 0)
+  const { from, to } = resolveDateRange(searchParams, { defaultDays: 30 })
 
   const brands = await BrandModel.find().lean()
 
   const orders = await OrderModel.find({
-    placedAt: { $gte: from },
+    placedAt: {
+      ...(from ? { $gte: from } : {}),
+      ...(to ? { $lte: to } : {}),
+    },
     status: { $ne: 'cancelled' },
   }).select('brandId total discount platformFee status').lean()
 
@@ -43,6 +44,9 @@ export async function GET(req: NextRequest) {
     totalBrands: brands.length,
     totalOrders: orders.length,
     revenue: orders.reduce((s, o) => s + (o.total || 0), 0),
+    totalRevenue: orders.reduce((s, o) => s + (o.total || 0), 0),
+    totalDiscount: orders.reduce((s, o) => s + (o.discount || 0), 0),
+    totalNetRevenue: orders.reduce((s, o) => s + ((o.total || 0) - (o.discount || 0) - (o.platformFee || 0)), 0),
   }
 
   return ok({ rows, summary })

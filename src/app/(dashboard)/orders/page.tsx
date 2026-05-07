@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Search, RefreshCw, Printer, Eye, X, Phone, MapPin, Package, Truck, BellRing, Volume2, ChevronDown, ChevronUp, SlidersHorizontal, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Loader2 } from 'lucide-react'
+import { Search, RefreshCw, Printer, Eye, X, Phone, MapPin, Package, Truck, BellRing, Volume2, ChevronDown, ChevronUp, SlidersHorizontal, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Loader2, Download } from 'lucide-react'
 import { useOrder, useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn, formatCurrency, formatDate, ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
+import { formatDateInput } from '@/lib/date-range'
 import {
   buildReceiptPrintUrl,
   DEFAULT_ORDER_ALERT_SETTINGS,
@@ -48,9 +49,12 @@ const SOURCES = [
 ]
 
 export default function OrdersPage() {
+  const today = formatDateInput(new Date())
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [sourceFilter, setSourceFilter] = useState('')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState(today)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10)
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
@@ -68,6 +72,8 @@ export default function OrdersPage() {
     source: sourceFilter,
     page,
     limit: pageSize,
+    fromDate,
+    toDate,
     pollingEnabled,
   })
   const ordersData = data as OrdersResponse | undefined
@@ -86,7 +92,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [dq, statusFilter, sourceFilter, pageSize])
+  }, [dq, statusFilter, sourceFilter, fromDate, toDate, pageSize])
 
   useEffect(() => {
     const nextTotalPages = Math.max(1, ordersData?.totalPages ?? 1)
@@ -140,6 +146,16 @@ export default function OrdersPage() {
     window.open(printUrl, '_blank', 'noopener,noreferrer,width=430,height=900')
   }
 
+  const handleExportOrders = () => {
+    const sp = new URLSearchParams()
+    if (dq) sp.set('q', dq)
+    if (statusFilter) sp.set('status', statusFilter)
+    if (sourceFilter) sp.set('source', sourceFilter)
+    if (fromDate) sp.set('fromDate', fromDate)
+    if (toDate) sp.set('toDate', toDate)
+    window.open(`/api/orders/export?${sp.toString()}`, '_blank', 'noopener,noreferrer')
+  }
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -159,6 +175,9 @@ export default function OrdersPage() {
           </button>
           <button onClick={() => refetch()} disabled={isLoading} className="btn-outline">
             <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} /> Làm mới
+          </button>
+          <button onClick={handleExportOrders} className="btn-outline">
+            <Download className="w-4 h-4" /> Export Excel
           </button>
         </div>
       </div>
@@ -206,6 +225,14 @@ export default function OrdersPage() {
           <select className="input w-40" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}>
             {SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
+          <label className="flex min-w-[160px] flex-col gap-1 text-xs font-medium text-gray-500">
+            <span>Từ ngày</span>
+            <input type="date" className="input" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+          </label>
+          <label className="flex min-w-[160px] flex-col gap-1 text-xs font-medium text-gray-500">
+            <span>Đến ngày</span>
+            <input type="date" className="input" value={toDate} onChange={e => setToDate(e.target.value)} max={today} />
+          </label>
         </div>
       </div>
 

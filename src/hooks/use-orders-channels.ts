@@ -8,7 +8,7 @@ async function fetchJSON(url: string, opts?: RequestInit) {
 }
 
 // ---- Orders ----
-export function useOrders(params?: { q?: string; status?: string; source?: string; brandId?: string; page?: number; limit?: number; pollingEnabled?: boolean }) {
+export function useOrders(params?: { q?: string; status?: string; source?: string; brandId?: string; page?: number; limit?: number; fromDate?: string; toDate?: string; pollingEnabled?: boolean }) {
   const sp = new URLSearchParams()
   if (params?.q) sp.set('q', params.q)
   if (params?.status) sp.set('status', params.status)
@@ -16,6 +16,8 @@ export function useOrders(params?: { q?: string; status?: string; source?: strin
   if (params?.brandId) sp.set('brandId', params.brandId)
   if (params?.page) sp.set('page', String(params.page))
   if (params?.limit) sp.set('limit', String(params.limit))
+  if (params?.fromDate) sp.set('fromDate', params.fromDate)
+  if (params?.toDate) sp.set('toDate', params.toDate)
   return useQuery({
     queryKey: ['orders', params],
     queryFn:  () => fetchJSON(`/api/orders?${sp}`),

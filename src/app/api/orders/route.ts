@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { connectDB } from '@/lib/db'
 import OrderModel from '@/models/Order'
 import { ok, err, requireAuth } from '@/lib/api-helpers'
+import { buildOrderFilterFromSearchParams } from '@/lib/order-query'
 
 const ORDER_STATUS_KEYS = ['draft', 'pre_order', 'waiting_confirm', 'waiting_pickup', 'delivering', 'completed', 'cancelled'] as const
 const ORDER_LIST_SELECT = 'shortId source externalOrderId brandId hubId customerName customerPhone items.name items.quantity discount total status placedAt'
@@ -25,24 +26,10 @@ export async function GET(req: NextRequest) {
   await connectDB()
   const { searchParams } = new URL(req.url)
   const q = searchParams.get('q') || ''
-  const status = searchParams.get('status') || ''
-  const source = searchParams.get('source') || ''
-  const brandId = searchParams.get('brandId') || ''
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
   const requestedLimit = parseInt(searchParams.get('limit') || '10', 10) || 10
   const limit = Math.min(500, Math.max(1, requestedLimit))
-  const filter: Record<string, unknown> = {}
-  if (q) filter.$or = [
-    { shortId: { $regex: q, $options: 'i' } },
-    { customerName: { $regex: q, $options: 'i' } },
-    { customerPhone: { $regex: q, $options: 'i' } },
-  ]
-  if (status) {
-    const statuses = status.split(',').map(s => s.trim()).filter(Boolean)
-    filter.status = statuses.length === 1 ? statuses[0] : { $in: statuses }
-  }
-  if (source) filter.source = source
-  if (brandId) filter.brandId = brandId
+  const filter = buildOrderFilterFromSearchParams(searchParams)
   const countFilter = { ...filter }
   delete countFilter.status
   const skip = (page - 1) * limit

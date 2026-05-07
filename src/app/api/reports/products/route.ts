@@ -2,20 +2,21 @@ import { NextRequest } from 'next/server'
 import { connectDB } from '@/lib/db'
 import OrderModel from '@/models/Order'
 import { ok, requireAuth } from '@/lib/api-helpers'
+import { resolveDateRange } from '@/lib/date-range'
 
 export async function GET(req: NextRequest) {
   const { res } = await requireAuth(req)
   if (res) return res
   await connectDB()
   const { searchParams } = new URL(req.url)
-  const days = parseInt(searchParams.get('days') || '30')
   const brandId = searchParams.get('brandId') || ''
-  const from = new Date()
-  from.setDate(from.getDate() - days)
-  from.setHours(0, 0, 0, 0)
+  const { from, to } = resolveDateRange(searchParams, { defaultDays: 30 })
 
   const filter: Record<string, unknown> = {
-    placedAt: { $gte: from },
+    placedAt: {
+      ...(from ? { $gte: from } : {}),
+      ...(to ? { $lte: to } : {}),
+    },
     status: { $ne: 'cancelled' },
   }
   if (brandId) filter.brandId = brandId
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
   }
 
   const rows = Object.entries(productMap)
-    .map(([id, v]) => ({ id, ...v }))
+    .map(([id, v]) => ({ _id: id, soldQty: v.quantity, code: '', ...v }))
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 100)
 
@@ -44,6 +45,8 @@ export async function GET(req: NextRequest) {
     totalProducts: rows.length,
     totalQuantity: rows.reduce((s, r) => s + r.quantity, 0),
     revenue: rows.reduce((s, r) => s + r.revenue, 0),
+    totalQty: rows.reduce((s, r) => s + r.quantity, 0),
+    totalRevenue: rows.reduce((s, r) => s + r.revenue, 0),
   }
 
   return ok({ rows, summary })

@@ -3,24 +3,25 @@ import { connectDB } from '@/lib/db'
 import OrderModel from '@/models/Order'
 import ChannelModel from '@/models/Channel'
 import { ok, requireAuth } from '@/lib/api-helpers'
+import { resolveDateRange } from '@/lib/date-range'
 
 export async function GET(req: NextRequest) {
   const { res } = await requireAuth(req)
   if (res) return res
   await connectDB()
   const { searchParams } = new URL(req.url)
-  const days = parseInt(searchParams.get('days') || '30')
   const brandId = searchParams.get('brandId') || ''
-  const from = new Date()
-  from.setDate(from.getDate() - days)
-  from.setHours(0, 0, 0, 0)
+  const { from, to } = resolveDateRange(searchParams, { defaultDays: 30 })
 
   const channelFilter: Record<string, unknown> = {}
   if (brandId) channelFilter.brandId = brandId
   const channels = await ChannelModel.find(channelFilter).lean()
 
   const orderFilter: Record<string, unknown> = {
-    placedAt: { $gte: from },
+    placedAt: {
+      ...(from ? { $gte: from } : {}),
+      ...(to ? { $lte: to } : {}),
+    },
     status: { $ne: 'cancelled' },
   }
   if (brandId) orderFilter.brandId = brandId
@@ -48,6 +49,8 @@ export async function GET(req: NextRequest) {
     totalChannels: channels.length,
     totalOrders: orders.length,
     revenue: orders.reduce((s, o) => s + (o.total || 0), 0),
+    totalRevenue: orders.reduce((s, o) => s + (o.total || 0), 0),
+    totalPlatformFee: orders.reduce((s, o) => s + (o.platformFee || 0), 0),
   }
 
   return ok({ rows, summary })
