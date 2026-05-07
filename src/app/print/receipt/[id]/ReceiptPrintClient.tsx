@@ -164,7 +164,7 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
     <ReceiptShell>
       <div className="receipt-wrap">
         <header className="receipt-header">
-          <div className="receipt-title">PHIEU LAM MON</div>
+          <div className="receipt-title">PHIẾU LÀM MÓN</div>
           <div className="receipt-brand">{viewModel.brandName}</div>
           <div className="receipt-source">{viewModel.sourceLabel} - {viewModel.receiptCode}</div>
           <div className="receipt-meta">Thời gian đặt: {formatReceiptDate(order.placedAt, 'dd/MM/yyyy HH:mm:ss')}</div>
