@@ -20,6 +20,36 @@ const GRAB_PORTAL_HISTORY_REPORTS_URL = 'https://api.grab.com/delvplatformapi/me
 const GRAB_PORTAL_ACTIVE_PAGE_TYPES = ['PreparingV2', 'Ready', 'Upcoming'] as const
 const GRAB_PORTAL_HISTORY_PAGE_TYPES = ['Completed', 'CompletedV2', 'History', 'Past', 'PastOrders', 'Delivered', 'Cancelled', 'All'] as const
 
+function mapGrabStatus(rawStatus: string): OrderStatus {
+  const statusMap: Record<string, OrderStatus> = {
+    PENDING: 'waiting_confirm',
+    ORDER_RECEIVED: 'waiting_confirm',
+    NEW: 'waiting_confirm',
+    ACCEPTED: 'waiting_pickup',
+    CONFIRMED: 'waiting_pickup',
+    PREPARING: 'waiting_pickup',
+    ORDER_IN_PREPARE: 'waiting_pickup',
+    ORDER_EXECUTING: 'waiting_pickup',
+    DRIVER_ALLOCATED: 'waiting_pickup',
+    DRIVER_ARRIVED: 'waiting_pickup',
+    READY_FOR_PICKUP: 'waiting_pickup',
+    COLLECTED: 'delivering',
+    IN_DELIVERY: 'delivering',
+    DELIVERED: 'completed',
+    COMPLETED: 'completed',
+    BILL_PAID: 'completed',
+    CANCELLED: 'cancelled',
+    CANCELLED_MAX: 'cancelled',
+    CANCELLED_BY_MERCHANT: 'cancelled',
+    CANCELLED_BY_CUSTOMER: 'cancelled',
+    CANCELLED_BY_DRIVER: 'cancelled',
+    FAILED: 'cancelled',
+    REFUNDED: 'cancelled',
+  }
+
+  return statusMap[rawStatus] ?? 'waiting_confirm'
+}
+
 export class GrabAdapter implements PlatformAdapter {
   source = 'grab' as const
 
@@ -396,24 +426,8 @@ export class GrabAdapter implements PlatformAdapter {
       total:    Number(i.quantity ?? 1) * Number(i.itemPrice ?? i.price ?? i.unitPrice ?? 0),
     }))
 
-    const statusMap: Record<string, OrderStatus> = {
-      'PENDING':           'waiting_confirm',
-      'ACCEPTED':          'waiting_pickup',
-      'CONFIRMED':         'waiting_pickup',
-      'PREPARING':         'waiting_pickup',
-      'DRIVER_ALLOCATED':  'waiting_pickup',
-      'DRIVER_ARRIVED':    'waiting_pickup',
-      'COLLECTED':         'delivering',
-      'IN_DELIVERY':       'delivering',
-      'DELIVERED':         'completed',
-      'COMPLETED':         'completed',
-      'BILL_PAID':         'completed',
-      'CANCELLED':         'cancelled',
-      'FAILED':            'cancelled',
-      'REFUNDED':          'cancelled',
-    }
-
     const rawStatus = String(raw.deliveryStatus ?? raw.orderState ?? raw.status ?? raw.orderStatus ?? raw.state ?? '')
+    const orderStatus = mapGrabStatus(rawStatus)
     const consumer  = raw.consumer ?? raw.customer ?? raw.receiver ?? {} as Record<string, unknown>
     const consumerObj = typeof consumer === 'object' ? consumer as Record<string, unknown> : {}
 
@@ -448,9 +462,9 @@ export class GrabAdapter implements PlatformAdapter {
       paymentMethod:   String(raw.paymentType ?? raw.paymentMethod ?? (raw.isTakeawayOrder ? 'pickup' : 'delivery')),
       deliveryInfo:    { address },
       driverInfo:      { name: '', phone: '' },
-      orderStatus:     statusMap[rawStatus] ?? 'waiting_confirm',
+      orderStatus,
       placedAt:        String(raw.orderTime ?? raw.createdAt ?? raw.createTime ?? new Date().toISOString()),
-      deliveredAt:     rawStatus === 'COMPLETED' ? String(raw.updatedAt ?? raw.completedAt ?? raw.createdAt ?? '') : undefined,
+      deliveredAt:     orderStatus === 'completed' ? String(raw.updatedAt ?? raw.completedAt ?? raw.createdAt ?? '') : undefined,
       rawPayload:      raw,
     }
   }
@@ -465,20 +479,6 @@ export class GrabAdapter implements PlatformAdapter {
     }))
 
     // orderState field (not 'state')
-    const statusMap: Record<string, OrderStatus> = {
-      'PENDING':           'waiting_confirm',
-      'ACCEPTED':          'waiting_pickup',
-      'DRIVER_ALLOCATED':  'waiting_pickup',
-      'DRIVER_ARRIVED':    'waiting_pickup',
-      'COLLECTED':         'delivering',
-      'IN_DELIVERY':       'delivering',
-      'DELIVERED':         'completed',
-      'COMPLETED':         'completed',
-      'BILL_PAID':         'completed',
-      'CANCELLED':         'cancelled',
-      'FAILED':            'cancelled',
-      'REFUNDED':          'cancelled',
-    }
     const rawStatus = String(raw.orderState ?? '')
 
     // receiver object contains customer name, phone, and delivery address
@@ -506,7 +506,7 @@ export class GrabAdapter implements PlatformAdapter {
         name:  '',
         phone: '',
       },
-      orderStatus: statusMap[rawStatus] ?? 'waiting_confirm',
+      orderStatus: mapGrabStatus(rawStatus),
       placedAt:    String(raw.orderTime ?? new Date().toISOString()),
       rawPayload:  raw,
     }

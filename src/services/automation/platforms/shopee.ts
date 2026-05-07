@@ -1,7 +1,7 @@
 /**
  * ShopeeFood Merchant Portal – Automation Login
  *
- * Portal: https://merchant.shopee.vn/portal/login
+ * Portal: https://merchant.shopeefood.vn/account/login
  * Login flow:
  *   - Phone + Password (or Phone + OTP)
  *   - Possible slider CAPTCHA → handled by retry / mouse simulation
@@ -9,15 +9,15 @@
  * Session TTL: ~7 days (SPC_ST cookie)
  *
  * Internal API used after session capture:
- *   POST https://merchant.shopee.vn/api/v4/order/get_order_list
+ *   POST https://merchant.shopeefood.vn/api/v4/order/get_order_list
  *   Headers: cookie: <captured>, x-csrftoken: <from SPC_F cookie>
  *
- * TODO: Verify internal API endpoints by inspecting Network tab in merchant.shopee.vn
+ * TODO: Verify internal API endpoints by inspecting Network tab in merchant.shopeefood.vn
  */
 import type { PlatformAutomation, AutomationCredentials, AutomationResult } from '../types'
 import type { SessionData, PlaywrightCookie } from '@/integrations/types'
 
-const PORTAL_URL  = 'https://merchant.shopee.vn/portal/login'
+const PORTAL_URL  = 'https://merchant.shopeefood.vn/account/login'
 const SESSION_TTL = 7 * 24 * 3600  // 7 days
 
 export class ShopeeAutomation implements PlatformAutomation {

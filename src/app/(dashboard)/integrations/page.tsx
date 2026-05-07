@@ -68,6 +68,7 @@ type TestResult   = { loading: boolean; ok?: boolean; message?: string; count?: 
 type SyncResult   = { loading: boolean; ok?: boolean; upserted?: number; updated?: number; message?: string }
 type QtResult     = { loading: boolean; ok?: boolean; message?: string; count?: number; sample?: unknown[] }
 type AutoLoginForm = { username: string; password: string; otp: string }
+type ActionStatus = { tone: 'success' | 'error' | 'info'; message: string } | null
 
 const AUTO_PROVIDERS = ['grab', 'be']
 const SESSION_LOGIN_PROVIDERS = ['shopee', 'grab', 'xanh_sm', 'be']
@@ -184,6 +185,7 @@ export default function IntegrationsPage() {
   const [qtProvider, setQtProvider] = useState('be')
   const [qtCreds, setQtCreds]       = useState<Record<string, string>>({})
   const [qtResult, setQtResult]     = useState<QtResult | null>(null)
+  const [actionStatus, setActionStatus] = useState<ActionStatus>(null)
   const [activeProviderTab, setActiveProviderTab] = useState(PROVIDERS[0].value)
   const autoLoginInteg = autoLoginId ? integrations.find(i => i._id === autoLoginId) ?? null : null
 
@@ -228,6 +230,7 @@ export default function IntegrationsPage() {
   }
 
   function openCreateModal(provider = 'grab') {
+    setActionStatus(null)
     setForm({
       ...emptyForm,
       provider,
@@ -235,6 +238,18 @@ export default function IntegrationsPage() {
     })
     setShowForm(true)
   }
+
+  const handleDelete = useCallback(async (id: string) => {
+    if (!confirm('Xóa tích hợp này?')) return
+
+    try {
+      setActionStatus({ tone: 'info', message: 'Đang xóa tích hợp…' })
+      await deleteMutation.mutateAsync(id)
+      setActionStatus({ tone: 'success', message: 'Đã xóa tích hợp.' })
+    } catch (error) {
+      setActionStatus({ tone: 'error', message: error instanceof Error ? error.message : 'Xóa tích hợp thất bại.' })
+    }
+  }, [deleteMutation])
 
   function renderIntegrationCard(integ: Integ) {
     const prov = provInfo(integ.provider)
@@ -265,7 +280,7 @@ export default function IntegrationsPage() {
             </div>
           </div>
           <button
-            onClick={() => { if (confirm('Xóa tích hợp này?')) deleteMutation.mutate(integ._id) }}
+            onClick={() => void handleDelete(integ._id)}
             className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50 shrink-0"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -396,12 +411,19 @@ export default function IntegrationsPage() {
     } else {
       body.externalStoreId = form.externalStoreId
     }
-    await createMutation.mutateAsync(body)
-    setShowForm(false)
-    setForm(emptyForm)
+    try {
+      setActionStatus({ tone: 'info', message: 'Đang tạo tích hợp…' })
+      await createMutation.mutateAsync(body)
+      setShowForm(false)
+      setForm(emptyForm)
+      setActionStatus({ tone: 'success', message: 'Đã tạo tích hợp thành công.' })
+    } catch (error) {
+      setActionStatus({ tone: 'error', message: error instanceof Error ? error.message : 'Tạo tích hợp thất bại.' })
+    }
   }
 
   const openSettings = (integ: Integ) => {
+    setActionStatus(null)
     setSettingsId(integ._id)
     const init: Record<string, string> = {
       __externalStoreId: integ.externalStoreId ?? '',
@@ -426,8 +448,14 @@ export default function IntegrationsPage() {
     }
     if (__loginUsername?.trim()) body.loginUsername = __loginUsername.trim()
     if (__loginPassword?.trim()) body.loginPassword = __loginPassword.trim()
-    await updateMutation.mutateAsync({ id: settingsId, ...body })
-    setSettingsId(null)
+    try {
+      setActionStatus({ tone: 'info', message: 'Đang lưu cài đặt…' })
+      await updateMutation.mutateAsync({ id: settingsId, ...body })
+      setSettingsId(null)
+      setActionStatus({ tone: 'success', message: 'Đã lưu cài đặt.' })
+    } catch (error) {
+      setActionStatus({ tone: 'error', message: error instanceof Error ? error.message : 'Lưu cài đặt thất bại.' })
+    }
   }
 
   const handleSync = useCallback(async (id: string) => {
@@ -445,8 +473,15 @@ export default function IntegrationsPage() {
 
   const handleSyncAll = async () => {
     setSyncingAll(true)
-    await Promise.all(integrations.filter(i => i.isActive !== false).map(i => handleSync(i._id)))
-    setSyncingAll(false)
+    setActionStatus({ tone: 'info', message: 'Đang sync tất cả tích hợp…' })
+    try {
+      await Promise.all(integrations.filter(i => i.isActive !== false).map(i => handleSync(i._id)))
+      setActionStatus({ tone: 'success', message: 'Đã chạy sync tất cả. Xem trạng thái trên từng card nếu có lỗi.' })
+    } catch (error) {
+      setActionStatus({ tone: 'error', message: error instanceof Error ? error.message : 'Sync tất cả thất bại.' })
+    } finally {
+      setSyncingAll(false)
+    }
   }
 
   const handleTest = async (id: string) => {
@@ -629,6 +664,17 @@ export default function IntegrationsPage() {
         </div>
       </div>
 
+      {actionStatus && (
+        <div className={cn(
+          'rounded-2xl border px-4 py-3 text-sm',
+          actionStatus.tone === 'success' && 'border-green-200 bg-green-50 text-green-700',
+          actionStatus.tone === 'error' && 'border-red-200 bg-red-50 text-red-600',
+          actionStatus.tone === 'info' && 'border-blue-200 bg-blue-50 text-blue-700'
+        )}>
+          {actionStatus.message}
+        </div>
+      )}
+
       {isLoading && (
         <div className="flex justify-center py-8">
           <Loader2 className="w-8 h-8 animate-spin text-primary-400" />
@@ -720,9 +766,17 @@ export default function IntegrationsPage() {
         return (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
-              <div>
-                <h2 className="text-lg font-semibold">Thêm tích hợp sàn</h2>
-                <p className="text-sm text-gray-400 mt-0.5">Kết nối tài khoản sàn bán hàng</p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">Thêm tích hợp sàn</h2>
+                  <p className="text-sm text-gray-400 mt-0.5">Kết nối tài khoản sàn bán hàng</p>
+                </div>
+                <button
+                  onClick={() => { setShowForm(false); setForm(emptyForm); setActionStatus(null) }}
+                  className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 text-xl leading-none shrink-0"
+                >
+                  &times;
+                </button>
               </div>
 
               <div>
@@ -739,9 +793,11 @@ export default function IntegrationsPage() {
                         form.provider === pr.value
                           ? 'border-primary-400 bg-primary-50 text-primary-700'
                           : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
-                      <span className={cn('badge badge-sm mr-2', pr.color)}>{pr.label}</span>
-                      <span className="text-xs text-gray-400">
-                        {AUTO_PROVIDERS.includes(pr.value) ? '🤖 Auto Login' : '🔑 API Key'}
+                      <span className="flex items-center gap-2 whitespace-nowrap overflow-hidden">
+                        <span className={cn('badge badge-sm shrink-0', pr.color)}>{pr.label}</span>
+                        <span className="truncate text-xs text-gray-400">
+                          {AUTO_PROVIDERS.includes(pr.value) ? 'Auto Login' : 'API'}
+                        </span>
                       </span>
                     </button>
                   ))}
@@ -830,7 +886,7 @@ export default function IntegrationsPage() {
               )}
 
               <div className="flex gap-2 pt-1">
-                <button onClick={() => { setShowForm(false); setForm(emptyForm) }}
+                <button onClick={() => { setShowForm(false); setForm(emptyForm); setActionStatus(null) }}
                   className="btn-outline flex-1">Huỷ</button>
                 <button onClick={handleCreate} disabled={saving || !canSave}
                   className="btn-primary flex-1 disabled:opacity-50">

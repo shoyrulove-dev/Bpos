@@ -5,8 +5,8 @@ import OrderModel from '@/models/Order'
 import SyncLogModel from '@/models/SyncLog'
 import { getAdapter } from '@/integrations/registry'
 import { decryptJSON } from '@/lib/crypto'
+import { buildOrderUpsert } from '@/lib/order-upsert'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
-import { generateId } from '@/lib/utils'
 import type { NormalizedOrder } from '@/types'
 import type { SessionData } from '@/integrations/types'
 
@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
       sessionData?: string
       sessionStatus?: string
       sessionExpiresAt?: Date
+      isActive: boolean
     }
 
     const adapter = getAdapter(intg.provider)
@@ -53,13 +54,11 @@ export async function GET(req: NextRequest) {
     const startedAt = Date.now()
     let upserted = 0
     let updated = 0
+    let orders: NormalizedOrder[] = []
 
     try {
       await IntegrationModel.findByIdAndUpdate(intg._id, { syncStatus: 'syncing' })
 
-      let orders: NormalizedOrder[] = []
-
-      // ── Auto-login (session) mode ─────────────────────────────────────────
       if (intg.loginMode === 'auto') {
         if (!adapter.fetchOrdersWithSession) {
           throw new Error('Provider này không hỗ trợ session auto-login')
@@ -79,7 +78,7 @@ export async function GET(req: NextRequest) {
 
         const session = decryptJSON(intg.sessionData) as SessionData
         const storeId = buildSessionStoreId(intg.externalStoreId, session)
-        const result  = await adapter.fetchOrdersWithSession(session, storeId)
+        const result = await adapter.fetchOrdersWithSession(session, storeId)
         if (result !== null) {
           orders = await mergeSessionOrdersWithRecentHistory(adapter, session, storeId, result)
         } else {
@@ -87,7 +86,6 @@ export async function GET(req: NextRequest) {
           throw new Error('Session hết hạn – cần đăng nhập lại')
         }
       } else {
-        // ── API credentials mode ──────────────────────────────────────────
         const rawCreds = intg.credentials as unknown
         const credObj: Record<string, string> =
           rawCreds instanceof Map
@@ -99,7 +97,7 @@ export async function GET(req: NextRequest) {
         const config = {
           ...credObj,
           storeId: credObj.storeId ?? intg.externalStoreId,
-          shopId:  credObj.shopId  ?? intg.externalStoreId,
+          shopId: credObj.shopId ?? intg.externalStoreId,
         }
 
         orders = await adapter.fetchOrders(config)
@@ -112,30 +110,7 @@ export async function GET(req: NextRequest) {
         try {
           const result = await OrderModel.findOneAndUpdate(
             { source: normalized.source, externalOrderId: normalized.externalOrderId },
-            {
-              $setOnInsert: {
-                shortId:  generateId(),
-                placedAt: normalized.placedAt ? new Date(normalized.placedAt) : new Date(),
-                brandId:  intg.brandId,
-                hubId:    intg.hubId,
-              },
-              $set: {
-                status:        normalized.orderStatus,
-                customerName:  normalized.customerName || 'Khách hàng',
-                customerPhone: normalized.customerPhone,
-                items:         normalized.items,
-                subtotal:      normalized.subtotal,
-                discount:      normalized.discount,
-                total:         normalized.total,
-                deliveryInfo:  normalized.deliveryInfo,
-                driverInfo:    normalized.driverInfo,
-                rawPayload:    normalized.rawPayload,
-                source:        normalized.source,
-                externalOrderId: normalized.externalOrderId,
-                externalStoreId: normalized.externalStoreId,
-                deliveredAt: normalized.deliveredAt ? new Date(normalized.deliveredAt) : undefined,
-              },
-            },
+            buildOrderUpsert(intg, normalized),
             { upsert: true, new: true, includeResultMetadata: true }
           )
           if (result?.lastErrorObject?.updatedExisting === false) upserted++

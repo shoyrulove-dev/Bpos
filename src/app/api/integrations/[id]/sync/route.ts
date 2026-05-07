@@ -6,8 +6,8 @@ import SyncLogModel from '@/models/SyncLog'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { getAdapter } from '@/integrations/registry'
 import { decryptJSON } from '@/lib/crypto'
+import { buildOrderUpsert } from '@/lib/order-upsert'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
-import { generateId } from '@/lib/utils'
 import type { NormalizedOrder } from '@/types'
 import type { SessionData } from '@/integrations/types'
 
@@ -107,30 +107,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
         const result = await OrderModel.findOneAndUpdate(
           { source: normalized.source, externalOrderId: normalized.externalOrderId },
-          {
-            $setOnInsert: {
-              shortId:  generateId(),
-              placedAt: normalized.placedAt ? new Date(normalized.placedAt) : new Date(),
-              brandId:  intg.brandId,
-              hubId:    intg.hubId,
-            },
-            $set: {
-              status:          normalized.orderStatus,
-              customerName:    normalized.customerName || 'Khách hàng',
-              customerPhone:   normalized.customerPhone,
-              items:           normalized.items,
-              subtotal:        normalized.subtotal,
-              discount:        normalized.discount,
-              total:           normalized.total,
-              deliveryInfo:    normalized.deliveryInfo,
-              driverInfo:      normalized.driverInfo,
-              rawPayload:      normalized.rawPayload,
-              source:          normalized.source,
-              externalOrderId: normalized.externalOrderId,
-              externalStoreId: normalized.externalStoreId,
-              deliveredAt: normalized.deliveredAt ? new Date(normalized.deliveredAt) : undefined,
-            },
-          },
+          buildOrderUpsert(intg, normalized),
           { upsert: true, new: true, includeResultMetadata: true }
         )
 
