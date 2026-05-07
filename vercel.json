@@ -6,11 +6,15 @@
   "crons": [
     {
       "path": "/api/cron/sync-orders",
-      "schedule": "0 0 * * *"
+      "schedule": "* * * * *"
     },
     {
       "path": "/api/cron/refresh-sessions",
-      "schedule": "0 6 * * *"
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/backfill-orders",
+      "schedule": "30 0 * * *"
     }
   ]
 }

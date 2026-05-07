@@ -17,9 +17,106 @@ const GRAB_PORTAL_ORDER_CANDIDATES = [
   'https://merchant.grab.com/portal/merchant/v1/restaurants/{storeId}/orders',
 ]
 const GRAB_PORTAL_ACTIVE_PAGE_TYPES = ['PreparingV2', 'Ready', 'Upcoming'] as const
+const GRAB_PORTAL_HISTORY_PAGE_TYPES = ['Completed', 'CompletedV2', 'History', 'Past', 'PastOrders', 'Delivered', 'Cancelled', 'All'] as const
 
 export class GrabAdapter implements PlatformAdapter {
   source = 'grab' as const
+
+  private buildGrabSessionContext(session: SessionData, storeId: string): {
+    baseHeaders: Record<string, string>
+    extraHeaders: Record<string, string>
+    discoveredStoreId: string
+  } | null {
+    const cookieHeader = session.cookies
+      .filter(c => {
+        if (c.expires === -1) return true
+        if (c.expires > Date.now() / 1000) return true
+        return false
+      })
+      .map(c => `${c.name}=${c.value}`)
+      .join('; ')
+
+    if (!cookieHeader) return null
+
+    const extraHeaders = session.extraHeaders ?? {}
+    const token = extraHeaders['x-grab-token'] ?? extraHeaders['Authorization'] ?? ''
+    const discoveredStoreId = extraHeaders['x-grab-store-id'] ?? storeId
+
+    const baseHeaders: Record<string, string> = {
+      'Cookie': cookieHeader,
+      'x-grab-tenant': 'GF_VN',
+      'x-grab-country': 'VN',
+      'Accept': 'application/json',
+      'Accept-Language': 'vi',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Referer': 'https://merchant.grab.com/food/orders',
+      'requestsource': 'troyPortal',
+      'merchantid': discoveredStoreId,
+    }
+    if (token && !token.startsWith('x-grab')) {
+      baseHeaders['Authorization'] = token.startsWith('Bearer ') ? token : `Bearer ${token}`
+    }
+
+    return { baseHeaders, extraHeaders, discoveredStoreId }
+  }
+
+  private async fetchPortalOrdersByPageTypes(
+    baseHeaders: Record<string, string>,
+    discoveredStoreId: string,
+    pageTypes: readonly string[]
+  ): Promise<{
+    orders: NormalizedOrder[] | null
+    sawAuthFailure: boolean
+    sawPaginationEnvelope: boolean
+  }> {
+    let sawAuthFailure = false
+    let sawPaginationEnvelope = false
+    const portalOrders: Record<string, unknown>[] = []
+    const seenOrderIds = new Set<string>()
+
+    for (const pageType of pageTypes) {
+      const url = new URL('https://api.grab.com/delvplatformapi/merchant/v4/orders-pagination')
+      url.searchParams.set('AutoAcceptGroup', '1')
+      url.searchParams.set('merchantID', discoveredStoreId)
+      url.searchParams.set('PageType', pageType)
+      url.searchParams.set('searchToken', '')
+      url.searchParams.set('size', '50')
+
+      try {
+        const res = await fetch(url, { headers: baseHeaders, signal: AbortSignal.timeout(8000) })
+        if (res.status === 401 || res.status === 403) {
+          sawAuthFailure = true
+          continue
+        }
+        if (!res.ok) continue
+
+        const data = await res.json() as unknown
+        const orders = this.extractOrdersFromPortalResponse(data)
+        if (orders) {
+          sawPaginationEnvelope = true
+          for (const order of orders) {
+            const orderId = String(order.orderID ?? order.orderId ?? order.id ?? '')
+            if (orderId && seenOrderIds.has(orderId)) continue
+            if (orderId) seenOrderIds.add(orderId)
+            portalOrders.push(order)
+          }
+          continue
+        }
+
+        if (this.isGrabPortalPaginationEnvelope(data)) {
+          sawPaginationEnvelope = true
+        }
+      } catch {
+        continue
+      }
+    }
+
+    return {
+      orders: portalOrders.length ? portalOrders.map((order) => this.normalizePortalOrder(order)) : null,
+      sawAuthFailure,
+      sawPaginationEnvelope,
+    }
+  }
 
   private async getToken(clientId: string, clientSecret: string): Promise<string> {
     const res = await fetch(GRAB_TOKEN_URL, {
@@ -88,82 +185,18 @@ export class GrabAdapter implements PlatformAdapter {
    * then falls back to known candidate URLs.
    */
   async fetchOrdersWithSession(session: SessionData, storeId: string): Promise<NormalizedOrder[] | null> {
-    const cookieHeader = session.cookies
-      .filter(c => {
-        if (c.expires === -1) return true  // session cookie
-        if (c.expires > Date.now() / 1000) return true
-        return false
-      })
-      .map(c => `${c.name}=${c.value}`)
-      .join('; ')
+    const context = this.buildGrabSessionContext(session, storeId)
+    if (!context) return null
 
-    if (!cookieHeader) return null  // all cookies expired
-
-    const extraHeaders = session.extraHeaders ?? {}
-    const token = extraHeaders['x-grab-token'] ?? extraHeaders['Authorization'] ?? ''
-    const discoveredStoreId = extraHeaders['x-grab-store-id'] ?? storeId
-
-    const baseHeaders: Record<string, string> = {
-      'Cookie':        cookieHeader,
-      'x-grab-tenant': 'GF_VN',
-      'x-grab-country': 'VN',
-      'Accept':         'application/json',
-      'Accept-Language': 'vi',
-      'User-Agent':     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      'Referer':        'https://merchant.grab.com/food/orders',
-      'requestsource':  'troyPortal',
-      'merchantid':     discoveredStoreId,
-    }
-    if (token && !token.startsWith('x-grab')) baseHeaders['Authorization'] = token.startsWith('Bearer ') ? token : `Bearer ${token}`
+    const { baseHeaders, extraHeaders, discoveredStoreId } = context
 
     let sawAuthFailure = false
     let sawHtmlShell = false
 
-    const activePortalOrders: Record<string, unknown>[] = []
-    const seenOrderIds = new Set<string>()
-    let sawPaginationEnvelope = false
-
-    for (const pageType of GRAB_PORTAL_ACTIVE_PAGE_TYPES) {
-      const url = new URL('https://api.grab.com/delvplatformapi/merchant/v4/orders-pagination')
-      url.searchParams.set('AutoAcceptGroup', '1')
-      url.searchParams.set('merchantID', discoveredStoreId)
-      url.searchParams.set('PageType', pageType)
-      url.searchParams.set('searchToken', '')
-      url.searchParams.set('size', '50')
-
-      try {
-        const res = await fetch(url, { headers: baseHeaders, signal: AbortSignal.timeout(8000) })
-        if (res.status === 401 || res.status === 403) {
-          sawAuthFailure = true
-          continue
-        }
-        if (!res.ok) continue
-
-        const data = await res.json() as unknown
-        const orders = this.extractOrdersFromPortalResponse(data)
-        if (orders) {
-          sawPaginationEnvelope = true
-          for (const order of orders) {
-            const orderId = String(order.orderID ?? order.orderId ?? order.id ?? '')
-            if (orderId && seenOrderIds.has(orderId)) continue
-            if (orderId) seenOrderIds.add(orderId)
-            activePortalOrders.push(order)
-          }
-          continue
-        }
-
-        if (this.isGrabPortalPaginationEnvelope(data)) {
-          sawPaginationEnvelope = true
-        }
-      } catch {
-        continue
-      }
-    }
-
-    if (activePortalOrders.length) {
-      return activePortalOrders.map(o => this.normalizePortalOrder(o))
-    }
-    if (sawPaginationEnvelope) {
+    const activeResult = await this.fetchPortalOrdersByPageTypes(baseHeaders, discoveredStoreId, GRAB_PORTAL_ACTIVE_PAGE_TYPES)
+    sawAuthFailure = activeResult.sawAuthFailure
+    if (activeResult.orders) return activeResult.orders
+    if (activeResult.sawPaginationEnvelope) {
       return []
     }
 
@@ -210,6 +243,22 @@ export class GrabAdapter implements PlatformAdapter {
     if (sawHtmlShell) return []
 
     return null  // all endpoints failed – session likely expired
+  }
+
+  async fetchHistoricalOrdersWithSession(session: SessionData, storeId: string): Promise<NormalizedOrder[] | null> {
+    const context = this.buildGrabSessionContext(session, storeId)
+    if (!context) return null
+
+    const historyResult = await this.fetchPortalOrdersByPageTypes(
+      context.baseHeaders,
+      context.discoveredStoreId,
+      GRAB_PORTAL_HISTORY_PAGE_TYPES
+    )
+
+    if (historyResult.orders) return historyResult.orders
+    if (historyResult.sawPaginationEnvelope) return []
+    if (historyResult.sawAuthFailure) return null
+    return []
   }
 
   /** Extract orders array from various portal response shapes */

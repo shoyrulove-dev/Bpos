@@ -57,6 +57,9 @@ export interface PlatformAdapter {
   /** Fetch orders using official API credentials. */
   fetchOrders(config: AdapterConfig): Promise<NormalizedOrder[]>
 
+  /** Fetch historical orders using official API credentials when supported. */
+  fetchHistoricalOrders?(config: AdapterConfig, options?: { days?: number }): Promise<NormalizedOrder[]>
+
   /** Fetch single order detail using official API credentials. */
   fetchOrderDetail(externalOrderId: string, config: AdapterConfig): Promise<NormalizedOrder | null>
 
@@ -69,5 +72,8 @@ export interface PlatformAdapter {
    * Returns null if the session is expired / invalid.
    */
   fetchOrdersWithSession?(session: SessionData, storeId: string): Promise<NormalizedOrder[] | null>
+
+  /** Fetch historical orders using a captured browser session when supported. */
+  fetchHistoricalOrdersWithSession?(session: SessionData, storeId: string, options?: { days?: number }): Promise<NormalizedOrder[] | null>
 }
 

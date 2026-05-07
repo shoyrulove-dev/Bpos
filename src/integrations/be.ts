@@ -218,6 +218,21 @@ export class BeAdapter implements PlatformAdapter {
     return all
   }
 
+  async fetchHistoricalOrders(config: AdapterConfig): Promise<NormalizedOrder[]> {
+    const clientId     = String(config.clientId     ?? '')
+    const clientSecret = String(config.clientSecret ?? '')
+    const restaurantId = Number(config.restaurantId ?? config.storeId ?? config.externalStoreId ?? 0)
+
+    if (!clientId)     throw new Error('Thiếu client_id (cung cấp bởi beFood khi đăng ký Partner)')
+    if (!clientSecret) throw new Error('Thiếu client_secret (cung cấp bởi beFood khi đăng ký Partner)')
+    if (!restaurantId) throw new Error('Thiếu restaurant_id (ID nhà hàng trên beFood, ví dụ: 129990)')
+
+    const base  = this.getBase(config)
+    const token = await this.getToken(clientId, clientSecret, base)
+    const previous = await this.fetchByType(token, base, restaurantId, 'previous').catch(() => [] as Record<string, unknown>[])
+    return previous.map((order) => this.normalizeOrder(order, 'previous'))
+  }
+
   async fetchOrderDetail(orderId: string, config: AdapterConfig): Promise<NormalizedOrder | null> {
     const clientId     = String(config.clientId     ?? '')
     const clientSecret = String(config.clientSecret ?? '')
@@ -316,6 +331,23 @@ export class BeAdapter implements PlatformAdapter {
         }
       }
       return all
+    } catch {
+      return null
+    }
+  }
+
+  async fetchHistoricalOrdersWithSession(session: SessionData, restaurantId: string): Promise<NormalizedOrder[] | null> {
+    const accessToken = this.getSessionAccessToken(session)
+    if (!accessToken) return null
+
+    const sessionRestaurant = await this.resolveSessionRestaurant(accessToken, restaurantId)
+    if (!sessionRestaurant) return null
+
+    const { restaurantId: resId, merchantContext } = sessionRestaurant
+
+    try {
+      const previous = await this.fetchByTypeWithSession(accessToken, merchantContext, resId, 'previous')
+      return previous.map((order) => this.normalizeOrder(order, 'previous'))
     } catch {
       return null
     }
