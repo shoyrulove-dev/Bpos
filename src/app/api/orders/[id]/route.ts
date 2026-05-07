@@ -3,6 +3,19 @@ import { connectDB } from '@/lib/db'
 import OrderModel from '@/models/Order'
 import { ok, err, requireAuth } from '@/lib/api-helpers'
 
+type PopulatedRef = { _id?: { toString(): string } | string; name?: string } | string | null | undefined
+
+function getRefId(value: PopulatedRef) {
+  if (!value || typeof value === 'string') return value
+  if ('_id' in value && value._id) return value._id.toString()
+  return undefined
+}
+
+function getRefName(value: PopulatedRef) {
+  if (!value || typeof value === 'string') return undefined
+  return typeof value.name === 'string' ? value.name : undefined
+}
+
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const { res } = await requireAuth(_req)
   if (res) return res
@@ -13,7 +26,15 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .populate('channelId', 'name source')
     .lean()
   if (!order) return err('Không tìm thấy', 404)
-  return ok(order)
+  return ok({
+    ...order,
+    brandId: getRefId(order.brandId),
+    brandName: getRefName(order.brandId),
+    hubId: getRefId(order.hubId),
+    hubName: getRefName(order.hubId),
+    channelId: getRefId(order.channelId),
+    channelName: getRefName(order.channelId),
+  })
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {

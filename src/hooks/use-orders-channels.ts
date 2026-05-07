@@ -8,7 +8,7 @@ async function fetchJSON(url: string, opts?: RequestInit) {
 }
 
 // ---- Orders ----
-export function useOrders(params?: { q?: string; status?: string; source?: string; brandId?: string; page?: number; limit?: number }) {
+export function useOrders(params?: { q?: string; status?: string; source?: string; brandId?: string; page?: number; limit?: number; pollingEnabled?: boolean }) {
   const sp = new URLSearchParams()
   if (params?.q) sp.set('q', params.q)
   if (params?.status) sp.set('status', params.status)
@@ -19,8 +19,10 @@ export function useOrders(params?: { q?: string; status?: string; source?: strin
   return useQuery({
     queryKey: ['orders', params],
     queryFn:  () => fetchJSON(`/api/orders?${sp}`),
-    refetchInterval: ORDER_ALERT_POLL_INTERVAL_MS,
-    refetchIntervalInBackground: true,
+    staleTime: ORDER_ALERT_POLL_INTERVAL_MS,
+    refetchInterval: params?.pollingEnabled ? ORDER_ALERT_POLL_INTERVAL_MS : false,
+    refetchIntervalInBackground: params?.pollingEnabled ?? false,
+    refetchOnWindowFocus: false,
   })
 }
 

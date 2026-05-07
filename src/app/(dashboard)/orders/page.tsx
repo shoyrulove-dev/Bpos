@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Search, RefreshCw, Printer, Eye, X, Phone, MapPin, Package, Truck, BellRing, Volume2, ChevronDown, ChevronUp, SlidersHorizontal, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react'
-import { useOrders } from '@/hooks/use-orders-channels'
+import { Search, RefreshCw, Printer, Eye, X, Phone, MapPin, Package, Truck, BellRing, Volume2, ChevronDown, ChevronUp, SlidersHorizontal, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Loader2 } from 'lucide-react'
+import { useOrder, useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn, formatCurrency, formatDate, ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
 import {
@@ -53,7 +53,7 @@ export default function OrdersPage() {
   const [sourceFilter, setSourceFilter] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10)
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
   const [showAlertPanel, setShowAlertPanel] = useState(false)
   const [soundEnabled, setSoundEnabled] = useState(DEFAULT_ORDER_ALERT_SETTINGS.soundEnabled)
   const [autoPrintEnabled, setAutoPrintEnabled] = useState(DEFAULT_ORDER_ALERT_SETTINGS.autoPrintEnabled)
@@ -61,10 +61,20 @@ export default function OrdersPage() {
   const [printerPaperSize, setPrinterPaperSize] = useState(DEFAULT_ORDER_ALERT_SETTINGS.printerPaperSize)
 
   const dq = useDebounce(search)
-  const { data, isLoading, refetch } = useOrders({ q: dq, status: statusFilter, source: sourceFilter, page, limit: pageSize })
+  const pollingEnabled = page === 1 && !dq && !statusFilter && !sourceFilter
+  const { data, isLoading, refetch } = useOrders({
+    q: dq,
+    status: statusFilter,
+    source: sourceFilter,
+    page,
+    limit: pageSize,
+    pollingEnabled,
+  })
   const ordersData = data as OrdersResponse | undefined
   const orders: Order[] = ordersData?.orders ?? []
   const filtered = orders
+  const { data: selectedOrderData, isLoading: selectedOrderLoading } = useOrder(selectedOrderId ?? '')
+  const selectedOrder = (selectedOrderData as Order | undefined) ?? null
 
   useEffect(() => {
     const settings = loadOrderAlertSettings()
@@ -235,7 +245,7 @@ export default function OrdersPage() {
                   Không tìm thấy đơn hàng
                 </td></tr>
               ) : filtered.map(order => (
-                <tr key={order._id} className="cursor-pointer" onClick={() => setSelectedOrder(order)}>
+                <tr key={order._id} className="cursor-pointer" onClick={() => setSelectedOrderId(order._id)}>
                   <td>
                     <span className="font-mono text-sm font-semibold text-primary-600">{order.shortId}</span>
                     {order.externalOrderId && (
@@ -276,7 +286,7 @@ export default function OrdersPage() {
                   <td onClick={e => e.stopPropagation()}>
                     <div className="flex gap-1">
                       <button
-                        onClick={() => setSelectedOrder(order)}
+                        onClick={() => setSelectedOrderId(order._id)}
                         className="btn-ghost btn-sm p-1.5" title="Xem chi tiết"
                       >
                         <Eye className="w-3.5 h-3.5" />
@@ -403,8 +413,8 @@ export default function OrdersPage() {
       </div>
 
       {/* Order Detail Modal */}
-      {selectedOrder && (
-        <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} onPrint={handlePrintOrder} />
+      {selectedOrderId && (
+        <OrderDetailModal order={selectedOrder} isLoading={selectedOrderLoading} onClose={() => setSelectedOrderId(null)} onPrint={handlePrintOrder} />
       )}
     </div>
   )
@@ -470,7 +480,28 @@ function PaginationControls({
   )
 }
 
-function OrderDetailModal({ order, onClose, onPrint }: { order: Order; onClose: () => void; onPrint: (orderId: string) => void }) {
+function OrderDetailModal({ order, isLoading, onClose, onPrint }: { order: Order | null; isLoading: boolean; onClose: () => void; onPrint: (orderId: string) => void }) {
+  if (!order && isLoading) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-8">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+            <h2 className="font-semibold text-gray-900">Chi tiết đơn hàng</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex items-center justify-center gap-3 py-16 text-gray-500">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            Đang tải chi tiết đơn hàng...
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!order) return null
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">

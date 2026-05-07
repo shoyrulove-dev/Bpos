@@ -4,6 +4,20 @@ import OrderModel from '@/models/Order'
 import { ok, err, requireAuth } from '@/lib/api-helpers'
 
 const ORDER_STATUS_KEYS = ['draft', 'pre_order', 'waiting_confirm', 'waiting_pickup', 'delivering', 'completed', 'cancelled'] as const
+const ORDER_LIST_SELECT = 'shortId source externalOrderId brandId hubId customerName customerPhone items.name items.quantity discount total status placedAt'
+
+type PopulatedRef = { _id?: { toString(): string } | string; name?: string } | string | null | undefined
+
+function getRefId(value: PopulatedRef) {
+  if (!value || typeof value === 'string') return value
+  if ('_id' in value && value._id) return value._id.toString()
+  return undefined
+}
+
+function getRefName(value: PopulatedRef) {
+  if (!value || typeof value === 'string') return undefined
+  return typeof value.name === 'string' ? value.name : undefined
+}
 
 export async function GET(req: NextRequest) {
   const { res } = await requireAuth(req)
@@ -32,8 +46,9 @@ export async function GET(req: NextRequest) {
   const countFilter = { ...filter }
   delete countFilter.status
   const skip = (page - 1) * limit
-  const [orders, total, statusRows] = await Promise.all([
+  const [orderRows, total, statusRows] = await Promise.all([
     OrderModel.find(filter)
+      .select(ORDER_LIST_SELECT)
       .populate('brandId', 'name')
       .populate('hubId', 'name')
       .sort({ placedAt: -1 })
@@ -55,6 +70,14 @@ export async function GET(req: NextRequest) {
       statusCounts[row._id as keyof typeof statusCounts] = Number(row.count || 0)
     }
   })
+
+  const orders = orderRows.map((order) => ({
+    ...order,
+    brandId: getRefId(order.brandId),
+    brandName: getRefName(order.brandId),
+    hubId: getRefId(order.hubId),
+    hubName: getRefName(order.hubId),
+  }))
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
 

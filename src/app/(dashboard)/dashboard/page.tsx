@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 export default function DashboardPage() {
   const { data: statsData, isLoading: statsLoading } = useStats()
   const { data: revenueData } = useRevenueReport({ days: 14 })
-  const { data: ordersData } = useOrders({ q: '', status: '', source: '' })
+  const { data: ordersData } = useOrders({ q: '', status: '', source: '', limit: 10, pollingEnabled: false })
 
   const s = statsData ?? {}
   const recentOrders = (ordersData?.orders ?? []) as import('@/types').Order[]

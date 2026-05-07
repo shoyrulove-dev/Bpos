@@ -40,7 +40,7 @@ export default function LoginPage() {
           setError(`Đăng nhập thất bại${code ? ` (${code})` : ''}`)
         }
       } else {
-        router.push('/dashboard')
+        router.push('/orders')
         router.refresh()
       }
     } catch {

@@ -42,17 +42,33 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   {
-    href: '/dashboard',
-    label: 'Tổng quan',
-    icon: <LayoutDashboard className="w-4 h-4" />,
+    href: '/orders',
+    label: 'Đơn hàng',
+    icon: <ShoppingCart className="w-4 h-4" />,
   },
   {
-    label: 'Quản lý cửa hàng',
+    href: '/channels',
+    label: 'Kênh bán',
+    icon: <Radio className="w-4 h-4" />,
+    adminOnly: true,
+  },
+  {
+    href: '/integrations',
+    label: 'Tích hợp sàn',
+    icon: <LinkIcon className="w-4 h-4" />,
+    adminOnly: true,
+  },
+  {
+    label: 'Vận hành cửa hàng',
     icon: <Building2 className="w-4 h-4" />,
     children: [
       { href: '/brands',  label: 'Thương hiệu', icon: <Building2 className="w-4 h-4" /> },
       { href: '/hubs',    label: 'Điểm bán',    icon: <MapPin className="w-4 h-4" /> },
       { href: '/staffs',  label: 'Nhân viên',   icon: <Users className="w-4 h-4" /> },
+      { href: '/shipments', label: 'Vận đơn', icon: <Truck className="w-4 h-4" /> },
+      { href: '/shifts',    label: 'Ca bán hàng', icon: <Clock className="w-4 h-4" /> },
+      { href: '/tables',    label: 'Bản đồ bàn', icon: <LayoutGrid className="w-4 h-4" /> },
+      { href: '/kds',       label: 'Màn hình bếp', icon: <Monitor className="w-4 h-4" /> },
     ],
   },
   {
@@ -66,36 +82,14 @@ const navItems: NavItem[] = [
     ],
   },
   {
-    href: '/promotions',
-    label: 'Khuyến mãi',
-    icon: <Tag className="w-4 h-4" />,
-  },
-  {
-    href: '/bill-templates',
-    label: 'Hóa đơn mẫu',
-    icon: <FileText className="w-4 h-4" />,
-  },
-  {
-    href: '/channels',
-    label: 'Kênh bán',
-    icon: <Radio className="w-4 h-4" />,
-    adminOnly: true,
-  },
-  {
-    label: 'Đơn hàng',
-    icon: <ShoppingCart className="w-4 h-4" />,
+    label: 'Mục khác',
+    icon: <LayoutDashboard className="w-4 h-4" />,
     children: [
-      { href: '/orders',    label: 'Quản lý đơn hàng', icon: <ShoppingCart className="w-4 h-4" /> },
-      { href: '/shipments', label: 'Vận đơn',           icon: <Truck className="w-4 h-4" /> },
-      { href: '/shifts',    label: 'Ca bán hàng',        icon: <Clock className="w-4 h-4" /> },
-      { href: '/tables',    label: 'Bản đồ bàn',        icon: <LayoutGrid className="w-4 h-4" /> },
-      { href: '/kds',       label: 'Màn hình bếp',      icon: <Monitor className="w-4 h-4" /> },
-    ],
-  },
-  {
-    label: 'Báo cáo',
-    icon: <BarChart3 className="w-4 h-4" />,
-    children: [
+      { href: '/dashboard', label: 'Tổng quan', icon: <LayoutDashboard className="w-4 h-4" /> },
+      { href: '/customers', label: 'Khách hàng', icon: <UserCircle className="w-4 h-4" /> },
+      { href: '/promotions', label: 'Khuyến mãi', icon: <Tag className="w-4 h-4" /> },
+      { href: '/bill-templates', label: 'Hóa đơn mẫu', icon: <FileText className="w-4 h-4" /> },
+      { href: '/e-invoices', label: 'Hóa đơn điện tử', icon: <Receipt className="w-4 h-4" /> },
       { href: '/reports/revenue',   label: 'Doanh thu tổng quan',  icon: <BarChart3 className="w-4 h-4" /> },
       { href: '/reports/orders',    label: 'Doanh thu theo đơn',   icon: <ShoppingCart className="w-4 h-4" /> },
       { href: '/reports/cancelled', label: 'Đơn hủy',              icon: <Receipt className="w-4 h-4" /> },
@@ -105,22 +99,6 @@ const navItems: NavItem[] = [
       { href: '/reports/products',  label: 'Hàng bán',             icon: <Package className="w-4 h-4" /> },
       { href: '/reports/customers', label: 'Khách hàng',           icon: <Users className="w-4 h-4" /> },
     ],
-  },
-  {
-    href: '/customers',
-    label: 'Khách hàng',
-    icon: <UserCircle className="w-4 h-4" />,
-  },
-  {
-    href: '/e-invoices',
-    label: 'Hóa đơn điện tử',
-    icon: <Receipt className="w-4 h-4" />,
-  },
-  {
-    href: '/integrations',
-    label: 'Tích hợp sàn',
-    icon: <LinkIcon className="w-4 h-4" />,
-    adminOnly: true,
   },
 ]
 
