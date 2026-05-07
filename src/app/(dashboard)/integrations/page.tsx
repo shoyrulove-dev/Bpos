@@ -13,10 +13,10 @@ import { useHubs } from '@/hooks/use-hubs'
 import { cn } from '@/lib/utils'
 
 const PROVIDERS = [
-  { value: 'shopee',   label: 'Shopee Food', color: 'bg-orange-100 text-orange-700' },
   { value: 'grab',     label: 'GrabFood',    color: 'bg-green-100 text-green-700' },
-  { value: 'xanh_sm', label: 'Xanh SM',     color: 'bg-teal-100 text-teal-700' },
   { value: 'be',       label: 'Be Food',     color: 'bg-yellow-100 text-yellow-800' },
+  { value: 'shopee',   label: 'Shopee Food', color: 'bg-orange-100 text-orange-700' },
+  { value: 'xanh_sm',  label: 'Xanh SM',     color: 'bg-teal-100 text-teal-700' },
 ]
 
 type CredField = { key: string; label: string; type?: string; placeholder?: string }

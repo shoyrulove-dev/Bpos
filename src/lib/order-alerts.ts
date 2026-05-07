@@ -7,7 +7,7 @@ export interface OrderAlertSettings {
 
 export const ORDER_ALERT_POLL_INTERVAL_MS = 5_000
 export const PRINTER_MODEL_LABEL = 'Xprinter XP-T80L (80mm / ESC/POS)'
-export const ORDER_ALERT_VOICE_MESSAGE = 'Anh ơi, Anh có đơn hàng mới ạ!'
+export const ORDER_ALERT_VOICE_MESSAGE = 'Anh ơi. Mình có đơn hàng mới. Anh kiểm tra giúp em nhé.'
 
 const SOUND_SETTING_KEY = 'bpos.order-alert.sound-enabled'
 const AUTO_PRINT_SETTING_KEY = 'bpos.order-alert.auto-print-enabled'
@@ -100,7 +100,7 @@ function pickPreferredVietnameseVoice() {
     return lang.includes('vi') || name.includes('viet') || name.includes('hoaimy')
   })
 
-  const preferredPatterns = ['hoaimy', 'female', 'woman', 'girl', 'natural']
+  const preferredPatterns = ['hoaimy', 'linh', 'female', 'woman', 'girl', 'natural', 'microsoft']
   for (const pattern of preferredPatterns) {
     const match = vietnameseVoices.find((voice) => voice.name.toLowerCase().includes(pattern))
     if (match) return match
@@ -123,13 +123,13 @@ function speakAlertMessage(times: number) {
     const utterance = new SpeechSynthesisUtterance(ORDER_ALERT_VOICE_MESSAGE)
     utterance.lang = voice.lang || 'vi-VN'
     utterance.voice = voice
-    utterance.rate = 0.95
-    utterance.pitch = 1.05
+    utterance.rate = 0.86
+    utterance.pitch = 0.96
     utterance.volume = 1
     utterance.onend = () => {
       spoken += 1
       if (spoken < Math.max(1, times)) {
-        window.setTimeout(speakOnce, 250)
+        window.setTimeout(speakOnce, 400)
       }
     }
     synth.speak(utterance)

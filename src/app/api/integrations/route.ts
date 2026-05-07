@@ -3,6 +3,7 @@ import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { encrypt } from '@/lib/crypto'
+import { ensureChannelForIntegration } from '@/lib/channel-sync'
 
 export async function GET(req: NextRequest) {
   const { res } = await requireAdmin(req)
@@ -36,5 +37,13 @@ export async function POST(req: NextRequest) {
   if (loginUsername) integDoc.loginUsername = loginUsername
   if (loginPassword) integDoc.loginPassword = encrypt(String(loginPassword))
   const integration = await IntegrationModel.create(integDoc)
+  await ensureChannelForIntegration({
+    provider: integration.provider,
+    brandId: integration.brandId,
+    hubId: integration.hubId,
+    externalStoreId: integration.externalStoreId,
+    externalStoreName: integration.externalStoreName,
+    isActive: integration.isActive,
+  })
   return ok(integration, 201)
 }

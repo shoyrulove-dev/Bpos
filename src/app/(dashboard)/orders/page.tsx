@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Search, RefreshCw, Printer, Eye, X, Phone, MapPin, Package, Truck, BellRing, Volume2 } from 'lucide-react'
+import { Search, RefreshCw, Printer, Eye, X, Phone, MapPin, Package, Truck, BellRing, Volume2, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn, formatCurrency, formatDate, ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
@@ -41,6 +41,7 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [sourceFilter, setSourceFilter] = useState('')
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [showAlertPanel, setShowAlertPanel] = useState(false)
   const [soundEnabled, setSoundEnabled] = useState(DEFAULT_ORDER_ALERT_SETTINGS.soundEnabled)
   const [autoPrintEnabled, setAutoPrintEnabled] = useState(DEFAULT_ORDER_ALERT_SETTINGS.autoPrintEnabled)
   const [printerName, setPrinterName] = useState(DEFAULT_ORDER_ALERT_SETTINGS.printerName)
@@ -61,10 +62,14 @@ export default function OrdersPage() {
 
   // Count per status for tabs
   const countByStatus = useMemo(() => {
-    const counts: Record<string, number> = {}
-    orders.forEach(o => { counts[o.status] = (counts[o.status] || 0) + 1 })
+    const counts: Record<string, number> = { ...(data?.statusCounts ?? {}) }
+
+    if (statusFilter && typeof counts[statusFilter] !== 'number') {
+      counts[statusFilter] = data?.total ?? 0
+    }
+
     return counts
-  }, [orders])
+  }, [data?.statusCounts, data?.total, statusFilter])
 
   const updateAlertSettings = (nextSettings: {
     soundEnabled?: boolean
@@ -99,9 +104,19 @@ export default function OrdersPage() {
           <h1 className="page-title">Quản lý đơn hàng</h1>
           <p className="page-subtitle">Tổng hợp đơn từ tất cả kênh bán</p>
         </div>
-        <button onClick={() => refetch()} disabled={isLoading} className="btn-outline">
-          <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} /> Làm mới
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setShowAlertPanel((prev) => !prev)}
+            className={cn('btn-outline', showAlertPanel && 'border-orange-300 bg-orange-50 text-orange-700')}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            {showAlertPanel ? 'Ẩn in / âm thanh' : 'In / âm thanh'}
+            {showAlertPanel ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+          <button onClick={() => refetch()} disabled={isLoading} className="btn-outline">
+            <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} /> Làm mới
+          </button>
+        </div>
       </div>
 
       {/* Status tabs */}
@@ -147,77 +162,6 @@ export default function OrdersPage() {
           <select className="input w-40" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}>
             {SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
-        </div>
-      </div>
-
-      <div className="card card-body space-y-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="space-y-2 max-w-3xl">
-            <div>
-              <h2 className="text-base font-semibold text-gray-900">Tự động in và chuông đơn mới</h2>
-              <p className="text-sm text-gray-500">
-                Đơn mới đang được kiểm tra mỗi {ORDER_ALERT_POLL_INTERVAL_MS / 1000} giây. Khi bật tự động in, hệ thống sẽ đẩy phiếu {printerPaperSize} theo mẫu mới sang máy {printerName || PRINTER_MODEL_LABEL}.
-              </p>
-            </div>
-            <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
-              Muốn máy in ra ngay không hiện hộp thoại, máy Windows cần đặt {printerName || PRINTER_MODEL_LABEL} làm default printer và mở Chrome bằng chế độ --kiosk-printing. Âm thanh sẽ phát bằng giọng nữ đọc câu “{ORDER_ALERT_VOICE_MESSAGE}” qua loa đang là Default Output của Windows.
-            </div>
-            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900">Settings máy in</h3>
-                <p className="text-sm text-gray-500">
-                  Nếu dùng máy in khác, nhập lại tên máy, chọn đúng khổ giấy rồi lưu lại. Trình duyệt không thể tự quét danh sách máy in Windows, nên khi đổi máy anh chỉ cần đặt máy đó làm Default Printer là BPOS sẽ in theo cấu hình này.
-                </p>
-              </div>
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_180px_auto]">
-                <label className="form-group">
-                  <span className="label">Tên máy in</span>
-                  <input
-                    className="input"
-                    value={printerName}
-                    onChange={(event) => setPrinterName(event.target.value)}
-                    onBlur={() => updateAlertSettings({ printerName })}
-                    placeholder={PRINTER_MODEL_LABEL}
-                  />
-                </label>
-                <label className="form-group">
-                  <span className="label">Khổ giấy</span>
-                  <select
-                    className="input"
-                    value={printerPaperSize}
-                    onChange={(event) => updateAlertSettings({ printerPaperSize: event.target.value as typeof DEFAULT_ORDER_ALERT_SETTINGS.printerPaperSize })}
-                  >
-                    <option value="80mm">80mm</option>
-                    <option value="58mm">58mm</option>
-                    <option value="A4">A4</option>
-                  </select>
-                </label>
-                <div className="flex items-end">
-                  <button onClick={() => updateAlertSettings({ printerName, printerPaperSize })} className="btn-outline w-full md:w-auto">
-                    <Printer className="w-4 h-4" /> Lưu máy in
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => updateAlertSettings({ soundEnabled: !soundEnabled })}
-              className={cn('btn-outline', soundEnabled && 'border-green-300 bg-green-50 text-green-700')}
-            >
-              <BellRing className="w-4 h-4" /> {soundEnabled ? 'Âm thanh bật' : 'Âm thanh tắt'}
-            </button>
-            <button
-              onClick={() => updateAlertSettings({ autoPrintEnabled: !autoPrintEnabled })}
-              className={cn('btn-outline', autoPrintEnabled && 'border-blue-300 bg-blue-50 text-blue-700')}
-            >
-              <Printer className="w-4 h-4" /> {autoPrintEnabled ? 'Tự in bật' : 'Tự in tắt'}
-            </button>
-            <button onClick={() => playOrderAlert(1)} className="btn-outline">
-              <Volume2 className="w-4 h-4" /> Test giọng nói
-            </button>
-          </div>
         </div>
       </div>
 
@@ -301,6 +245,103 @@ export default function OrdersPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="card overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowAlertPanel((prev) => !prev)}
+          className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+        >
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Tự động in và âm thanh đơn mới</h2>
+            <p className="text-sm text-gray-500">
+              Kiểm tra đơn mới mỗi {ORDER_ALERT_POLL_INTERVAL_MS / 1000} giây. Phần này đang được thu gọn để ưu tiên danh sách đơn.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <span>{showAlertPanel ? 'Thu gọn' : 'Mở ra'}</span>
+            {showAlertPanel ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </div>
+        </button>
+
+        {showAlertPanel && (
+          <div className="border-t border-gray-100 px-5 py-5">
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_320px] xl:items-start">
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => updateAlertSettings({ soundEnabled: !soundEnabled })}
+                      className={cn('btn-outline', soundEnabled && 'border-green-300 bg-green-50 text-green-700')}
+                    >
+                      <BellRing className="w-4 h-4" /> {soundEnabled ? 'Âm thanh bật' : 'Âm thanh tắt'}
+                    </button>
+                    <button
+                      onClick={() => updateAlertSettings({ autoPrintEnabled: !autoPrintEnabled })}
+                      className={cn('btn-outline', autoPrintEnabled && 'border-blue-300 bg-blue-50 text-blue-700')}
+                    >
+                      <Printer className="w-4 h-4" /> {autoPrintEnabled ? 'Tự in bật' : 'Tự in tắt'}
+                    </button>
+                    <button onClick={() => playOrderAlert(1)} className="btn-outline">
+                      <Volume2 className="w-4 h-4" /> Test giọng nói
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_180px_auto]">
+                    <label className="form-group">
+                      <span className="label">Tên máy in</span>
+                      <input
+                        className="input"
+                        value={printerName}
+                        onChange={(event) => setPrinterName(event.target.value)}
+                        onBlur={() => updateAlertSettings({ printerName })}
+                        placeholder={PRINTER_MODEL_LABEL}
+                      />
+                    </label>
+                    <label className="form-group">
+                      <span className="label">Khổ giấy</span>
+                      <select
+                        className="input"
+                        value={printerPaperSize}
+                        onChange={(event) => updateAlertSettings({ printerPaperSize: event.target.value as typeof DEFAULT_ORDER_ALERT_SETTINGS.printerPaperSize })}
+                      >
+                        <option value="80mm">80mm</option>
+                        <option value="58mm">58mm</option>
+                        <option value="A4">A4</option>
+                      </select>
+                    </label>
+                    <div className="flex items-end">
+                      <button onClick={() => updateAlertSettings({ printerName, printerPaperSize })} className="btn-outline w-full md:w-auto">
+                        <Printer className="w-4 h-4" /> Lưu máy in
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-orange-950">Lưu ý cần giữ lại</h3>
+                  <span className="text-xs text-orange-700">Cuộn ẩn</span>
+                </div>
+                <div className="max-h-40 space-y-3 overflow-y-auto pr-2 text-sm text-orange-900">
+                  <p>
+                    Âm thanh đang ưu tiên giọng nữ tiếng Việt mềm và đọc chậm hơn với câu: “{ORDER_ALERT_VOICE_MESSAGE}”. Nếu máy có nhiều voice, trình duyệt sẽ ưu tiên các voice kiểu Hoài My hoặc Linh trước.
+                  </p>
+                  <p>
+                    Muốn in thẳng không hiện hộp thoại, máy Windows cần đặt {printerName || PRINTER_MODEL_LABEL} làm default printer và mở Chrome bằng chế độ `--kiosk-printing`.
+                  </p>
+                  <p>
+                    BPOS không tự quét danh sách máy in Windows. Khi đổi máy in, chỉ cần cập nhật tên máy hoặc đặt máy mới làm default printer rồi bấm lưu lại.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Order Detail Modal */}

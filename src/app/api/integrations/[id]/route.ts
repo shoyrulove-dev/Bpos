@@ -3,6 +3,7 @@ import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { encrypt } from '@/lib/crypto'
+import { ensureChannelForIntegration } from '@/lib/channel-sync'
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const { res } = await requireAdmin(req)
@@ -25,6 +26,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
   const intg = await IntegrationModel.findByIdAndUpdate(params.id, { $set: update }, { new: true }).lean()
   if (!intg) return err('Không tìm thấy', 404)
+  await ensureChannelForIntegration({
+    provider: intg.provider,
+    brandId: intg.brandId,
+    hubId: intg.hubId,
+    externalStoreId: intg.externalStoreId,
+    externalStoreName: intg.externalStoreName,
+    isActive: intg.isActive,
+  })
   return ok(intg)
 }
 
@@ -36,6 +45,14 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const { credentials: _cred, ...safe } = body
   const intg = await IntegrationModel.findByIdAndUpdate(params.id, safe, { new: true }).lean()
   if (!intg) return err('Không tìm thấy', 404)
+  await ensureChannelForIntegration({
+    provider: intg.provider,
+    brandId: intg.brandId,
+    hubId: intg.hubId,
+    externalStoreId: intg.externalStoreId,
+    externalStoreName: intg.externalStoreName,
+    isActive: intg.isActive,
+  })
   return ok(intg)
 }
 

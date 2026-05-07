@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Plus, Search, ToggleLeft, ToggleRight, Edit, Trash2, Loader2, Link2 } from 'lucide-react'
 import { useChannels, useCreateChannel, useUpdateChannel, useDeleteChannel } from '@/hooks/use-orders-channels'
 import { useBrands } from '@/hooks/use-brands'
@@ -10,11 +10,15 @@ import { cn } from '@/lib/utils'
 import { CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
 import type { Channel } from '@/types'
 
-const SOURCES = [
+const MARKETPLACE_TABS = [
   { value: 'grab',     label: 'GrabFood' },
   { value: 'be',       label: 'Be Food' },
   { value: 'shopee',   label: 'Shopee Food' },
   { value: 'xanh_sm',  label: 'Xanh SM' },
+]
+
+const SOURCES = [
+  ...MARKETPLACE_TABS,
   { value: 'internal', label: 'Nội bộ' },
   { value: 'other',    label: 'Khác' },
 ]
@@ -23,6 +27,7 @@ const emptyForm = { name: '', source: 'grab', brandId: '', hubId: '' }
 
 export default function ChannelsPage() {
   const [search, setSearch]   = useState('')
+  const [activeSourceTab, setActiveSourceTab] = useState(MARKETPLACE_TABS[0].value)
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId]   = useState<string | null>(null)
   const [form, setForm]       = useState(emptyForm)
@@ -40,6 +45,20 @@ export default function ChannelsPage() {
   const updateMutation = useUpdateChannel()
   const deleteMutation = useDeleteChannel()
   const saving = createMutation.isPending || updateMutation.isPending
+
+  const tabSourceSet = useMemo(() => new Set(MARKETPLACE_TABS.map((tab) => tab.value)), [])
+  const marketplaceChannels = useMemo(
+    () => channels.filter((channel) => tabSourceSet.has(channel.source)),
+    [channels, tabSourceSet]
+  )
+  const activeChannels = useMemo(
+    () => marketplaceChannels.filter((channel) => channel.source === activeSourceTab),
+    [activeSourceTab, marketplaceChannels]
+  )
+  const otherChannels = useMemo(
+    () => channels.filter((channel) => !tabSourceSet.has(channel.source)),
+    [channels, tabSourceSet]
+  )
 
   const filteredHubs = form.brandId ? hubs.filter(h => h.brandId === form.brandId) : hubs
 
@@ -96,7 +115,7 @@ export default function ChannelsPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Kênh bán</h1>
-          <p className="page-subtitle">{isLoading ? '...' : `${channels.length} kênh`}</p>
+          <p className="page-subtitle">{isLoading ? '...' : `${marketplaceChannels.length} kênh sàn đang hiển thị theo tab`}</p>
         </div>
         <button onClick={openCreate} className="btn-primary">
           <Plus className="w-4 h-4" /> Thêm kênh bán
@@ -113,8 +132,33 @@ export default function ChannelsPage() {
 
       {isLoading && <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-primary-400" /></div>}
 
+      <div className="flex flex-wrap gap-2">
+        {MARKETPLACE_TABS.map((tab) => {
+          const count = marketplaceChannels.filter((channel) => channel.source === tab.value).length
+          const isActiveTab = activeSourceTab === tab.value
+
+          return (
+            <button
+              key={tab.value}
+              onClick={() => setActiveSourceTab(tab.value)}
+              className={cn(
+                'flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-all',
+                isActiveTab
+                  ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
+                  : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+              )}
+            >
+              <span>{tab.label}</span>
+              <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', isActiveTab ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600')}>
+                {count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {channels.map((channel: Channel) => (
+        {activeChannels.map((channel: Channel) => (
           <div key={channel._id} className="card p-5">
             <div className="flex items-start justify-between mb-4">
               <div className="min-w-0">
@@ -154,13 +198,41 @@ export default function ChannelsPage() {
             </div>
           </div>
         ))}
-        {!isLoading && channels.length === 0 && (
+        {!isLoading && activeChannels.length === 0 && (
           <div className="col-span-2 text-center py-12 text-gray-400">
             <Link2 className="w-10 h-10 mx-auto mb-3 text-gray-200" />
-            <p>Chưa có kênh bán nào.</p>
+            <p>Chưa có kênh bán nào cho {MARKETPLACE_TABS.find((tab) => tab.value === activeSourceTab)?.label}.</p>
           </div>
         )}
       </div>
+
+      {otherChannels.length > 0 && (
+        <div className="card card-body">
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-gray-900">Kênh khác</h2>
+            <p className="text-sm text-gray-500">Giữ riêng các kênh nội bộ hoặc kênh ngoài 4 sàn chính để không lẫn vào tab marketplace.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {otherChannels.map((channel) => (
+              <div key={channel._id} className="rounded-2xl border border-gray-200 p-4">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className={cn('badge', CHANNEL_SOURCE_COLOR[channel.source])}>
+                    {CHANNEL_SOURCE_LABEL[channel.source]}
+                  </span>
+                  <span className={cn('badge', channel.status === 'active' ? 'badge-green' : 'badge-red')}>
+                    {channel.status === 'active' ? 'Hoạt động' : 'Ngừng'}
+                  </span>
+                </div>
+                <h3 className="font-semibold text-gray-900">{channel.name}</h3>
+                <p className="text-xs text-gray-400 mt-1">
+                  {channel.brandName}
+                  {channel.hubName ? ` - ${channel.hubName}` : ''}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">

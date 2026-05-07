@@ -3,6 +3,8 @@ import { connectDB } from '@/lib/db'
 import OrderModel from '@/models/Order'
 import { ok, err, requireAuth } from '@/lib/api-helpers'
 
+const ORDER_STATUS_KEYS = ['draft', 'pre_order', 'waiting_confirm', 'waiting_pickup', 'delivering', 'completed', 'cancelled'] as const
+
 export async function GET(req: NextRequest) {
   const { res } = await requireAuth(req)
   if (res) return res
@@ -26,16 +28,34 @@ export async function GET(req: NextRequest) {
   }
   if (source) filter.source = source
   if (brandId) filter.brandId = brandId
+  const countFilter = { ...filter }
+  delete countFilter.status
   const skip = (page - 1) * limit
-  const [orders, total] = await Promise.all([
+  const [orders, total, statusRows] = await Promise.all([
     OrderModel.find(filter)
       .populate('brandId', 'name')
       .populate('hubId', 'name')
       .sort({ placedAt: -1 })
       .skip(skip).limit(limit).lean(),
     OrderModel.countDocuments(filter),
+    OrderModel.aggregate([
+      { $match: countFilter },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]),
   ])
-  return ok({ orders, total, page, limit })
+
+  const statusCounts = ORDER_STATUS_KEYS.reduce((acc, key) => {
+    acc[key] = 0
+    return acc
+  }, {} as Record<(typeof ORDER_STATUS_KEYS)[number], number>)
+
+  statusRows.forEach((row) => {
+    if (typeof row._id === 'string' && row._id in statusCounts) {
+      statusCounts[row._id as keyof typeof statusCounts] = Number(row.count || 0)
+    }
+  })
+
+  return ok({ orders, total, page, limit, statusCounts })
 }
 
 export async function POST(req: NextRequest) {
