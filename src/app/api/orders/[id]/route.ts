@@ -4,6 +4,11 @@ import OrderModel from '@/models/Order'
 import { ok, err, requireAuth } from '@/lib/api-helpers'
 
 type PopulatedRef = { _id?: { toString(): string } | string; name?: string } | string | null | undefined
+type OrderDetailDoc = Record<string, unknown> & {
+  brandId?: PopulatedRef
+  hubId?: PopulatedRef
+  channelId?: PopulatedRef
+}
 
 function getRefId(value: PopulatedRef) {
   if (!value || typeof value === 'string') return value
@@ -24,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .populate('brandId', 'name')
     .populate('hubId', 'name')
     .populate('channelId', 'name source')
-    .lean()
+    .lean() as OrderDetailDoc | null
   if (!order) return err('Không tìm thấy', 404)
   return ok({
     ...order,
