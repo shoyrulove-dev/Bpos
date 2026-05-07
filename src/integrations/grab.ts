@@ -16,6 +16,7 @@ const GRAB_PORTAL_ORDER_CANDIDATES = [
   'https://merchant.grab.com/portal/v1/orders?merchantID={storeId}',
   'https://merchant.grab.com/portal/merchant/v1/restaurants/{storeId}/orders',
 ]
+const GRAB_PORTAL_HISTORY_REPORTS_URL = 'https://api.grab.com/delvplatformapi/merchant/v1/reports/daily-pagination'
 const GRAB_PORTAL_ACTIVE_PAGE_TYPES = ['PreparingV2', 'Ready', 'Upcoming'] as const
 const GRAB_PORTAL_HISTORY_PAGE_TYPES = ['Completed', 'CompletedV2', 'History', 'Past', 'PastOrders', 'Delivered', 'Cancelled', 'All'] as const
 
@@ -245,9 +246,20 @@ export class GrabAdapter implements PlatformAdapter {
     return null  // all endpoints failed – session likely expired
   }
 
-  async fetchHistoricalOrdersWithSession(session: SessionData, storeId: string): Promise<NormalizedOrder[] | null> {
+  async fetchHistoricalOrdersWithSession(
+    session: SessionData,
+    storeId: string,
+    options?: { days?: number }
+  ): Promise<NormalizedOrder[] | null> {
     const context = this.buildGrabSessionContext(session, storeId)
     if (!context) return null
+
+    const days = Math.max(1, Math.min(29, Number(options?.days ?? 30)))
+    const historyStatements = await this.fetchPortalHistoryStatements(context.baseHeaders, context.discoveredStoreId, days)
+    if (historyStatements === null) return null
+    if (historyStatements.length) {
+      return historyStatements.map((statement) => this.normalizePortalOrder(statement, context.discoveredStoreId))
+    }
 
     const historyResult = await this.fetchPortalOrdersByPageTypes(
       context.baseHeaders,
@@ -259,6 +271,64 @@ export class GrabAdapter implements PlatformAdapter {
     if (historyResult.sawPaginationEnvelope) return []
     if (historyResult.sawAuthFailure) return null
     return []
+  }
+
+  private async fetchPortalHistoryStatements(
+    baseHeaders: Record<string, string>,
+    storeId: string,
+    days: number
+  ): Promise<Record<string, unknown>[] | null> {
+    const endDate = new Date()
+    const startDate = new Date(endDate)
+    startDate.setDate(startDate.getDate() - Math.max(0, days - 1))
+
+    const startTime = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}T00:00:00+07:00`
+    const endTime = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}T23:59:59+07:00`
+
+    const statements: Record<string, unknown>[] = []
+    const seenIds = new Set<string>()
+
+    for (let pageIndex = 0; pageIndex < 20; pageIndex++) {
+      const url = new URL(GRAB_PORTAL_HISTORY_REPORTS_URL)
+      url.searchParams.set('states', '')
+      url.searchParams.set('startTime', startTime)
+      url.searchParams.set('endTime', endTime)
+      url.searchParams.set('pageIndex', String(pageIndex))
+      url.searchParams.set('pageSize', '50')
+
+      try {
+        const res = await fetch(url, {
+          headers: {
+            ...baseHeaders,
+            merchantid: storeId,
+            Referer: `https://merchant.grab.com/order/${encodeURIComponent(storeId)}/history`,
+          },
+          signal: AbortSignal.timeout(8000),
+        })
+
+        if (res.status === 401 || res.status === 403) return null
+        if (!res.ok) break
+
+        const data = await res.json() as {
+          hasMore?: boolean
+          statements?: Record<string, unknown>[]
+        }
+
+        const pageStatements = Array.isArray(data.statements) ? data.statements : []
+        for (const statement of pageStatements) {
+          const statementId = String(statement.ID ?? statement.id ?? statement.orderID ?? '')
+          if (statementId && seenIds.has(statementId)) continue
+          if (statementId) seenIds.add(statementId)
+          statements.push(statement)
+        }
+
+        if (!data.hasMore) break
+      } catch {
+        break
+      }
+    }
+
+    return statements
   }
 
   /** Extract orders array from various portal response shapes */
@@ -310,7 +380,13 @@ export class GrabAdapter implements PlatformAdapter {
    * Normalize a raw order from the Grab Merchant Portal (different shape than Partner API).
    * Portal orders may use camelCase keys like orderStatus, consumerName, etc.
    */
-  private normalizePortalOrder(raw: Record<string, unknown>): NormalizedOrder {
+  private parseGrabDisplayAmount(value: unknown): number {
+    if (typeof value === 'number') return value
+    const text = String(value ?? '').replace(/[^\d-]/g, '')
+    return text ? Number(text) : 0
+  }
+
+  private normalizePortalOrder(raw: Record<string, unknown>, fallbackStoreId?: string): NormalizedOrder {
     // Portal might use different field names than Partner API
     const itemsRaw = (raw.items ?? raw.orderItems ?? raw.lineItems ?? []) as Record<string, unknown>[]
     const items: OrderItem[] = itemsRaw.map(i => ({
@@ -337,14 +413,25 @@ export class GrabAdapter implements PlatformAdapter {
       'REFUNDED':          'cancelled',
     }
 
-    const rawStatus = String(raw.orderState ?? raw.status ?? raw.orderStatus ?? raw.state ?? '')
+    const rawStatus = String(raw.deliveryStatus ?? raw.orderState ?? raw.status ?? raw.orderStatus ?? raw.state ?? '')
     const consumer  = raw.consumer ?? raw.customer ?? raw.receiver ?? {} as Record<string, unknown>
     const consumerObj = typeof consumer === 'object' ? consumer as Record<string, unknown> : {}
 
     const priceObj = (raw.price ?? raw.pricing ?? {}) as Record<string, unknown>
-    const subtotal = Number(priceObj.subtotal ?? raw.subtotal ?? raw.subTotal ?? 0)
+    const subtotal = Number(
+      priceObj.subtotal ??
+      raw.subtotal ??
+      raw.subTotal ??
+      this.parseGrabDisplayAmount(raw.cancelledOriginalPriceDisplay ?? raw.priceDisplay)
+    )
     const discount = Number(priceObj.basketPromo ?? priceObj.discount ?? raw.discount ?? raw.discountAmount ?? 0)
-    const total    = Number(priceObj.eaterPayment ?? priceObj.total ?? raw.total ?? raw.orderTotal ?? 0)
+    const total    = Number(
+      priceObj.eaterPayment ??
+      priceObj.total ??
+      raw.total ??
+      raw.orderTotal ??
+      this.parseGrabDisplayAmount(raw.priceDisplay)
+    )
 
     const delivery = (raw.delivery ?? {}) as Record<string, unknown>
     const dropoff  = (delivery.dropoff ?? {}) as Record<string, unknown>
@@ -352,17 +439,18 @@ export class GrabAdapter implements PlatformAdapter {
 
     return {
       source:          'grab',
-      externalOrderId: String(raw.orderID ?? raw.id ?? raw.orderId ?? ''),
-      externalStoreId: String(raw.merchantID ?? raw.merchantId ?? raw.storeId ?? ''),
+      externalOrderId: String(raw.orderID ?? raw.ID ?? raw.id ?? raw.orderId ?? ''),
+      externalStoreId: String(raw.merchantID ?? raw.merchantId ?? raw.storeId ?? fallbackStoreId ?? ''),
       customerName:    String(consumerObj.name ?? consumerObj.displayName ?? 'Khách hàng'),
       customerPhone:   String(consumerObj.phones ?? consumerObj.phone ?? consumerObj.phoneNumber ?? ''),
       items,
       subtotal, discount, total,
-      paymentMethod:   String(raw.paymentType ?? raw.paymentMethod ?? ''),
+      paymentMethod:   String(raw.paymentType ?? raw.paymentMethod ?? (raw.isTakeawayOrder ? 'pickup' : 'delivery')),
       deliveryInfo:    { address },
       driverInfo:      { name: '', phone: '' },
       orderStatus:     statusMap[rawStatus] ?? 'waiting_confirm',
       placedAt:        String(raw.orderTime ?? raw.createdAt ?? raw.createTime ?? new Date().toISOString()),
+      deliveredAt:     rawStatus === 'COMPLETED' ? String(raw.updatedAt ?? raw.completedAt ?? raw.createdAt ?? '') : undefined,
       rawPayload:      raw,
     }
   }
