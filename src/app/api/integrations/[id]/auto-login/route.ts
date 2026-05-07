@@ -15,6 +15,7 @@ import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { encryptJSON, encrypt, decrypt } from '@/lib/crypto'
+import { normalizeAutomationSession } from '@/lib/automation-session'
 import { isSessionValid } from '@/services/automation/runner'
 import type { SessionData } from '@/integrations/types'
 
@@ -123,7 +124,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${AUTOMATION_SECRET}`,
       },
-      body: JSON.stringify({ provider: integ.provider, username, password, otp, sessionKey }),
+      body: JSON.stringify({
+        provider: integ.provider,
+        username,
+        password,
+        otp,
+        sessionKey,
+        preferredStoreId: integ.externalStoreId ?? body.storeId ?? undefined,
+        preferredStoreName: integ.externalStoreName ?? undefined,
+      }),
       signal: AbortSignal.timeout(120_000),  // 2 minute timeout
     })
 
@@ -133,6 +142,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       otpTarget?: string
       sessionKey?: string
       session?: SessionData
+      token?: string
+      expiresAt?: string | number
+      extraHeaders?: Record<string, string>
+      storeId?: string | number
+      storeName?: string
       error?: string
     }
 
@@ -145,10 +159,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return ok({ requiresOtp: true, otpTarget: data.otpTarget, sessionKey: data.sessionKey })
     }
 
-    if (data.success && data.session) {
-      const encryptedSession = encryptJSON(data.session)
+    const session = normalizeAutomationSession(data)
+
+    if (data.success && session) {
+      const encryptedSession = encryptJSON(session)
       const capturedAt       = new Date()
-      const ttl              = data.session.sessionTtlSeconds ?? 86400
+      const ttl              = session.sessionTtlSeconds ?? 86400
       const expiresAt        = new Date(capturedAt.getTime() + ttl * 1000)
 
       await IntegrationModel.updateOne({ _id: params.id }, {

@@ -16,6 +16,7 @@ const GRAB_PORTAL_ORDER_CANDIDATES = [
   'https://merchant.grab.com/portal/v1/orders?merchantID={storeId}',
   'https://merchant.grab.com/portal/merchant/v1/restaurants/{storeId}/orders',
 ]
+const GRAB_PORTAL_ACTIVE_PAGE_TYPES = ['PreparingV2', 'Ready', 'Upcoming'] as const
 
 export class GrabAdapter implements PlatformAdapter {
   source = 'grab' as const
@@ -107,10 +108,64 @@ export class GrabAdapter implements PlatformAdapter {
       'x-grab-tenant': 'GF_VN',
       'x-grab-country': 'VN',
       'Accept':         'application/json',
+      'Accept-Language': 'vi',
       'User-Agent':     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Referer':        'https://merchant.grab.com/food/orders',
+      'requestsource':  'troyPortal',
+      'merchantid':     discoveredStoreId,
     }
     if (token && !token.startsWith('x-grab')) baseHeaders['Authorization'] = token.startsWith('Bearer ') ? token : `Bearer ${token}`
+
+    let sawAuthFailure = false
+    let sawHtmlShell = false
+
+    const activePortalOrders: Record<string, unknown>[] = []
+    const seenOrderIds = new Set<string>()
+    let sawPaginationEnvelope = false
+
+    for (const pageType of GRAB_PORTAL_ACTIVE_PAGE_TYPES) {
+      const url = new URL('https://api.grab.com/delvplatformapi/merchant/v4/orders-pagination')
+      url.searchParams.set('AutoAcceptGroup', '1')
+      url.searchParams.set('merchantID', discoveredStoreId)
+      url.searchParams.set('PageType', pageType)
+      url.searchParams.set('searchToken', '')
+      url.searchParams.set('size', '50')
+
+      try {
+        const res = await fetch(url, { headers: baseHeaders, signal: AbortSignal.timeout(8000) })
+        if (res.status === 401 || res.status === 403) {
+          sawAuthFailure = true
+          continue
+        }
+        if (!res.ok) continue
+
+        const data = await res.json() as unknown
+        const orders = this.extractOrdersFromPortalResponse(data)
+        if (orders) {
+          sawPaginationEnvelope = true
+          for (const order of orders) {
+            const orderId = String(order.orderID ?? order.orderId ?? order.id ?? '')
+            if (orderId && seenOrderIds.has(orderId)) continue
+            if (orderId) seenOrderIds.add(orderId)
+            activePortalOrders.push(order)
+          }
+          continue
+        }
+
+        if (this.isGrabPortalPaginationEnvelope(data)) {
+          sawPaginationEnvelope = true
+        }
+      } catch {
+        continue
+      }
+    }
+
+    if (activePortalOrders.length) {
+      return activePortalOrders.map(o => this.normalizePortalOrder(o))
+    }
+    if (sawPaginationEnvelope) {
+      return []
+    }
 
     // Build list of URLs to try
     const urlsToTry: string[] = []
@@ -124,15 +179,35 @@ export class GrabAdapter implements PlatformAdapter {
     for (const url of urlsToTry) {
       try {
         const res = await fetch(url, { headers: baseHeaders, signal: AbortSignal.timeout(8000) })
-        if (res.status === 401 || res.status === 403) continue
+        if (res.status === 401 || res.status === 403) {
+          sawAuthFailure = true
+          continue
+        }
         if (!res.ok) continue
-        const data = await res.json() as unknown
+
+        const text = await res.text()
+        const trimmed = text.trim()
+        if (trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')) {
+          sawHtmlShell = true
+          continue
+        }
+
+        let data: unknown
+        try {
+          data = JSON.parse(text) as unknown
+        } catch {
+          continue
+        }
+
         const orders = this.extractOrdersFromPortalResponse(data)
         if (orders !== null) return orders.map(o => this.normalizePortalOrder(o))
       } catch {
         continue
       }
     }
+
+    if (sawAuthFailure) return null
+    if (sawHtmlShell) return []
 
     return null  // all endpoints failed – session likely expired
   }
@@ -143,13 +218,43 @@ export class GrabAdapter implements PlatformAdapter {
     const d = data as Record<string, unknown>
     if (Array.isArray(d)) return d as Record<string, unknown>[]
     if (Array.isArray(d.orders)) return d.orders as Record<string, unknown>[]
+    if (Array.isArray(d.orderList)) return d.orderList as Record<string, unknown>[]
+    if (Array.isArray(d.orderCards)) return d.orderCards as Record<string, unknown>[]
     if (Array.isArray(d.data)) return d.data as Record<string, unknown>[]
     if (Array.isArray(d.result)) return d.result as Record<string, unknown>[]
+    if (Array.isArray(d.results)) return d.results as Record<string, unknown>[]
     if (d.data && typeof d.data === 'object' && !Array.isArray(d.data)) {
       const inner = d.data as Record<string, unknown>
       if (Array.isArray(inner.orders)) return inner.orders as Record<string, unknown>[]
+      if (Array.isArray(inner.orderList)) return inner.orderList as Record<string, unknown>[]
+      if (Array.isArray(inner.results)) return inner.results as Record<string, unknown>[]
+    }
+    for (const value of Object.values(d)) {
+      if (Array.isArray(value) && value.some(item => this.looksLikeGrabPortalOrder(item))) {
+        return value as Record<string, unknown>[]
+      }
     }
     return null
+  }
+
+  private isGrabPortalPaginationEnvelope(data: unknown): boolean {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return false
+    const envelope = data as Record<string, unknown>
+    return 'nextSearchToken' in envelope || 'orderStats' in envelope || 'pollInterval' in envelope
+  }
+
+  private looksLikeGrabPortalOrder(data: unknown): boolean {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return false
+    const order = data as Record<string, unknown>
+    return Boolean(
+      order.orderID ||
+      order.orderId ||
+      order.orderNumber ||
+      order.orderStatus ||
+      order.orderState ||
+      order.consumer ||
+      order.receiver
+    )
   }
 
   /**

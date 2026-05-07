@@ -22,6 +22,18 @@ export interface SessionData {
   capturedAt: string  // ISO-8601
   /** Estimated expiry in seconds from capturedAt. Platform-specific. */
   sessionTtlSeconds?: number
+  /** Optional localStorage snapshot captured during browser login. */
+  localStorage?: Record<string, string>
+  /** Optional absolute expiry timestamp from the automation service. */
+  expiresAt?: string
+  /** Optional platform metadata discovered after login. */
+  storeInfo?: {
+    storeId?: string | null
+    storeName?: string | null
+    ordersApiUrl?: string | null
+    apiToken?: string | null
+    [key: string]: unknown
+  }
 }
 
 // ─── Adapter config ───────────────────────────────────────────────────────────

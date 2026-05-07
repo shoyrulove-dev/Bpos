@@ -16,12 +16,16 @@ import type { PlatformAdapter, AdapterConfig, SessionData } from './types'
 
 const BE_BASE_PROD    = 'https://gw.be.com.vn/api/v1/be-food-gateway'
 const BE_BASE_STAGING = 'https://gw.veep.me/api/v1/be-food-gateway'
+const BE_MERCHANT_BASE = 'https://gw.be.com.vn/api/v1/be-merchant-gateway/v2/merchant'
+const BE_MERCHANT_OPERATOR_TOKEN = '0b28e008bc323838f5ec84f718ef11e6'
+const BE_MERCHANT_DEVICE_TYPE = '2'
 
 // Status integer → fetch_type context mapping (Be API uses int, not string enum)
 // Inferred from docs examples: status 21 = completed (previous), status 2 = in-process
 // in_progress fetch_type = awaiting confirmation, pending = being prepared
 const STATUS_BY_FETCH: Record<string, OrderStatus> = {
   in_progress: 'waiting_confirm',
+  on_delivery: 'delivering',
   pending:     'waiting_pickup',
   previous:    'completed',
 }
@@ -31,6 +35,70 @@ const tokenCache = new Map<string, { token: string; expiresAt: number }>()
 
 export class BeAdapter implements PlatformAdapter {
   source = 'be' as const
+
+  private parseJwtPayload(token: string): Record<string, unknown> | null {
+    const [, payload] = token.split('.')
+    if (!payload) return null
+
+    try {
+      const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+      const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+      return JSON.parse(Buffer.from(padded, 'base64').toString('utf8')) as Record<string, unknown>
+    } catch {
+      return null
+    }
+  }
+
+  private getSessionAccessToken(session: SessionData): string | null {
+    const raw = session.extraHeaders?.Authorization ?? session.extraHeaders?.authorization
+    if (!raw) return null
+    return raw.replace(/^Bearer\s+/i, '').trim() || null
+  }
+
+  private buildMerchantHeaders(): Record<string, string> {
+    return {
+      'Content-Type': 'application/json',
+      'device_type': BE_MERCHANT_DEVICE_TYPE,
+      'operator_token': BE_MERCHANT_OPERATOR_TOKEN,
+    }
+  }
+
+  private async resolveMerchantContext(accessToken: string, restaurantId: number): Promise<{ merchantId: number; userId: number } | null> {
+    const payload = this.parseJwtPayload(accessToken)
+    const userId = Number(payload?.sub ?? 0)
+    if (!userId) return null
+
+    const res = await fetch(`${BE_MERCHANT_BASE}/get_user_profiles`, {
+      method: 'POST',
+      headers: this.buildMerchantHeaders(),
+      body: JSON.stringify({
+        operator_token: BE_MERCHANT_OPERATOR_TOKEN,
+        device_type: Number(BE_MERCHANT_DEVICE_TYPE),
+        access_token: accessToken,
+        user_id: userId,
+        locale: 'vi',
+        device_token: '',
+      }),
+    })
+
+    if (!res.ok) return null
+
+    const data = await res.json() as {
+      data?: Array<{
+        merchant_id?: number
+        store_profiles?: Array<{ store_id?: number }>
+      }>
+    }
+
+    const profile = data.data?.find((entry) =>
+      entry.store_profiles?.some((store) => Number(store.store_id ?? 0) === restaurantId)
+    )
+
+    const merchantId = Number(profile?.merchant_id ?? 0)
+    if (!merchantId) return null
+
+    return { merchantId, userId }
+  }
 
   private getBase(config: AdapterConfig): string {
     return config.useStaging === 'true' ? BE_BASE_STAGING : BE_BASE_PROD
@@ -178,22 +246,25 @@ export class BeAdapter implements PlatformAdapter {
    * The JWT from the portal is the same credential used by the Be Partner API.
    */
   async fetchOrdersWithSession(session: SessionData, restaurantId: string): Promise<NormalizedOrder[] | null> {
-    const jwt = session.extraHeaders?.['Authorization']?.replace('Bearer ', '')
-    if (!jwt) return null
+    const accessToken = this.getSessionAccessToken(session)
+    if (!accessToken) return null
 
-    const base = BE_BASE_PROD
     const resId = Number(restaurantId)
     if (!resId) return null
 
+    const merchantContext = await this.resolveMerchantContext(accessToken, resId)
+    if (!merchantContext) return null
+
     try {
-      const [inProgress, pending] = await Promise.all([
-        this.fetchByTypeWithJwt(jwt, base, resId, 'in_progress'),
-        this.fetchByTypeWithJwt(jwt, base, resId, 'pending'),
+      const [inProgress, onDelivery, pending] = await Promise.all([
+        this.fetchByTypeWithSession(accessToken, merchantContext, resId, 'in_progress'),
+        this.fetchByTypeWithSession(accessToken, merchantContext, resId, 'on_delivery'),
+        this.fetchByTypeWithSession(accessToken, merchantContext, resId, 'pending'),
       ])
 
       const seen = new Set<string>()
       const all: NormalizedOrder[] = []
-      for (const [orders, fetchType] of [[inProgress, 'in_progress'], [pending, 'pending']] as [Record<string, unknown>[], string][]) {
+      for (const [orders, fetchType] of [[inProgress, 'in_progress'], [onDelivery, 'on_delivery'], [pending, 'pending']] as [Record<string, unknown>[], string][]) {
         for (const o of orders) {
           const id = String(o.order_id ?? '')
           if (!id || seen.has(id)) continue
@@ -207,15 +278,31 @@ export class BeAdapter implements PlatformAdapter {
     }
   }
 
-  private async fetchByTypeWithJwt(
-    jwt: string, base: string, restaurantId: number, fetchType: string
+  private async fetchByTypeWithSession(
+    accessToken: string,
+    merchantContext: { merchantId: number; userId: number },
+    restaurantId: number,
+    fetchType: string
   ): Promise<Record<string, unknown>[]> {
-    const res = await fetch(`${base}/partner/v1/orders`, {
+    const res = await fetch(`${BE_MERCHANT_BASE}/get_restaurant_orders`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
-      body: JSON.stringify({ restaurant_id: restaurantId, fetch_type: fetchType }),
+      headers: this.buildMerchantHeaders(),
+      body: JSON.stringify({
+        device_type: Number(BE_MERCHANT_DEVICE_TYPE),
+        access_token: accessToken,
+        merchant_id: merchantContext.merchantId,
+        api_version: 2,
+        fetch_type: fetchType,
+        user_id: merchantContext.userId,
+        restaurant_id: restaurantId,
+        locale: 'vi',
+        device_token: '',
+      }),
     })
+
+    if (res.status === 401 || res.status === 403) return []
     if (!res.ok) return []
+
     const data = await res.json() as { restaurant_orders?: Record<string, unknown>[] }
     return data.restaurant_orders ?? []
   }

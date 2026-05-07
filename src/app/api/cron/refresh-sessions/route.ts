@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { decrypt, encryptJSON } from '@/lib/crypto'
+import { normalizeAutomationSession } from '@/lib/automation-session'
 import type { SessionData } from '@/integrations/types'
 
 const AUTOMATION_URL    = process.env.AUTOMATION_SERVICE_URL ?? ''
@@ -65,20 +66,30 @@ export async function GET(req: NextRequest) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${AUTOMATION_SECRET}`,
         },
-        body: JSON.stringify({ provider: integ.provider, username, password }),
+        body: JSON.stringify({
+          provider: integ.provider,
+          username,
+          password,
+          preferredStoreId: integ.externalStoreId ?? undefined,
+          preferredStoreName: integ.externalStoreName ?? undefined,
+        }),
         signal: AbortSignal.timeout(120_000),
       })
 
       const data = await serviceRes.json() as {
         success?: boolean; session?: SessionData; requiresOtp?: boolean; error?: string
+        token?: string; expiresAt?: string | number; extraHeaders?: Record<string, string>
+        storeId?: string | number; storeName?: string
       }
 
-      if (data.success && data.session) {
+      const session = normalizeAutomationSession(data)
+
+      if (data.success && session) {
         const capturedAt = new Date()
-        const ttl        = data.session.sessionTtlSeconds ?? 86400
+        const ttl        = session.sessionTtlSeconds ?? 86400
         const expiresAt  = new Date(capturedAt.getTime() + ttl * 1000)
         await IntegrationModel.updateOne({ _id: integ._id }, {
-          sessionData:       encryptJSON(data.session),
+          sessionData:       encryptJSON(session),
           sessionStatus:     'active',
           sessionCapturedAt: capturedAt,
           sessionExpiresAt:  expiresAt,

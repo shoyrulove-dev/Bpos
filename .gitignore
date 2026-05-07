@@ -36,3 +36,24 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local probes / one-off helpers
+/.vscode/
+/be-*.js
+/be-*.mjs
+/be-*.png
+/be-*.txt
+/check-*.mjs
+/data-server.mjs
+/fetch-nexpos.mjs
+/get-be-tokens.mjs
+/grab-*.js
+/grab-*.mjs
+/grab-*.txt
+/migrate-*.mjs
+/nexpos-data.json
+/scripts/
+/shopee*.js
+/tmp_check.sh
+/vps-*.js
+/vps-*.sh
