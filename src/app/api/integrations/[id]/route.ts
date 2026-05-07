@@ -5,6 +5,15 @@ import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { encrypt } from '@/lib/crypto'
 import { ensureChannelForIntegration } from '@/lib/channel-sync'
 
+type IntegrationChannelDoc = {
+  provider: string
+  brandId: unknown
+  hubId?: unknown | null
+  externalStoreId?: string
+  externalStoreName?: string
+  isActive?: boolean
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const { res } = await requireAdmin(req)
   if (res) return res
@@ -24,7 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       update[`credentials.${k}`] = v
     })
   }
-  const intg = await IntegrationModel.findByIdAndUpdate(params.id, { $set: update }, { new: true }).lean()
+  const intg = await IntegrationModel.findByIdAndUpdate(params.id, { $set: update }, { new: true }).lean() as IntegrationChannelDoc | null
   if (!intg) return err('Không tìm thấy', 404)
   await ensureChannelForIntegration({
     provider: intg.provider,
@@ -43,7 +52,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   await connectDB()
   const body = await req.json()
   const { credentials: _cred, ...safe } = body
-  const intg = await IntegrationModel.findByIdAndUpdate(params.id, safe, { new: true }).lean()
+  const intg = await IntegrationModel.findByIdAndUpdate(params.id, safe, { new: true }).lean() as IntegrationChannelDoc | null
   if (!intg) return err('Không tìm thấy', 404)
   await ensureChannelForIntegration({
     provider: intg.provider,
