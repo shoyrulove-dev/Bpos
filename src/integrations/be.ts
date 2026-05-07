@@ -257,7 +257,7 @@ export class BeAdapter implements PlatformAdapter {
     const items: OrderItem[] = orderItems.map((i) => ({
       name:     String(i.item_name ?? ''),
       quantity: Number(i.quantity ?? 1),
-      price:    Number(i.item_price ?? i.amount ?? 0),
+      price:    Number(i.item_price ?? i.uint_price ?? i.amount ?? 0),
       total:    Number(i.amount ?? 0),
       note:     String(i.note ?? '') || undefined,
     }))
@@ -271,7 +271,7 @@ export class BeAdapter implements PlatformAdapter {
     if (statusInt === 99 || statusInt === 100) orderStatus = 'cancelled'
 
     const total    = Number(raw.order_amount    ?? 0)
-    const original = Number(raw.original_amount ?? raw.net_order_amount ?? total)
+    const original = Number(raw.original_amount ?? raw.sub_total ?? raw.net_order_amount ?? total)
     const discount = original > total ? original - total : 0
 
     return {
@@ -284,9 +284,11 @@ export class BeAdapter implements PlatformAdapter {
       subtotal:        original,
       discount,
       total,
+      paymentMethod:   raw.is_pickup_order ? 'pickup' : 'delivery',
       deliveryInfo: {
         address: String(raw.delivery_address ?? ''),
         note:    String(raw.delivery_note    ?? '') || undefined,
+        estimatedTime: String(raw.to_be_delivered_at ?? '') || undefined,
       },
       driverInfo: {
         name:  String(raw.driver_name     ?? ''),

@@ -5,14 +5,6 @@
   "installCommand": "npm install",
   "crons": [
     {
-      "path": "/api/cron/sync-orders",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/refresh-sessions",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/cron/backfill-orders",
       "schedule": "30 0 * * *"
     }
