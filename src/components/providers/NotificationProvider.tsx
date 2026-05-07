@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Bell, X, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
@@ -39,6 +40,7 @@ const NotificationContext = createContext<NotificationContextValue>({
 export const useNotifications = () => useContext(NotificationContext)
 
 export default function NotificationProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [settings, setSettings] = useState(DEFAULT_ORDER_ALERT_SETTINGS)
   const [printQueue, setPrintQueue] = useState<string[]>([])
@@ -77,6 +79,8 @@ export default function NotificationProvider({ children }: { children: React.Rea
         if (initialized.current) {
           const newOrderIds = newOrders.map(o => o._id)
           addNotification(newOrders.length, newOrderIds)
+          void queryClient.invalidateQueries({ queryKey: ['orders'] })
+          void queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
 
           if (settings.autoPrintEnabled) {
             const alreadyPrinted = new Set(getRecentPrintedOrderIds())
@@ -100,7 +104,7 @@ export default function NotificationProvider({ children }: { children: React.Rea
         initialized.current = true
       }
     } catch { /* network error — ignore */ }
-  }, [addNotification, settings.autoPrintEnabled])
+  }, [addNotification, queryClient, settings.autoPrintEnabled])
 
   useEffect(() => {
     pollOrders()
