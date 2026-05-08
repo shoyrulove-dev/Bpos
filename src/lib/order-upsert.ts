@@ -50,6 +50,8 @@ export function buildOrderUpsert(integration: IntegrationRef, normalized: Normal
     subtotal: normalized.subtotal,
     discount: normalized.discount,
     total: normalized.total,
+    platformFee: normalized.platformFee,
+    paymentMethod: normalized.paymentMethod,
     deliveryInfo: normalized.deliveryInfo,
     driverInfo: normalized.driverInfo,
     rawPayload: normalized.rawPayload,

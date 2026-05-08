@@ -369,6 +369,7 @@ export interface NormalizedOrder {
   orderStatus: OrderStatus
   placedAt: string
   deliveredAt?: string
+  isNew?: boolean
   rawPayload: Record<string, unknown>
 }
 

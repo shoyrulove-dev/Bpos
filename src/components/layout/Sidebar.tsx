@@ -28,6 +28,7 @@ import {
   LayoutGrid,
   Monitor,
   UserCircle,
+  Settings2,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -80,6 +81,11 @@ const navItems: NavItem[] = [
       { href: '/inventory',    label: 'Tồn kho',        icon: <Warehouse className="w-4 h-4" /> },
       { href: '/sync-history', label: 'Lịch sử đồng bộ', icon: <RefreshCw className="w-4 h-4" /> },
     ],
+  },
+  {
+    href: '/settings',
+    label: 'Cài đặt',
+    icon: <Settings2 className="w-4 h-4" />,
   },
   {
     label: 'Mục khác',

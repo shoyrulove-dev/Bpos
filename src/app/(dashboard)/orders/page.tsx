@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, MapPin, Phone, Plus, Printer, RefreshCw, Search, Settings2, Truck } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, MapPin, Phone, Plus, Printer, RefreshCw, Search, Settings2, ShoppingBag, Store, Truck, Bike, CircleDollarSign } from 'lucide-react'
 import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -47,11 +47,41 @@ function openWindow(url: string) {
 }
 
 function getActualReceived(order: Order) {
+  const raw = order.rawPayload ?? {}
+  const candidateValues = [
+    raw.escrow_amount,
+    raw.received_amount,
+    raw.actual_received_amount,
+    raw.net_order_amount,
+    raw.amount_receive,
+    raw.merchant_receivable,
+  ]
+
+  for (const value of candidateValues) {
+    const amount = Number(value)
+    if (Number.isFinite(amount) && amount > 0) return amount
+  }
+
   return Math.max(0, order.total - (order.platformFee ?? 0))
 }
 
 function getTotalItems(order: Order) {
   return order.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+}
+
+function isOrderNew(order: Order) {
+  if (order.status === 'completed' || order.status === 'cancelled') return false
+  const placedAt = new Date(order.placedAt).getTime()
+  if (!Number.isFinite(placedAt)) return false
+  return Date.now() - placedAt <= 30 * 60 * 1000
+}
+
+function SourceIcon({ source }: { source: Order['source'] }) {
+  if (source === 'grab') return <ShoppingBag className="h-3.5 w-3.5" />
+  if (source === 'be') return <Bike className="h-3.5 w-3.5" />
+  if (source === 'xanh_sm') return <CircleDollarSign className="h-3.5 w-3.5" />
+  if (source === 'internal') return <Store className="h-3.5 w-3.5" />
+  return <ShoppingBag className="h-3.5 w-3.5" />
 }
 
 export default function OrdersPage() {
@@ -136,35 +166,39 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* ── Horizontal status tab strip ─────────────────────────────── */}
-      <div className="overflow-x-auto pb-1">
-        <div className="flex min-w-max gap-2">
-          {STATUS_ITEMS.map((status) => {
-            const count = status.value ? Number(countByStatus[status.value] || 0) : totalOrders
-            const active = statusFilter === status.value
-            return (
-              <button
-                key={status.value}
-                type="button"
-                onClick={() => setStatusFilter(status.value)}
-                className={cn(
-                  'flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium whitespace-nowrap transition-all',
-                  active
-                    ? 'border-gray-900 bg-gray-900 text-white shadow-sm'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50',
-                )}
-              >
-                <span className={cn('h-2.5 w-2.5 rounded-full', status.dot, active && 'bg-white/70')} />
-                {status.label}
-                <span className={cn('rounded-full px-2 py-0.5 text-xs font-bold', active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600')}>{count}</span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      <div className="grid gap-4 xl:grid-cols-[250px_minmax(0,1fr)]">
+        <aside className="card p-4 xl:sticky xl:top-24 xl:self-start">
+          <button type="button" onClick={() => setShowCreateModal(true)} className="flex w-full items-center justify-center gap-2 rounded-full bg-[#20232A] px-4 py-3 text-sm font-semibold text-white transition hover:bg-black">
+            <Plus className="h-4 w-4" /> Tạo đơn hàng
+          </button>
+          <div className="mt-5 space-y-2">
+            <h2 className="text-[28px] font-semibold leading-none text-gray-900">Trạng thái đơn hàng</h2>
+            {STATUS_ITEMS.map((status) => {
+              const count = status.value ? Number(countByStatus[status.value] || 0) : totalOrders
+              const active = statusFilter === status.value
+              return (
+                <button
+                  key={status.value}
+                  type="button"
+                  onClick={() => setStatusFilter(status.value)}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left text-sm font-medium transition-all',
+                    active ? 'bg-amber-50 text-gray-950 ring-1 ring-amber-200' : 'text-gray-700 hover:bg-gray-50',
+                  )}
+                >
+                  <span className="flex items-center gap-3">
+                    <span className={cn('h-3 w-3 rounded-full', status.dot)} />
+                    {status.label}
+                  </span>
+                  <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-700">{count}</span>
+                </button>
+              )
+            })}
+          </div>
+        </aside>
 
-      <div className="space-y-4">
-        <div className="card card-body">
+        <div className="space-y-4 min-w-0">
+          <div className="card card-body">
           <div className="filter-bar flex-wrap">
               <div className="relative min-w-[260px] flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -191,18 +225,20 @@ export default function OrdersPage() {
             ) : orders.map((order) => {
               const totalItems = getTotalItems(order)
               const actualReceived = getActualReceived(order)
-              const previewItems = order.items.slice(0, 2).map((item) => item.name).join(' · ')
               const locationLabel = [order.brandName, order.hubName].filter(Boolean).join(' - ')
+              const showNewBadge = isOrderNew(order)
 
               return (
                 <article key={order._id} className="rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
                   {/* Header row */}
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 mb-3">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span className={cn('badge shrink-0', CHANNEL_SOURCE_COLOR[order.source])}>{CHANNEL_SOURCE_LABEL[order.source]}</span>
+                      <span className={cn('inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full', CHANNEL_SOURCE_COLOR[order.source])} aria-label={CHANNEL_SOURCE_LABEL[order.source]}>
+                        <SourceIcon source={order.source} />
+                      </span>
+                      {showNewBadge && <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-rose-600">New</span>}
                       {locationLabel && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">{locationLabel}</span>}
                       <span className="font-mono text-base font-semibold text-sky-600">#{order.externalOrderId || order.shortId}</span>
-                      <span className="truncate text-sm text-gray-700">{previewItems || 'Chưa có tên món'}</span>
                     </div>
                     <span className={cn('badge shrink-0', ORDER_STATUS_COLOR[order.status])}>{ORDER_STATUS_LABEL[order.status]}</span>
                   </div>
@@ -249,6 +285,7 @@ export default function OrdersPage() {
             <PaginationControls page={page} pageSize={pageSize} total={ordersData?.total ?? 0} totalPages={totalPages} currentFrom={currentFrom} currentTo={currentTo} onPageChange={setPage} onPageSizeChange={(nextSize) => setPageSize(nextSize)} />
           </div>
         </div>
+      </div>
 
       <OrderCreateModal open={showCreateModal} onClose={() => setShowCreateModal(false)} />
     </div>

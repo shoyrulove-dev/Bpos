@@ -36,6 +36,34 @@ const tokenCache = new Map<string, { token: string; expiresAt: number }>()
 export class BeAdapter implements PlatformAdapter {
   source = 'be' as const
 
+  private async enrichOrdersWithDetails(rawOrders: Record<string, unknown>[], config: AdapterConfig, fetchType: string): Promise<NormalizedOrder[]> {
+    const detailMap = new Map<string, NormalizedOrder>()
+    const orderIds = rawOrders
+      .map((order) => String(order.order_id ?? ''))
+      .filter(Boolean)
+
+    for (let index = 0; index < orderIds.length; index += 5) {
+      const batch = orderIds.slice(index, index + 5)
+      const details = await Promise.all(batch.map(async (orderId) => {
+        try {
+          return await this.fetchOrderDetail(orderId, config)
+        } catch {
+          return null
+        }
+      }))
+
+      for (const detail of details) {
+        if (!detail?.externalOrderId) continue
+        detailMap.set(detail.externalOrderId, detail)
+      }
+    }
+
+    return rawOrders.map((order) => {
+      const orderId = String(order.order_id ?? '')
+      return detailMap.get(orderId) ?? this.normalizeOrder(order, fetchType)
+    })
+  }
+
   private parseJwtPayload(token: string): Record<string, unknown> | null {
     const [, payload] = token.split('.')
     if (!payload) return null
@@ -208,11 +236,12 @@ export class BeAdapter implements PlatformAdapter {
     const seen = new Set<string>()
     const all: NormalizedOrder[] = []
     for (const [orders, fetchType] of [[inProgress, 'in_progress'], [pending, 'pending']] as [Record<string, unknown>[], string][]) {
-      for (const o of orders) {
-        const id = String(o.order_id ?? '')
+      const enriched = await this.enrichOrdersWithDetails(orders, config, fetchType)
+      for (const order of enriched) {
+        const id = String(order.externalOrderId ?? '')
         if (!id || seen.has(id)) continue
         seen.add(id)
-        all.push(this.normalizeOrder(o, fetchType))
+        all.push(order)
       }
     }
     return all
@@ -230,7 +259,7 @@ export class BeAdapter implements PlatformAdapter {
     const base  = this.getBase(config)
     const token = await this.getToken(clientId, clientSecret, base)
     const previous = await this.fetchByType(token, base, restaurantId, 'previous').catch(() => [] as Record<string, unknown>[])
-    return previous.map((order) => this.normalizeOrder(order, 'previous'))
+    return this.enrichOrdersWithDetails(previous, config, 'previous')
   }
 
   async fetchOrderDetail(orderId: string, config: AdapterConfig): Promise<NormalizedOrder | null> {
@@ -270,9 +299,11 @@ export class BeAdapter implements PlatformAdapter {
     if (statusInt === 21 || statusInt === 20) orderStatus = 'completed'
     if (statusInt === 99 || statusInt === 100) orderStatus = 'cancelled'
 
-    const total    = Number(raw.order_amount    ?? 0)
-    const original = Number(raw.original_amount ?? raw.sub_total ?? raw.net_order_amount ?? total)
+    const total    = Number(raw.order_amount ?? raw.total_amount ?? raw.final_amount ?? 0)
+    const original = Number(raw.original_amount ?? raw.sub_total ?? raw.subtotal ?? raw.net_order_amount ?? total)
     const discount = original > total ? original - total : 0
+    const actualReceived = Number(raw.net_order_amount ?? raw.received_amount ?? raw.merchant_receivable ?? total)
+    const platformFee = actualReceived > 0 ? Math.max(0, total - actualReceived) : 0
 
     return {
       source:          'be',
@@ -284,7 +315,8 @@ export class BeAdapter implements PlatformAdapter {
       subtotal:        original,
       discount,
       total,
-      paymentMethod:   raw.is_pickup_order ? 'pickup' : 'delivery',
+      platformFee,
+      paymentMethod:   String(raw.payment_method ?? (raw.is_pickup_order ? 'pickup' : 'delivery')),
       deliveryInfo: {
         address: String(raw.delivery_address ?? ''),
         note:    String(raw.delivery_note    ?? '') || undefined,
@@ -295,7 +327,7 @@ export class BeAdapter implements PlatformAdapter {
         phone: String(raw.driver_phone_no ?? ''),
       },
       orderStatus,
-      placedAt:   String(raw.created_at    ?? new Date().toISOString()),
+      placedAt:   String(raw.created_at ?? raw.ordered_at ?? new Date().toISOString()),
       deliveredAt: raw.delivered_at ? String(raw.delivered_at) : undefined,
       rawPayload:  raw,
     }

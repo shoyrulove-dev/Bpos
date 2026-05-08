@@ -5,7 +5,7 @@ import { ok, err, requireAuth } from '@/lib/api-helpers'
 import { buildOrderFilterFromSearchParams } from '@/lib/order-query'
 
 const ORDER_STATUS_KEYS = ['draft', 'pre_order', 'waiting_confirm', 'waiting_pickup', 'delivering', 'completed', 'cancelled'] as const
-const ORDER_LIST_SELECT = 'shortId source externalOrderId brandId hubId channelId customerName customerPhone items.name items.quantity discount subtotal total platformFee paymentMethod deliveryInfo driverInfo note status placedAt deliveredAt'
+const ORDER_LIST_SELECT = 'shortId source externalOrderId brandId hubId channelId customerName customerPhone items.name items.quantity discount subtotal total platformFee paymentMethod deliveryInfo driverInfo note status placedAt deliveredAt createdAt updatedAt'
 
 type PopulatedRef = { _id?: { toString(): string } | string; name?: string } | string | null | undefined
 

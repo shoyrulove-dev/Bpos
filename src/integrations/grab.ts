@@ -53,6 +53,34 @@ function mapGrabStatus(rawStatus: string): OrderStatus {
 export class GrabAdapter implements PlatformAdapter {
   source = 'grab' as const
 
+  private async enrichOrdersWithDetails(rawOrders: Record<string, unknown>[], config: AdapterConfig) {
+    const detailMap = new Map<string, NormalizedOrder>()
+    const orderIds = rawOrders
+      .map((order) => String(order.orderID ?? ''))
+      .filter(Boolean)
+
+    for (let index = 0; index < orderIds.length; index += 5) {
+      const batch = orderIds.slice(index, index + 5)
+      const details = await Promise.all(batch.map(async (orderId) => {
+        try {
+          return await this.fetchOrderDetail(orderId, config)
+        } catch {
+          return null
+        }
+      }))
+
+      for (const detail of details) {
+        if (!detail?.externalOrderId) continue
+        detailMap.set(detail.externalOrderId, detail)
+      }
+    }
+
+    return rawOrders.map((order) => {
+      const orderId = String(order.orderID ?? '')
+      return detailMap.get(orderId) ?? this.normalizeOrder(order)
+    })
+  }
+
   private buildGrabSessionContext(session: SessionData, storeId: string): {
     baseHeaders: Record<string, string>
     extraHeaders: Record<string, string>
@@ -190,7 +218,7 @@ export class GrabAdapter implements PlatformAdapter {
       page++
     }
 
-    return allOrders.map(o => this.normalizeOrder(o))
+    return this.enrichOrdersWithDetails(allOrders, config)
   }
 
   async fetchOrderDetail(orderId: string, config: AdapterConfig): Promise<NormalizedOrder | null> {
@@ -446,10 +474,20 @@ export class GrabAdapter implements PlatformAdapter {
       raw.orderTotal ??
       this.parseGrabDisplayAmount(raw.priceDisplay)
     )
+    const actualReceived = Number(
+      priceObj.merchantPayment ??
+      priceObj.merchantReceivable ??
+      priceObj.payToMerchant ??
+      raw.merchantReceivable ??
+      raw.receivedAmount ??
+      0
+    )
+    const platformFee = actualReceived > 0 ? Math.max(0, total - actualReceived) : 0
 
     const delivery = (raw.delivery ?? {}) as Record<string, unknown>
     const dropoff  = (delivery.dropoff ?? {}) as Record<string, unknown>
     const address  = String(dropoff.address ?? dropoff.formattedAddress ?? delivery.address ?? raw.deliveryAddress ?? '')
+    const driver   = (delivery.driver ?? raw.driver ?? raw.rider ?? {}) as Record<string, unknown>
 
     return {
       source:          'grab',
@@ -458,10 +496,16 @@ export class GrabAdapter implements PlatformAdapter {
       customerName:    String(consumerObj.name ?? consumerObj.displayName ?? 'Khách hàng'),
       customerPhone:   String(consumerObj.phones ?? consumerObj.phone ?? consumerObj.phoneNumber ?? ''),
       items,
-      subtotal, discount, total,
+      subtotal,
+      discount,
+      total,
+      platformFee,
       paymentMethod:   String(raw.paymentType ?? raw.paymentMethod ?? (raw.isTakeawayOrder ? 'pickup' : 'delivery')),
       deliveryInfo:    { address },
-      driverInfo:      { name: '', phone: '' },
+      driverInfo:      {
+        name: String(driver.name ?? driver.displayName ?? ''),
+        phone: String(driver.phone ?? driver.phoneNumber ?? ''),
+      },
       orderStatus,
       placedAt:        String(raw.orderTime ?? raw.createdAt ?? raw.createTime ?? new Date().toISOString()),
       deliveredAt:     orderStatus === 'completed' ? String(raw.updatedAt ?? raw.completedAt ?? raw.createdAt ?? '') : undefined,
@@ -488,6 +532,11 @@ export class GrabAdapter implements PlatformAdapter {
     // price is a nested object in POS API v1.1.3
     const price = raw.price as Record<string, unknown> | undefined
 
+    const subtotal = Number(price?.subtotal ?? 0)
+    const discount = Number(price?.basketPromo ?? 0)
+    const total = Number(price?.eaterPayment ?? 0)
+    const actualReceived = Number(price?.merchantPayment ?? price?.merchantReceivable ?? 0)
+
     return {
       source:          'grab',
       externalOrderId: String(raw.orderID ?? ''),
@@ -495,19 +544,21 @@ export class GrabAdapter implements PlatformAdapter {
       customerName:    String(receiver?.name ?? 'Khách hàng'),
       customerPhone:   String(receiver?.phones ?? ''),
       items,
-      subtotal:        Number(price?.subtotal ?? 0),
-      discount:        Number(price?.basketPromo ?? 0),
-      total:           Number(price?.eaterPayment ?? 0),
+      subtotal,
+      discount,
+      total,
+      platformFee:     actualReceived > 0 ? Math.max(0, total - actualReceived) : 0,
       paymentMethod:   String(raw.paymentType ?? ''),
       deliveryInfo: {
         address: String(receiverAddress?.address ?? receiverAddress?.formattedAddress ?? ''),
       },
       driverInfo: {
-        name:  '',
-        phone: '',
+        name:  String((raw.driver as Record<string, unknown> | undefined)?.name ?? ''),
+        phone: String((raw.driver as Record<string, unknown> | undefined)?.phone ?? ''),
       },
       orderStatus: mapGrabStatus(rawStatus),
       placedAt:    String(raw.orderTime ?? new Date().toISOString()),
+      deliveredAt: mapGrabStatus(rawStatus) === 'completed' ? String(raw.completedAt ?? raw.updatedAt ?? raw.orderTime ?? '') : undefined,
       rawPayload:  raw,
     }
   }
