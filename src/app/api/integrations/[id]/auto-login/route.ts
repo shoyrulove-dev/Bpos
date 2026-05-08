@@ -109,6 +109,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const password = body.password ?? (integ.loginPassword ? decrypt(integ.loginPassword) : '')
   const otp        = body.otp ?? undefined
   const sessionKey = body.sessionKey ?? undefined
+  const servicePassword = password || (SMS_OTP_PROVIDERS.has(integ.provider) ? '__sms_otp__' : '')
 
   if (!username) return err('Thiếu username')
   if (!sessionKey && !password && !SMS_OTP_PROVIDERS.has(integ.provider)) {
@@ -131,7 +132,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       body: JSON.stringify({
         provider: integ.provider,
         username,
-        password,
+        password: servicePassword,
         otp,
         sessionKey,
         preferredStoreId: integ.externalStoreId ?? body.storeId ?? undefined,

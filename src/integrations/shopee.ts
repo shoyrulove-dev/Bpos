@@ -16,39 +16,110 @@ export class ShopeeAdapter implements PlatformAdapter {
     return createHmac('sha256', partnerKey).update(base).digest('hex')
   }
 
-  async fetchOrders(config: AdapterConfig): Promise<NormalizedOrder[]> {
-    const partnerId   = String(config.partnerId   ?? '')
-    const partnerKey  = String(config.partnerKey  ?? '')
-    const shopId      = String(config.shopId      ?? config.storeId ?? '')
-    const accessToken = String(config.accessToken ?? '')
+  private buildConfig(config: AdapterConfig) {
+    return {
+      partnerId: String(config.partnerId ?? ''),
+      partnerKey: String(config.partnerKey ?? ''),
+      shopId: String(config.shopId ?? config.storeId ?? ''),
+      accessToken: String(config.accessToken ?? ''),
+    }
+  }
+
+  private async fetchOrderList(config: AdapterConfig, options: { timeFrom: number; timeTo: number; pageSize?: number }) {
+    const { partnerId, partnerKey, shopId, accessToken } = this.buildConfig(config)
 
     if (!partnerId || !partnerKey || !shopId || !accessToken) {
       throw new Error('Thiếu credentials: cần partnerId, partnerKey, shopId, accessToken')
     }
 
-    const path      = '/api/v2/order/get_order_list'
-    const timestamp = Math.floor(Date.now() / 1000)
-    const sign      = this.sign(partnerId, partnerKey, path, timestamp, accessToken, shopId)
+    const path = '/api/v2/order/get_order_list'
+    const collected = new Map<string, Record<string, unknown>>()
+    let cursor = ''
 
-    const params = new URLSearchParams({
-      partner_id:       partnerId,
-      timestamp:        String(timestamp),
-      access_token:     accessToken,
-      shop_id:          shopId,
-      sign,
-      time_range_field: 'create_time',
-      time_from:        String(timestamp - 86400),
-      time_to:          String(timestamp),
-      page_size:        '20',
+    for (let page = 0; page < 20; page += 1) {
+      const timestamp = Math.floor(Date.now() / 1000)
+      const sign = this.sign(partnerId, partnerKey, path, timestamp, accessToken, shopId)
+      const params = new URLSearchParams({
+        partner_id: partnerId,
+        timestamp: String(timestamp),
+        access_token: accessToken,
+        shop_id: shopId,
+        sign,
+        time_range_field: 'create_time',
+        time_from: String(options.timeFrom),
+        time_to: String(options.timeTo),
+        page_size: String(options.pageSize ?? 50),
+      })
+      if (cursor) params.set('cursor', cursor)
+
+      const res = await fetch(`${SHOPEE_BASE}${path}?${params}`)
+      if (!res.ok) throw new Error(`Shopee API ${res.status}: ${res.statusText}`)
+
+      const data = await res.json() as {
+        error?: string
+        message?: string
+        response?: {
+          more?: boolean
+          next_cursor?: string
+          order_list?: Record<string, unknown>[]
+        }
+      }
+      if (data.error) throw new Error(`Shopee: ${data.message ?? data.error}`)
+
+      const list = data.response?.order_list ?? []
+      list.forEach((order) => {
+        const orderId = String(order.order_sn ?? '')
+        if (orderId) collected.set(orderId, order)
+      })
+
+      if (!data.response?.more || !data.response?.next_cursor) break
+      cursor = data.response.next_cursor
+    }
+
+    return Array.from(collected.values())
+  }
+
+  private async enrichOrdersWithDetails(rawOrders: Record<string, unknown>[], config: AdapterConfig) {
+    const detailMap = new Map<string, NormalizedOrder>()
+    const orderIds = rawOrders
+      .map((order) => String(order.order_sn ?? ''))
+      .filter(Boolean)
+
+    for (let index = 0; index < orderIds.length; index += 5) {
+      const batch = orderIds.slice(index, index + 5)
+      const details = await Promise.all(batch.map(async (orderId) => {
+        try {
+          return await this.fetchOrderDetail(orderId, config)
+        } catch {
+          return null
+        }
+      }))
+
+      details.forEach((detail) => {
+        if (!detail?.externalOrderId) return
+        detailMap.set(detail.externalOrderId, detail)
+      })
+    }
+
+    return rawOrders.map((order) => {
+      const orderId = String(order.order_sn ?? '')
+      return detailMap.get(orderId) ?? this.normalizeOrder(order)
     })
+  }
 
-    const res = await fetch(`${SHOPEE_BASE}${path}?${params}`)
-    if (!res.ok) throw new Error(`Shopee API ${res.status}: ${res.statusText}`)
-    const data = await res.json() as { error?: string; message?: string; response?: { order_list?: Record<string, unknown>[] } }
-    if (data.error) throw new Error(`Shopee: ${data.message ?? data.error}`)
+  async fetchOrders(config: AdapterConfig): Promise<NormalizedOrder[]> {
+    const timeTo = Math.floor(Date.now() / 1000)
+    const timeFrom = timeTo - 86400
+    const list = await this.fetchOrderList(config, { timeFrom, timeTo, pageSize: 50 })
+    return this.enrichOrdersWithDetails(list, config)
+  }
 
-    const list = data.response?.order_list ?? []
-    return list.map(o => this.normalizeOrder(o))
+  async fetchHistoricalOrders(config: AdapterConfig, options?: { days?: number }): Promise<NormalizedOrder[]> {
+    const days = Math.max(1, Math.min(90, Number(options?.days ?? 30)))
+    const timeTo = Math.floor(Date.now() / 1000)
+    const timeFrom = timeTo - days * 86400
+    const list = await this.fetchOrderList(config, { timeFrom, timeTo, pageSize: 50 })
+    return this.enrichOrdersWithDetails(list, config)
   }
 
   async fetchOrderDetail(orderId: string, config: AdapterConfig): Promise<NormalizedOrder | null> {

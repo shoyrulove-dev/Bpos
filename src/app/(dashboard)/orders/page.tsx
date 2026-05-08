@@ -2,11 +2,11 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, MapPin, Phone, Plus, Printer, RefreshCw, Search, SlidersHorizontal, Truck, Volume2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, MapPin, Phone, Plus, Printer, RefreshCw, Search, Settings2, Truck } from 'lucide-react'
 import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
-import { buildReceiptPrintUrl, DEFAULT_ORDER_ALERT_SETTINGS, loadOrderAlertSettings, persistOrderAlertSettings, playOrderAlert } from '@/lib/order-alerts'
+import { buildReceiptPrintUrl } from '@/lib/order-alerts'
 import { formatDateInput } from '@/lib/date-range'
 import { CHANNEL_SOURCE_COLOR, CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '@/lib/utils'
 import type { Order } from '@/types'
@@ -64,9 +64,6 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10)
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showAutoActions, setShowAutoActions] = useState(false)
-  const [soundEnabled, setSoundEnabled] = useState(DEFAULT_ORDER_ALERT_SETTINGS.soundEnabled)
-  const [autoPrintEnabled, setAutoPrintEnabled] = useState(DEFAULT_ORDER_ALERT_SETTINGS.autoPrintEnabled)
 
   const dq = useDebounce(search)
   const pollingEnabled = page === 1 && !dq && !statusFilter && !sourceFilter
@@ -82,12 +79,6 @@ export default function OrdersPage() {
   })
   const ordersData = data as OrdersResponse | undefined
   const orders: Order[] = ordersData?.orders ?? []
-
-  useEffect(() => {
-    const settings = loadOrderAlertSettings()
-    setSoundEnabled(settings.soundEnabled)
-    setAutoPrintEnabled(settings.autoPrintEnabled)
-  }, [])
 
   useEffect(() => {
     setPage(1)
@@ -125,18 +116,6 @@ export default function OrdersPage() {
     openWindow(`/api/orders/export?${sp.toString()}`)
   }
 
-  const toggleSound = () => {
-    const nextValue = !soundEnabled
-    setSoundEnabled(nextValue)
-    persistOrderAlertSettings({ ...loadOrderAlertSettings(), soundEnabled: nextValue, autoPrintEnabled })
-  }
-
-  const toggleAutoPrint = () => {
-    const nextValue = !autoPrintEnabled
-    setAutoPrintEnabled(nextValue)
-    persistOrderAlertSettings({ ...loadOrderAlertSettings(), soundEnabled, autoPrintEnabled: nextValue })
-  }
-
   return (
     <div className="space-y-5">
       <div className="page-header">
@@ -145,9 +124,9 @@ export default function OrdersPage() {
           <p className="page-subtitle">Clone cách trình bày Nexpos cho luồng xử lý đơn, nhưng dữ liệu vẫn lấy từ các sàn đang đồng bộ trong BPOS.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setShowAutoActions((value) => !value)} className="btn-outline">
-            <SlidersHorizontal className="h-4 w-4" /> In / âm thanh <ChevronDown className="h-4 w-4" />
-          </button>
+          <Link href="/profile#order-alert-settings" className="btn-outline">
+            <Settings2 className="h-4 w-4" /> Cài đặt in / âm thanh
+          </Link>
           <button type="button" onClick={() => refetch()} className="btn-outline" disabled={isRefetching}>
             <RefreshCw className={cn('h-4 w-4', isRefetching && 'animate-spin')} /> Làm mới
           </button>
@@ -270,25 +249,6 @@ export default function OrdersPage() {
             <PaginationControls page={page} pageSize={pageSize} total={ordersData?.total ?? 0} totalPages={totalPages} currentFrom={currentFrom} currentTo={currentTo} onPageChange={setPage} onPageSizeChange={(nextSize) => setPageSize(nextSize)} />
           </div>
         </div>
-
-      {showAutoActions && (
-        <div className="card space-y-3 p-4">
-          <div>
-            <h3 className="font-semibold text-gray-950">Tự động in và âm thanh</h3>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={toggleSound} className={cn('btn-outline', soundEnabled && 'border-emerald-300 bg-emerald-50 text-emerald-700')}>
-              <Volume2 className="h-4 w-4" /> {soundEnabled ? 'Âm thanh đang bật' : 'Âm thanh đang tắt'}
-            </button>
-            <button type="button" onClick={toggleAutoPrint} className={cn('btn-outline', autoPrintEnabled && 'border-sky-300 bg-sky-50 text-sky-700')}>
-              <Printer className="h-4 w-4" /> {autoPrintEnabled ? 'Tự in đang bật' : 'Tự in đang tắt'}
-            </button>
-            <button type="button" onClick={() => playOrderAlert(1)} className="btn-outline">
-              <Volume2 className="h-4 w-4" /> Test âm báo
-            </button>
-          </div>
-        </div>
-      )}
 
       <OrderCreateModal open={showCreateModal} onClose={() => setShowCreateModal(false)} />
     </div>
