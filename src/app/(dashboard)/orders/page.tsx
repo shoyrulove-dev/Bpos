@@ -8,7 +8,7 @@ import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
 import { formatDateInput } from '@/lib/date-range'
-import { CHANNEL_SOURCE_COLOR, CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '@/lib/utils'
+import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '@/lib/utils'
 import type { Order } from '@/types'
 
 const PAGE_SIZE_OPTIONS = [10, 30, 50, 100, 200, 500] as const
@@ -77,16 +77,51 @@ function isOrderNew(order: Order) {
 }
 
 function SourceIcon({ source }: { source: Order['source'] }) {
-  const labelMap: Record<Order['source'], string> = {
-    shopee: 'S',
-    grab: 'G',
-    xanh_sm: 'X',
-    be: 'be',
-    internal: 'POS',
-    other: '?',
+  if (source === 'shopee') {
+    return (
+      <span className="inline-flex h-8 min-w-[52px] items-center justify-center rounded-full bg-[#fff1eb] px-2.5 text-[10px] font-black uppercase tracking-[0.16em] text-[#ee4d2d] ring-1 ring-[#ffd0c4]">
+        SF
+      </span>
+    )
   }
 
-  return <span className="text-[10px] font-black uppercase tracking-[0.08em]">{labelMap[source]}</span>
+  if (source === 'grab') {
+    return (
+      <span className="inline-flex h-8 min-w-[56px] items-center justify-center rounded-full bg-[#e9fff5] px-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#00b14f] ring-1 ring-[#b7efd0]">
+        GRAB
+      </span>
+    )
+  }
+
+  if (source === 'xanh_sm') {
+    return (
+      <span className="inline-flex h-8 min-w-[52px] items-center justify-center rounded-full bg-[#e8fbf9] px-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#00a79d] ring-1 ring-[#b8ece6]">
+        XSM
+      </span>
+    )
+  }
+
+  if (source === 'be') {
+    return (
+      <span className="inline-flex h-8 min-w-[42px] items-center justify-center rounded-full bg-[#fff7cc] px-2.5 text-[11px] font-black lowercase tracking-[-0.02em] text-[#111111] ring-1 ring-[#f5dd74]">
+        be
+      </span>
+    )
+  }
+
+  if (source === 'internal') {
+    return (
+      <span className="inline-flex h-8 min-w-[48px] items-center justify-center rounded-full bg-[#eef2ff] px-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#334155] ring-1 ring-[#dbe3f5]">
+        POS
+      </span>
+    )
+  }
+
+  return (
+    <span className="inline-flex h-8 min-w-[38px] items-center justify-center rounded-full bg-gray-100 px-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-gray-600 ring-1 ring-gray-200">
+      ?
+    </span>
+  )
 }
 
 export default function OrdersPage() {
@@ -231,7 +266,7 @@ export default function OrdersPage() {
                   {/* Header row */}
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 mb-3">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span className={cn('inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full', CHANNEL_SOURCE_COLOR[order.source])} aria-label={CHANNEL_SOURCE_LABEL[order.source]}>
+                      <span className="shrink-0" aria-label={CHANNEL_SOURCE_LABEL[order.source]}>
                         <SourceIcon source={order.source} />
                       </span>
                       {showNewBadge && <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-rose-600">New</span>}
