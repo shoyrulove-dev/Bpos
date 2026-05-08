@@ -44,6 +44,23 @@ export function useUpdateOrder() {
   })
 }
 
+export function useCreateOrder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      fetchJSON('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] })
+      qc.invalidateQueries({ queryKey: ['order'] })
+      qc.invalidateQueries({ queryKey: ['stats'] })
+    },
+  })
+}
+
 // ---- Channels ----
 export function useChannels(params?: { q?: string; brandId?: string }) {
   const sp = new URLSearchParams()

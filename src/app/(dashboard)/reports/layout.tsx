@@ -20,33 +20,29 @@ export default function ReportsLayout({ children }: { children: React.ReactNode 
   const pathname = usePathname()
 
   return (
-    <div className="flex gap-6">
-      {/* Report sidebar */}
-      <aside className="w-56 flex-shrink-0">
-        <div className="card p-3">
-          <p className="text-xs font-semibold text-gray-400 uppercase px-2 mb-2">Báo cáo</p>
-          <nav className="space-y-0.5">
-            {reportNav.map(item => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  'flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm font-medium transition-all',
-                  pathname === item.href
-                    ? 'bg-primary-50 text-primary-600'
-                    : 'text-gray-600 hover:bg-gray-50'
-                )}
-              >
-                {item.icon}
-                <span className="text-xs">{item.label}</span>
-              </Link>
-            ))}
-          </nav>
-        </div>
-      </aside>
+    <div className="space-y-5">
+      <div className="card p-3">
+        <p className="mb-3 px-2 text-xs font-semibold uppercase text-gray-400">Báo cáo</p>
+        <nav className="flex gap-2 overflow-x-auto pb-1">
+          {reportNav.map(item => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'flex min-w-fit items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-all',
+                pathname === item.href
+                  ? 'bg-primary-50 text-primary-600'
+                  : 'text-gray-600 hover:bg-gray-50'
+              )}
+            >
+              {item.icon}
+              <span className="whitespace-nowrap text-xs">{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+      </div>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">{children}</div>
+      <div className="min-w-0">{children}</div>
     </div>
   )
 }
