@@ -11,6 +11,7 @@ import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { encryptJSON } from '@/lib/crypto'
+import { buildSessionClearUpdate, buildSessionSuccessUpdate } from '@/lib/session-health'
 import { getAutomation } from '@/services/automation/runner'
 import type { SessionData, PlaywrightCookie } from '@/integrations/types'
 
@@ -73,15 +74,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const capturedAt = new Date()
   const expiresAt  = new Date(capturedAt.getTime() + ttl * 1000)
 
-  await IntegrationModel.updateOne({ _id: params.id }, {
+  // Preserve existing loginMode — don't override when manually saving cookies.
+  await IntegrationModel.updateOne({ _id: params.id }, buildSessionSuccessUpdate({
     sessionData:       encryptJSON(session),
     sessionStatus:     'active',
     sessionCapturedAt: capturedAt,
     sessionExpiresAt:  expiresAt,
-    sessionError:      undefined,
     automationRunning: false,
-    loginMode:         'auto',
-  })
+  }))
 
   return ok({
     message:           'Session đã được lưu thành công',
@@ -100,11 +100,10 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   const integ = await IntegrationModel.findById(params.id)
   if (!integ) return err('Không tìm thấy integration', 404)
 
-  await IntegrationModel.updateOne({ _id: params.id }, {
-    $unset: { sessionData: 1, sessionCapturedAt: 1, sessionExpiresAt: 1 },
-    sessionStatus: 'none',
-    sessionError:  undefined,
-  })
+  await IntegrationModel.updateOne({ _id: params.id }, buildSessionClearUpdate(
+    { sessionStatus: 'none' },
+    ['sessionData', 'sessionCapturedAt', 'sessionExpiresAt'],
+  ))
 
   return ok({ message: 'Session đã được xóa' })
 }
