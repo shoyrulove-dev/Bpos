@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, MapPin, Phone, Plus, Printer, RefreshCw, Search, Settings2, ShoppingBag, Store, Truck, Bike, CircleDollarSign } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, MapPin, Phone, Plus, Printer, RefreshCw, Search, Settings2, Truck } from 'lucide-react'
 import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -77,11 +77,16 @@ function isOrderNew(order: Order) {
 }
 
 function SourceIcon({ source }: { source: Order['source'] }) {
-  if (source === 'grab') return <ShoppingBag className="h-3.5 w-3.5" />
-  if (source === 'be') return <Bike className="h-3.5 w-3.5" />
-  if (source === 'xanh_sm') return <CircleDollarSign className="h-3.5 w-3.5" />
-  if (source === 'internal') return <Store className="h-3.5 w-3.5" />
-  return <ShoppingBag className="h-3.5 w-3.5" />
+  const labelMap: Record<Order['source'], string> = {
+    shopee: 'S',
+    grab: 'G',
+    xanh_sm: 'X',
+    be: 'be',
+    internal: 'POS',
+    other: '?',
+  }
+
+  return <span className="text-[10px] font-black uppercase tracking-[0.08em]">{labelMap[source]}</span>
 }
 
 export default function OrdersPage() {
@@ -154,14 +159,11 @@ export default function OrdersPage() {
           <p className="page-subtitle">Clone cách trình bày Nexpos cho luồng xử lý đơn, nhưng dữ liệu vẫn lấy từ các sàn đang đồng bộ trong BPOS.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/profile#order-alert-settings" className="btn-outline">
+          <Link href="/settings" className="btn-outline">
             <Settings2 className="h-4 w-4" /> Cài đặt in / âm thanh
           </Link>
           <button type="button" onClick={() => refetch()} className="btn-outline" disabled={isRefetching}>
             <RefreshCw className={cn('h-4 w-4', isRefetching && 'animate-spin')} /> Làm mới
-          </button>
-          <button type="button" onClick={() => setShowCreateModal(true)} className="btn-primary">
-            <Plus className="h-4 w-4" /> Tạo đơn hàng
           </button>
         </div>
       </div>
@@ -198,23 +200,19 @@ export default function OrdersPage() {
         </aside>
 
         <div className="space-y-4 min-w-0">
-          <div className="card card-body">
-          <div className="filter-bar flex-wrap">
-              <div className="relative min-w-[260px] flex-1">
+          <div className="card p-4">
+            <div className="grid gap-2 xl:grid-cols-[minmax(0,1.8fr)_170px_170px_170px_auto]">
+              <div className="relative min-w-0">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input className="input pl-9" placeholder="Tìm mã đơn, tên khách, số điện thoại..." value={search} onChange={(event) => setSearch(event.target.value)} />
+                <input className="input h-11 pl-9" placeholder="Tìm mã đơn, tên khách, số điện thoại..." value={search} onChange={(event) => setSearch(event.target.value)} />
               </div>
-              <select className="input w-44" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
+              <select className="input h-11 w-full" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
                 {SOURCES.map((source) => <option key={source.value} value={source.value}>{source.label}</option>)}
               </select>
-              <label className="flex min-w-[160px] flex-col gap-1 text-xs font-medium text-gray-500"><span>Từ ngày</span><input type="date" className="input" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
-              <label className="flex min-w-[160px] flex-col gap-1 text-xs font-medium text-gray-500"><span>Đến ngày</span><input type="date" className="input" value={toDate} onChange={(event) => setToDate(event.target.value)} max={today} /></label>
-              <button type="button" onClick={handleExportOrders} className="btn-outline"><Download className="h-4 w-4" /> Export Excel</button>
+              <input type="date" className="input h-11 w-full" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+              <input type="date" className="input h-11 w-full" value={toDate} onChange={(event) => setToDate(event.target.value)} max={today} />
+              <button type="button" onClick={handleExportOrders} className="btn-outline h-11 justify-center whitespace-nowrap"><Download className="h-4 w-4" /> Export</button>
             </div>
-          </div>
-
-          <div className="card p-4">
-            <PaginationControls page={page} pageSize={pageSize} total={ordersData?.total ?? 0} totalPages={totalPages} currentFrom={currentFrom} currentTo={currentTo} onPageChange={setPage} onPageSizeChange={(nextSize) => setPageSize(nextSize)} />
           </div>
 
           <div className="space-y-4">

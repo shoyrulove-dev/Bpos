@@ -72,8 +72,10 @@ type ActionStatus = { tone: 'success' | 'error' | 'info'; message: string } | nu
 
 const AUTO_PROVIDERS = ['grab', 'be']
 const SESSION_LOGIN_PROVIDERS = ['shopee', 'grab', 'xanh_sm', 'be']
+const SHOPEE_SMS_LOGIN_URL = 'https://gsso.shopeefood.vn/sms_login?app_id=nowotpapp_MCQzBi2SyApYgKGCYWsmVD4t0954cr&app_type=1001&api_version=1&client_type=1&client_version=3.0.0&client_id=1.0&client_language=vi'
+const SHOPEE_PARTNER_OTP_URL = 'https://partner.business.accounts.shopee.vn/authenticate/login/otp?client_id=5&next=https%3A%2F%2Fpartner.shopee.vn%2Faccount%2Flogin%2Fauth&state=https%3A%2F%2Fpartner.shopee.vn%2F%3Fbusiness_next%3Dhttps%253A%252F%252Fpartner.shopee.vn%252Flogin%252Fauth%26business_state%3Dhttps%253A%252F%252Fpartner.shopee.vn%26business_client_id%3D1'
 const LOGIN_PORTAL_LINKS: Record<string, string> = {
-  shopee: 'https://merchant.shopeefood.vn/account/login',
+  shopee: SHOPEE_SMS_LOGIN_URL,
   grab: 'https://portal.grab.com',
   xanh_sm: 'https://merchant.xanhsm.com/login',
   be: 'https://merchant.be.com.vn',
@@ -609,6 +611,15 @@ export default function IntegrationsPage() {
   }
 
   const handleShopeeOtpLogin = async () => {
+    if (autoLoginInteg?.provider === 'shopee' && !autoLoginWaiting?.requiresOtp) {
+      window.open(SHOPEE_SMS_LOGIN_URL, '_blank', 'noopener,noreferrer,width=480,height=860')
+      setAutoLoginResult({
+        ok: true,
+        message: 'Đã mở trang SMS OTP chính thức của Shopee. Nhập số điện thoại và OTP trên trang Shopee, sau đó vào tab Manual để lưu cookie/session nếu VPS automation chưa bắt được phiên.',
+      })
+      return
+    }
+
     await handleAutoLogin(Boolean(autoLoginWaiting?.requiresOtp))
   }
 
@@ -1169,6 +1180,15 @@ export default function IntegrationsPage() {
                     <p>1. Nhập số điện thoại → nhấn <strong>Gửi OTP</strong></p>
                     <p>2. Hệ thống mở luồng đăng nhập sàn trên VPS và chờ OTP</p>
                     <p>3. Điền mã SMS nhận được → nhấn <strong>Xác nhận OTP</strong></p>
+                    {autoLoginInteg?.provider === 'shopee' && (
+                      <>
+                        <p>Với Shopee, nút này sẽ ưu tiên mở trang OTP chính thức của Shopee nếu VPS chưa bắt được luồng login.</p>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          <a href={SHOPEE_SMS_LOGIN_URL} target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2">Mở Shopee SMS Login</a>
+                          <a href={SHOPEE_PARTNER_OTP_URL} target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2">Mở Shopee Partner OTP</a>
+                        </div>
+                      </>
+                    )}
                   </div>
                   {!autoLoginWaiting && (
                     <div>
