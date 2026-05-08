@@ -90,6 +90,10 @@ export class ShopeeAdapter implements PlatformAdapter {
 
     const rawStatus = String(raw.order_status ?? '')
 
+    const subtotal   = Number(raw.total_amount ?? raw.item_list_price ?? 0)
+    const escrow     = Number(raw.escrow_amount ?? raw.buyer_pay_amount ?? subtotal)
+    const platformFee = Math.max(0, subtotal - escrow)
+
     return {
       source:          'shopee',
       externalOrderId: String(raw.order_sn ?? ''),
@@ -97,14 +101,23 @@ export class ShopeeAdapter implements PlatformAdapter {
       customerName:    String((raw.recipient_address as Record<string,unknown>)?.name ?? 'Khách hàng'),
       customerPhone:   String((raw.recipient_address as Record<string,unknown>)?.phone ?? ''),
       items,
-      subtotal:        Number(raw.total_amount ?? 0),
+      subtotal,
       discount:        Number(raw.voucher_from_seller ?? 0),
-      total:           Number(raw.total_amount ?? 0),
+      total:           subtotal,
+      platformFee,
+      paymentMethod:   String(raw.payment_method ?? ''),
       deliveryInfo: {
         address: String((raw.recipient_address as Record<string,unknown>)?.full_address ?? ''),
       },
+      driverInfo: {
+        name:  String((raw.logistics_info as Record<string,unknown>)?.shipper_name ?? ''),
+        phone: String((raw.logistics_info as Record<string,unknown>)?.shipper_phone ?? ''),
+      },
       orderStatus: statusMap[rawStatus] ?? 'waiting_confirm',
       placedAt:    new Date(Number(raw.create_time ?? Date.now()) * 1000).toISOString(),
+      deliveredAt: raw.delivery_complete_time
+        ? new Date(Number(raw.delivery_complete_time) * 1000).toISOString()
+        : undefined,
       rawPayload:  raw,
     }
   }

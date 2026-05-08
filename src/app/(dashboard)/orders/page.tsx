@@ -157,55 +157,36 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="space-y-4">
-          <div className="card overflow-hidden">
-            <div className="border-b border-gray-100 px-5 py-4">
-              <h2 className="text-lg font-semibold text-gray-950">Trạng thái đơn hàng</h2>
-            </div>
-            <div className="space-y-1 p-3">
-              {STATUS_ITEMS.map((status) => {
-                const count = status.value ? Number(countByStatus[status.value] || 0) : totalOrders
-                const active = statusFilter === status.value
-
-                return (
-                  <button
-                    key={status.value}
-                    type="button"
-                    onClick={() => setStatusFilter(status.value)}
-                    className={cn('flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition', active ? 'bg-amber-50 text-gray-950' : 'text-gray-600 hover:bg-gray-50')}
-                  >
-                    <span className={cn('h-3 w-3 rounded-full', status.dot)} />
-                    <span className="flex-1 font-medium">{status.label}</span>
-                    <span className="rounded-full bg-gray-100 px-2.5 py-1 text-sm font-semibold text-gray-700">{count}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {showAutoActions && (
-            <div className="card space-y-3 p-4">
-              <div>
-                <h3 className="font-semibold text-gray-950">Tự động in và âm thanh</h3>
-                <p className="mt-1 text-sm text-gray-500">Giữ lại phần vận hành nhưng thu gọn để ưu tiên phần đơn hàng.</p>
-              </div>
-              <button type="button" onClick={toggleSound} className={cn('btn-outline w-full justify-center', soundEnabled && 'border-emerald-300 bg-emerald-50 text-emerald-700')}>
-                <Volume2 className="h-4 w-4" /> {soundEnabled ? 'Âm thanh đang bật' : 'Âm thanh đang tắt'}
+      {/* ── Horizontal status tab strip ─────────────────────────────── */}
+      <div className="overflow-x-auto pb-1">
+        <div className="flex min-w-max gap-2">
+          {STATUS_ITEMS.map((status) => {
+            const count = status.value ? Number(countByStatus[status.value] || 0) : totalOrders
+            const active = statusFilter === status.value
+            return (
+              <button
+                key={status.value}
+                type="button"
+                onClick={() => setStatusFilter(status.value)}
+                className={cn(
+                  'flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium whitespace-nowrap transition-all',
+                  active
+                    ? 'border-gray-900 bg-gray-900 text-white shadow-sm'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50',
+                )}
+              >
+                <span className={cn('h-2.5 w-2.5 rounded-full', status.dot, active && 'bg-white/70')} />
+                {status.label}
+                <span className={cn('rounded-full px-2 py-0.5 text-xs font-bold', active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600')}>{count}</span>
               </button>
-              <button type="button" onClick={toggleAutoPrint} className={cn('btn-outline w-full justify-center', autoPrintEnabled && 'border-sky-300 bg-sky-50 text-sky-700')}>
-                <Printer className="h-4 w-4" /> {autoPrintEnabled ? 'Tự in đang bật' : 'Tự in đang tắt'}
-              </button>
-              <button type="button" onClick={() => playOrderAlert(1)} className="btn-outline w-full justify-center">
-                <Volume2 className="h-4 w-4" /> Test âm báo
-              </button>
-            </div>
-          )}
-        </aside>
+            )
+          })}
+        </div>
+      </div>
 
-        <section className="space-y-4">
-          <div className="card card-body">
-            <div className="filter-bar flex-wrap">
+      <div className="space-y-4">
+        <div className="card card-body">
+          <div className="filter-bar flex-wrap">
               <div className="relative min-w-[260px] flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <input className="input pl-9" placeholder="Tìm mã đơn, tên khách, số điện thoại..." value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -286,8 +267,26 @@ export default function OrdersPage() {
           <div className="card p-4">
             <PaginationControls page={page} pageSize={pageSize} total={ordersData?.total ?? 0} totalPages={totalPages} currentFrom={currentFrom} currentTo={currentTo} onPageChange={setPage} onPageSizeChange={(nextSize) => setPageSize(nextSize)} />
           </div>
-        </section>
-      </div>
+        </div>
+
+      {showAutoActions && (
+        <div className="card space-y-3 p-4">
+          <div>
+            <h3 className="font-semibold text-gray-950">Tự động in và âm thanh</h3>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={toggleSound} className={cn('btn-outline', soundEnabled && 'border-emerald-300 bg-emerald-50 text-emerald-700')}>
+              <Volume2 className="h-4 w-4" /> {soundEnabled ? 'Âm thanh đang bật' : 'Âm thanh đang tắt'}
+            </button>
+            <button type="button" onClick={toggleAutoPrint} className={cn('btn-outline', autoPrintEnabled && 'border-sky-300 bg-sky-50 text-sky-700')}>
+              <Printer className="h-4 w-4" /> {autoPrintEnabled ? 'Tự in đang bật' : 'Tự in đang tắt'}
+            </button>
+            <button type="button" onClick={() => playOrderAlert(1)} className="btn-outline">
+              <Volume2 className="h-4 w-4" /> Test âm báo
+            </button>
+          </div>
+        </div>
+      )}
 
       <OrderCreateModal open={showCreateModal} onClose={() => setShowCreateModal(false)} />
     </div>

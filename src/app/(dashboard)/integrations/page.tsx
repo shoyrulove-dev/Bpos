@@ -171,13 +171,13 @@ export default function IntegrationsPage() {
 
   // Auto Login modal
   const [autoLoginId, setAutoLoginId]     = useState<string | null>(null)
-  const [autoLoginMode, setAutoLoginMode] = useState<'auto' | 'manual'>('auto')
+  const [autoLoginMode, setAutoLoginMode] = useState<'auto' | 'manual' | 'otp'>('auto')
   const [autoLoginForm, setAutoLoginForm] = useState<AutoLoginForm>({ username: '', password: '', otp: '' })
   const [manualJwt, setManualJwt]         = useState('')
   const [manualCookieString, setManualCookieString] = useState('')
   const [manualStoreId, setManualStoreId] = useState('')
   const [autoLoginWaiting, setAutoLoginWaiting] = useState<{ requiresOtp: boolean; otpTarget?: string; sessionKey?: string } | null>(null)
-  const [autoLoginResult, setAutoLoginResult]   = useState<{ ok: boolean; message: string } | null>(null)
+  const [autoLoginResult, setAutoLoginResult]   = useState<{ ok: boolean; message: string; debug?: unknown[] } | null>(null)
   const [autoLoginLoading, setAutoLoginLoading] = useState(false)
 
   // Quick Test modal
@@ -498,7 +498,7 @@ export default function IntegrationsPage() {
 
   const openAutoLogin = (integ: Integ) => {
     setAutoLoginId(integ._id)
-    setAutoLoginMode(integ.provider === 'shopee' || integ.provider === 'xanh_sm' ? 'manual' : 'auto')
+    setAutoLoginMode(integ.provider === 'shopee' ? 'otp' : integ.provider === 'xanh_sm' ? 'manual' : 'auto')
     setAutoLoginForm({ username: integ.loginUsername ?? '', password: '', otp: '' })
     setManualJwt('')
     setManualCookieString('')
@@ -599,6 +599,45 @@ export default function IntegrationsPage() {
         } else {
           setAutoLoginResult({ ok: false, message: data.error ?? 'Lỗi lưu session' })
         }
+      }
+    } catch (e) {
+      setAutoLoginResult({ ok: false, message: e instanceof Error ? e.message : 'Lỗi mạng' })
+    } finally {
+      setAutoLoginLoading(false)
+    }
+  }
+
+  const handleShopeeOtpLogin = async () => {
+    if (!autoLoginId) return
+    setAutoLoginLoading(true)
+    setAutoLoginResult(null)
+    try {
+      const isOtpStep = !!autoLoginWaiting?.requiresOtp
+      const body: Record<string, string | undefined> = isOtpStep
+        ? { step: 'otp', phone: autoLoginForm.username, otp: autoLoginForm.otp, sessionKey: autoLoginWaiting?.sessionKey }
+        : { step: 'login', phone: autoLoginForm.username, password: autoLoginForm.password }
+
+      const res  = await fetch(`/api/integrations/${autoLoginId}/shopee-otp-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      const payload = data.data ?? data
+
+      if (payload?.requiresOtp) {
+        setAutoLoginWaiting({ requiresOtp: true, otpTarget: payload.otpTarget, sessionKey: payload.sessionKey })
+      } else if (payload?.success) {
+        setAutoLoginResult({ ok: true, message: 'Đăng nhập Shopee thành công! Session đã lưu.', debug: payload.debug })
+        setAutoLoginWaiting(null)
+        qc.invalidateQueries({ queryKey: ['integrations'] })
+      } else {
+        // Show debug info so we can discover the correct API endpoint
+        setAutoLoginResult({
+          ok: false,
+          message: payload?.message ?? data?.error ?? 'Chưa kết nối được – xem debug',
+          debug: payload?.debug,
+        })
       }
     } catch (e) {
       setAutoLoginResult({ ok: false, message: e instanceof Error ? e.message : 'Lỗi mạng' })
@@ -1126,26 +1165,82 @@ export default function IntegrationsPage() {
             {/* Mode tabs */}
             {!autoLoginResult && (
               <div className="px-6 pt-4">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button onClick={() => { setAutoLoginMode('auto'); setAutoLoginResult(null) }}
-                    className={cn('py-2 rounded-xl border-2 text-sm font-medium transition-all',
+                    className={cn('py-2 rounded-xl border-2 text-xs font-medium transition-all',
                       autoLoginMode === 'auto'
                         ? 'border-violet-400 bg-violet-50 text-violet-700'
                         : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
-                    🤖 Auto (Playwright)
+                    🤖 Auto
+                  </button>
+                  <button onClick={() => { setAutoLoginMode('otp'); setAutoLoginWaiting(null); setAutoLoginResult(null) }}
+                    className={cn('py-2 rounded-xl border-2 text-xs font-medium transition-all',
+                      autoLoginMode === 'otp'
+                        ? 'border-orange-400 bg-orange-50 text-orange-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
+                    📱 OTP Login
                   </button>
                   <button onClick={() => { setAutoLoginMode('manual'); setAutoLoginWaiting(null); setAutoLoginResult(null) }}
-                    className={cn('py-2 rounded-xl border-2 text-sm font-medium transition-all',
+                    className={cn('py-2 rounded-xl border-2 text-xs font-medium transition-all',
                       autoLoginMode === 'manual'
                         ? 'border-blue-400 bg-blue-50 text-blue-700'
                         : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
-                    📋 Manual (login tay + lưu session)
+                    📋 Manual
                   </button>
                 </div>
               </div>
             )}
 
             <div className="p-6 space-y-4">
+
+              {/* ── OTP direct login mode ── */}
+              {autoLoginMode === 'otp' && !autoLoginResult && (
+                <div className="space-y-3">
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-700 space-y-1">
+                    <p className="font-medium">📱 Đăng nhập trực tiếp qua Shopee Food API:</p>
+                    <p>1. Nhập SĐT + mật khẩu → nhấn Gửi OTP</p>
+                    <p>2. Shopee gửi OTP về điện thoại → nhập OTP → nhấn Xác nhận</p>
+                    <p>⚠️ Tính năng đang trong quá trình xác định endpoint – kết quả debug sẽ hiện nếu chưa khớp.</p>
+                  </div>
+                  {!autoLoginWaiting && (
+                    <>
+                      <div>
+                        <label className="label">Số điện thoại đăng ký Shopee Merchant</label>
+                        <input className="input w-full" type="tel"
+                          placeholder="VD: 0901234567"
+                          value={autoLoginForm.username}
+                          onChange={e => setAutoLoginForm(p => ({ ...p, username: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="label">Mật khẩu Shopee Merchant</label>
+                        <input className="input w-full" type="password" autoComplete="current-password"
+                          placeholder="••••••••"
+                          value={autoLoginForm.password}
+                          onChange={e => setAutoLoginForm(p => ({ ...p, password: e.target.value }))} />
+                      </div>
+                    </>
+                  )}
+                  {autoLoginWaiting?.requiresOtp && (
+                    <div className="space-y-3">
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-sm text-yellow-800">
+                        📱 OTP đã gửi đến <strong>{autoLoginWaiting.otpTarget}</strong>
+                      </div>
+                      <div>
+                        <label className="label">Mã OTP (6 chữ số)</label>
+                        <input className="input w-full text-center text-xl font-mono tracking-widest"
+                          type="text" inputMode="numeric" maxLength={6} placeholder="000000"
+                          value={autoLoginForm.otp}
+                          onChange={e => setAutoLoginForm(p => ({ ...p, otp: e.target.value }))} />
+                      </div>
+                    </div>
+                  )}
+                  {autoLoginLoading && (
+                    <div className="flex items-center gap-2 text-sm text-orange-700">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Đang liên hệ Shopee API…
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ── AUTO mode ── */}
               {autoLoginMode === 'auto' && !autoLoginResult && (
@@ -1272,12 +1367,22 @@ export default function IntegrationsPage() {
 
               {/* Result */}
               {autoLoginResult && (
-                <div className={cn('flex items-start gap-2 rounded-xl p-4 text-sm',
+                <div className={cn('rounded-xl p-4 text-sm space-y-2',
                   autoLoginResult.ok
                     ? 'bg-green-50 border border-green-100 text-green-700'
                     : 'bg-red-50 border border-red-100 text-red-600')}>
-                  {autoLoginResult.ok ? <CheckCircle className="w-5 h-5 shrink-0" /> : <XCircle className="w-5 h-5 shrink-0" />}
-                  <span>{autoLoginResult.message}</span>
+                  <div className="flex items-start gap-2">
+                    {autoLoginResult.ok ? <CheckCircle className="w-5 h-5 shrink-0" /> : <XCircle className="w-5 h-5 shrink-0" />}
+                    <span>{autoLoginResult.message}</span>
+                  </div>
+                  {autoLoginResult.debug && (
+                    <details className="text-xs">
+                      <summary className="cursor-pointer font-medium text-gray-500">Debug (endpoint responses)</summary>
+                      <pre className="mt-2 overflow-x-auto bg-white/60 rounded p-2 text-gray-700 text-[10px]">
+                        {JSON.stringify(autoLoginResult.debug, null, 2)}
+                      </pre>
+                    </details>
+                  )}
                 </div>
               )}
             </div>
@@ -1285,6 +1390,19 @@ export default function IntegrationsPage() {
             <div className="px-6 pb-6 flex gap-2">
               <button onClick={() => { setAutoLoginId(null); setAutoLoginWaiting(null); setAutoLoginResult(null) }}
                 className="btn-outline flex-1">Đóng</button>
+              {!autoLoginResult && autoLoginMode === 'otp' && (
+                <button
+                  onClick={handleShopeeOtpLogin}
+                  disabled={
+                    autoLoginLoading ||
+                    (!autoLoginWaiting && (!autoLoginForm.username || !autoLoginForm.password)) ||
+                    (!!autoLoginWaiting && !autoLoginForm.otp)
+                  }
+                  className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50 bg-orange-600 hover:bg-orange-700">
+                  {autoLoginLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                  {autoLoginWaiting?.requiresOtp ? 'Xác nhận OTP' : 'Gửi OTP'}
+                </button>
+              )}
               {!autoLoginResult && autoLoginMode === 'auto' && (
                 <button
                   onClick={() => autoLoginWaiting?.requiresOtp ? handleAutoLogin(true) : handleAutoLogin(false)}
