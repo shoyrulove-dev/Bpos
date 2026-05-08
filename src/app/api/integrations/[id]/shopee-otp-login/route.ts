@@ -14,7 +14,7 @@ import { NextRequest } from 'next/server'
 import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
-import { encryptJSON, encrypt } from '@/lib/crypto'
+import { encryptJSON } from '@/lib/crypto'
 import type { SessionData } from '@/integrations/types'
 
 const SHOPEE_MERCHANT_BASE = 'https://merchant.shopeefood.vn'
@@ -45,33 +45,37 @@ export async function POST(
 
   if (step === 'login') {
     const phone    = (body.phone ?? '').trim()
-    const password = (body.password ?? '').trim()
-    if (!phone || !password) return err('Thiếu số điện thoại hoặc mật khẩu')
+    if (!phone) return err('Thiếu số điện thoại')
 
     // Save username to DB
     await IntegrationModel.updateOne(
       { _id: params.id },
-      { loginUsername: phone, loginPassword: encrypt(password), loginMode: 'auto' },
+      { loginUsername: phone, loginMode: 'auto' },
     )
 
     // ── Attempt Shopee Food merchant portal login ─────────────────────────
     // We try multiple known endpoints in sequence, recording the first
     // successful or OTP-requiring response.
     const loginAttempts = [
-      // Attempt 1 – shopeefood merchant portal internal API
+      // Attempt 1 – shopeefood merchant portal: phone-only OTP initiate
+      {
+        url: `${SHOPEE_MERCHANT_BASE}/api/v1/merchant/auth/send_otp`,
+        body: { phone },
+      },
+      // Attempt 2 – login with phone only (triggers OTP)
       {
         url: `${SHOPEE_MERCHANT_BASE}/api/v1/merchant/auth/login`,
-        body: { phone, password },
+        body: { phone },
       },
-      // Attempt 2 – shopeefood partner API login (phone+password)
+      // Attempt 3 – partner API
       {
-        url: `https://partner.shopeefood.vn/api/v1/merchant/auth/login`,
-        body: { phone, password },
+        url: `https://partner.shopeefood.vn/api/v1/merchant/auth/send_otp`,
+        body: { phone },
       },
-      // Attempt 3 – Shopee unified account (member API)
+      // Attempt 4 – member API (unified Shopee account)
       {
         url: `https://member.shopee.vn/api/v2/login/`,
-        body: { username: phone, password, client_type: 1, support_whatsapp: false },
+        body: { username: phone, client_type: 1, support_whatsapp: false },
       },
     ]
 

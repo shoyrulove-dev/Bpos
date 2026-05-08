@@ -215,48 +215,48 @@ export default function OrdersPage() {
               const previewItems = order.items.slice(0, 2).map((item) => item.name).join(' · ')
 
               return (
-                <article key={order._id} className="rounded-[28px] border border-gray-200 bg-white p-5 shadow-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-4">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={cn('badge', CHANNEL_SOURCE_COLOR[order.source])}>{CHANNEL_SOURCE_LABEL[order.source]}</span>
-                        <span className="font-mono text-[28px] font-semibold leading-none text-sky-600">#{order.externalOrderId || order.shortId}</span>
-                      </div>
-                      <p className="mt-2 truncate text-xl text-gray-800">{previewItems || 'Chưa có tên món'} {order.brandName ? `- ${order.brandName}` : ''} {order.hubName ? `- ${order.hubName}` : ''}</p>
+                <article key={order._id} className="rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+                  {/* Header row */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 mb-3">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <span className={cn('badge shrink-0', CHANNEL_SOURCE_COLOR[order.source])}>{CHANNEL_SOURCE_LABEL[order.source]}</span>
+                      <span className="font-mono text-base font-semibold text-sky-600">#{order.externalOrderId || order.shortId}</span>
+                      <span className="text-sm text-gray-700 truncate">{previewItems || 'Chưa có tên món'}{order.brandName ? ` – ${order.brandName}` : ''}{order.hubName ? ` – ${order.hubName}` : ''}</span>
                     </div>
-                    <span className={cn('badge text-base', ORDER_STATUS_COLOR[order.status])}>{ORDER_STATUS_LABEL[order.status]}</span>
+                    <span className={cn('badge shrink-0', ORDER_STATUS_COLOR[order.status])}>{ORDER_STATUS_LABEL[order.status]}</span>
                   </div>
 
-                  <div className="grid gap-5 border-b border-gray-100 py-5 md:grid-cols-2 xl:grid-cols-4">
+                  {/* Info columns */}
+                  <div className="grid gap-x-6 gap-y-3 md:grid-cols-2 xl:grid-cols-4">
                     <div>
-                      <p className="text-sm font-semibold text-gray-700">Thông tin khách hàng</p>
-                      <p className="mt-2 text-2xl font-medium text-gray-900">{order.customerName}</p>
-                      <div className="mt-2 flex items-center gap-2 text-lg text-gray-600"><Phone className="h-4 w-4" /> {order.customerPhone || '-'}</div>
+                      <p className="text-xs font-semibold text-gray-500 mb-1">Thông tin khách hàng</p>
+                      <p className="text-sm font-medium text-gray-900">{order.customerName || '–'}</p>
+                      <div className="flex items-center gap-1 text-sm text-gray-600"><Phone className="h-3.5 w-3.5" /> {order.customerPhone || '–'}</div>
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-gray-700">Thông tin thanh toán</p>
-                      <p className="mt-2 text-lg text-gray-600">Số lượng: {totalItems} sản phẩm</p>
-                      <p className="text-lg text-gray-600">Tổng cộng: <span className="font-semibold text-gray-900">{formatCurrency(order.total)}</span></p>
-                      <p className="text-lg text-emerald-600">Thực nhận: <span className="font-semibold">{formatCurrency(actualReceived)}</span></p>
+                      <p className="text-xs font-semibold text-gray-500 mb-1">Thông tin thanh toán</p>
+                      <p className="text-sm text-gray-600">Số lượng: {totalItems} sản phẩm</p>
+                      <p className="text-sm text-gray-600">Tổng cộng: <span className="font-semibold text-gray-900">{formatCurrency(order.total)}</span></p>
+                      <p className="text-sm text-emerald-600">Thực nhận: <span className="font-semibold">{formatCurrency(actualReceived)}</span></p>
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-gray-700">Thông tin giao nhận</p>
-                      <p className="mt-2 text-lg text-gray-600">Đặt lúc: {formatDate(order.placedAt)}</p>
-                      <p className="text-lg text-gray-600">Nhận hàng: {order.deliveredAt ? formatDate(order.deliveredAt) : '-'}</p>
+                      <p className="text-xs font-semibold text-gray-500 mb-1">Thông tin giao nhận</p>
+                      <p className="text-sm text-gray-600">Đặt lúc: {formatDate(order.placedAt)}</p>
+                      <p className="text-sm text-gray-600">Nhận hàng: {order.deliveredAt ? formatDate(order.deliveredAt) : '–'}</p>
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-gray-700">Thông tin vận chuyển</p>
-                      <div className="mt-2 flex items-start gap-2 text-lg text-gray-600"><Truck className="mt-1 h-4 w-4 flex-shrink-0" /><div><p>Tài xế: {order.driverInfo?.name || '-'}</p><p>SĐT: {order.driverInfo?.phone || '-'}</p></div></div>
-                      {order.deliveryInfo?.address && <div className="mt-2 flex items-start gap-2 text-sm text-gray-500"><MapPin className="mt-0.5 h-4 w-4 flex-shrink-0" /><p className="line-clamp-2">{order.deliveryInfo.address}</p></div>}
+                      <p className="text-xs font-semibold text-gray-500 mb-1">Thông tin vận chuyển</p>
+                      <div className="flex items-start gap-1.5 text-sm text-gray-600"><Truck className="mt-0.5 h-3.5 w-3.5 shrink-0" /><div><p>Tài xế: {order.driverInfo?.name || '–'}</p><p>SĐT: {order.driverInfo?.phone || '–'}</p></div></div>
+                      {order.deliveryInfo?.address && <div className="flex items-start gap-1.5 text-xs text-gray-500 mt-1"><MapPin className="mt-0.5 h-3 w-3 shrink-0" /><p className="line-clamp-1">{order.deliveryInfo.address}</p></div>}
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-4">
-                    <Link href={`/orders/${order._id}`} className="inline-flex items-center gap-2 rounded-full bg-[#20232A] px-5 py-3 text-sm font-semibold text-white transition hover:bg-black">Chi tiết</Link>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button type="button" onClick={() => openWindow(buildReceiptPrintUrl(order._id, { autoprint: true, paperSize: '80mm' }))} className="btn-outline rounded-full"><Printer className="h-4 w-4" /> In đơn</button>
-                      <button type="button" onClick={() => openWindow(buildReceiptPrintUrl(order._id, { autoprint: true, paperSize: '58mm' }))} className="btn-outline rounded-full"><Printer className="h-4 w-4" /> In phiếu tem</button>
-                      <button type="button" onClick={() => openWindow(buildReceiptPrintUrl(order._id, { autoprint: false, paperSize: '80mm' }))} className="btn-outline rounded-full"><Printer className="h-4 w-4" /> In đơn qua dialog</button>
+                  {/* Footer */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 mt-3">
+                    <Link href={`/orders/${order._id}`} className="inline-flex items-center gap-2 rounded-full bg-[#20232A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-black">Chi tiết</Link>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => openWindow(buildReceiptPrintUrl(order._id, { autoprint: true, paperSize: '80mm' }))} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In Đơn</button>
+                      <button type="button" onClick={() => openWindow(buildReceiptPrintUrl(order._id, { autoprint: true, paperSize: '58mm' }))} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In phiếu tem</button>
                     </div>
                   </div>
                 </article>

@@ -498,7 +498,7 @@ export default function IntegrationsPage() {
 
   const openAutoLogin = (integ: Integ) => {
     setAutoLoginId(integ._id)
-    setAutoLoginMode(integ.provider === 'shopee' ? 'otp' : integ.provider === 'xanh_sm' ? 'manual' : 'auto')
+    setAutoLoginMode(integ.provider === 'shopee' || integ.provider === 'xanh_sm' ? 'otp' : 'auto')
     setAutoLoginForm({ username: integ.loginUsername ?? '', password: '', otp: '' })
     setManualJwt('')
     setManualCookieString('')
@@ -1193,42 +1193,34 @@ export default function IntegrationsPage() {
 
             <div className="p-6 space-y-4">
 
-              {/* ── OTP direct login mode ── */}
+              {/* ── OTP direct login mode (Shopee Food / Xanh SM – SMS, no password) ── */}
               {autoLoginMode === 'otp' && !autoLoginResult && (
                 <div className="space-y-3">
                   <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-700 space-y-1">
-                    <p className="font-medium">📱 Đăng nhập trực tiếp qua Shopee Food API:</p>
-                    <p>1. Nhập SĐT + mật khẩu → nhấn Gửi OTP</p>
-                    <p>2. Shopee gửi OTP về điện thoại → nhập OTP → nhấn Xác nhận</p>
-                    <p>⚠️ Tính năng đang trong quá trình xác định endpoint – kết quả debug sẽ hiện nếu chưa khớp.</p>
+                    <p className="font-medium">📱 Đăng nhập qua SMS OTP:</p>
+                    <p>1. Nhập số điện thoại → nhấn <strong>Gửi OTP</strong></p>
+                    <p>2. Điền mã SMS nhận được → nhấn <strong>Xác nhận OTP</strong></p>
+                    <p>⚠️ Kết quả debug sẽ hiện bên dưới nếu endpoint chưa khớp.</p>
                   </div>
                   {!autoLoginWaiting && (
-                    <>
-                      <div>
-                        <label className="label">Số điện thoại đăng ký Shopee Merchant</label>
-                        <input className="input w-full" type="tel"
-                          placeholder="VD: 0901234567"
-                          value={autoLoginForm.username}
-                          onChange={e => setAutoLoginForm(p => ({ ...p, username: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="label">Mật khẩu Shopee Merchant</label>
-                        <input className="input w-full" type="password" autoComplete="current-password"
-                          placeholder="••••••••"
-                          value={autoLoginForm.password}
-                          onChange={e => setAutoLoginForm(p => ({ ...p, password: e.target.value }))} />
-                      </div>
-                    </>
+                    <div>
+                      <label className="label">Số điện thoại đăng ký tài khoản</label>
+                      <input className="input w-full" type="tel"
+                        placeholder="VD: 0901234567"
+                        value={autoLoginForm.username}
+                        onChange={e => setAutoLoginForm(p => ({ ...p, username: e.target.value }))} />
+                    </div>
                   )}
                   {autoLoginWaiting?.requiresOtp && (
                     <div className="space-y-3">
                       <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-sm text-yellow-800">
-                        📱 OTP đã gửi đến <strong>{autoLoginWaiting.otpTarget}</strong>
+                        📱 OTP đã gửi đến <strong>{autoLoginWaiting.otpTarget ?? autoLoginForm.username}</strong>
                       </div>
                       <div>
                         <label className="label">Mã OTP (6 chữ số)</label>
                         <input className="input w-full text-center text-xl font-mono tracking-widest"
                           type="text" inputMode="numeric" maxLength={6} placeholder="000000"
+                          autoFocus
                           value={autoLoginForm.otp}
                           onChange={e => setAutoLoginForm(p => ({ ...p, otp: e.target.value }))} />
                       </div>
@@ -1236,7 +1228,7 @@ export default function IntegrationsPage() {
                   )}
                   {autoLoginLoading && (
                     <div className="flex items-center gap-2 text-sm text-orange-700">
-                      <Loader2 className="w-4 h-4 animate-spin" /> Đang liên hệ Shopee API…
+                      <Loader2 className="w-4 h-4 animate-spin" /> Đang gửi yêu cầu…
                     </div>
                   )}
                 </div>
@@ -1395,7 +1387,7 @@ export default function IntegrationsPage() {
                   onClick={handleShopeeOtpLogin}
                   disabled={
                     autoLoginLoading ||
-                    (!autoLoginWaiting && (!autoLoginForm.username || !autoLoginForm.password)) ||
+                    (!autoLoginWaiting && !autoLoginForm.username) ||
                     (!!autoLoginWaiting && !autoLoginForm.otp)
                   }
                   className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50 bg-orange-600 hover:bg-orange-700">
