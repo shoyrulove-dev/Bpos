@@ -188,6 +188,7 @@ export default function IntegrationsPage() {
   const [actionStatus, setActionStatus] = useState<ActionStatus>(null)
   const [activeProviderTab, setActiveProviderTab] = useState(PROVIDERS[0].value)
   const autoLoginInteg = autoLoginId ? integrations.find(i => i._id === autoLoginId) ?? null : null
+  const autoLoginUsesSmsOtp = autoLoginInteg?.provider === 'shopee' || autoLoginInteg?.provider === 'xanh_sm'
 
   // Live "time ago" ticker — re-renders every 30s so lastSyncAt label refreshes
   const [, setTick] = useState(0)
@@ -608,42 +609,7 @@ export default function IntegrationsPage() {
   }
 
   const handleShopeeOtpLogin = async () => {
-    if (!autoLoginId) return
-    setAutoLoginLoading(true)
-    setAutoLoginResult(null)
-    try {
-      const isOtpStep = !!autoLoginWaiting?.requiresOtp
-      const body: Record<string, string | undefined> = isOtpStep
-        ? { step: 'otp', phone: autoLoginForm.username, otp: autoLoginForm.otp, sessionKey: autoLoginWaiting?.sessionKey }
-        : { step: 'login', phone: autoLoginForm.username, password: autoLoginForm.password }
-
-      const res  = await fetch(`/api/integrations/${autoLoginId}/shopee-otp-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json()
-      const payload = data.data ?? data
-
-      if (payload?.requiresOtp) {
-        setAutoLoginWaiting({ requiresOtp: true, otpTarget: payload.otpTarget, sessionKey: payload.sessionKey })
-      } else if (payload?.success) {
-        setAutoLoginResult({ ok: true, message: 'Đăng nhập Shopee thành công! Session đã lưu.', debug: payload.debug })
-        setAutoLoginWaiting(null)
-        qc.invalidateQueries({ queryKey: ['integrations'] })
-      } else {
-        // Show debug info so we can discover the correct API endpoint
-        setAutoLoginResult({
-          ok: false,
-          message: payload?.message ?? data?.error ?? 'Chưa kết nối được – xem debug',
-          debug: payload?.debug,
-        })
-      }
-    } catch (e) {
-      setAutoLoginResult({ ok: false, message: e instanceof Error ? e.message : 'Lỗi mạng' })
-    } finally {
-      setAutoLoginLoading(false)
-    }
+    await handleAutoLogin(Boolean(autoLoginWaiting?.requiresOtp))
   }
 
   const handleQuickTest = async () => {
@@ -1165,7 +1131,7 @@ export default function IntegrationsPage() {
             {/* Mode tabs */}
             {!autoLoginResult && (
               <div className="px-6 pt-4">
-                <div className="grid grid-cols-3 gap-2">
+                <div className={cn('grid gap-2', autoLoginUsesSmsOtp ? 'grid-cols-3' : 'grid-cols-2')}>
                   <button onClick={() => { setAutoLoginMode('auto'); setAutoLoginResult(null) }}
                     className={cn('py-2 rounded-xl border-2 text-xs font-medium transition-all',
                       autoLoginMode === 'auto'
@@ -1173,13 +1139,15 @@ export default function IntegrationsPage() {
                         : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
                     🤖 Auto
                   </button>
-                  <button onClick={() => { setAutoLoginMode('otp'); setAutoLoginWaiting(null); setAutoLoginResult(null) }}
-                    className={cn('py-2 rounded-xl border-2 text-xs font-medium transition-all',
-                      autoLoginMode === 'otp'
-                        ? 'border-orange-400 bg-orange-50 text-orange-700'
-                        : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
-                    📱 OTP Login
-                  </button>
+                  {autoLoginUsesSmsOtp && (
+                    <button onClick={() => { setAutoLoginMode('otp'); setAutoLoginWaiting(null); setAutoLoginResult(null) }}
+                      className={cn('py-2 rounded-xl border-2 text-xs font-medium transition-all',
+                        autoLoginMode === 'otp'
+                          ? 'border-orange-400 bg-orange-50 text-orange-700'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
+                      📱 OTP Login
+                    </button>
+                  )}
                   <button onClick={() => { setAutoLoginMode('manual'); setAutoLoginWaiting(null); setAutoLoginResult(null) }}
                     className={cn('py-2 rounded-xl border-2 text-xs font-medium transition-all',
                       autoLoginMode === 'manual'
@@ -1193,14 +1161,14 @@ export default function IntegrationsPage() {
 
             <div className="p-6 space-y-4">
 
-              {/* ── OTP direct login mode (Shopee Food / Xanh SM – SMS, no password) ── */}
+              {/* ── OTP via automation mode (Shopee Food / Xanh SM – SMS, no password) ── */}
               {autoLoginMode === 'otp' && !autoLoginResult && (
                 <div className="space-y-3">
                   <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-700 space-y-1">
-                    <p className="font-medium">📱 Đăng nhập qua SMS OTP:</p>
+                    <p className="font-medium">📱 Đăng nhập qua SMS OTP bằng automation:</p>
                     <p>1. Nhập số điện thoại → nhấn <strong>Gửi OTP</strong></p>
-                    <p>2. Điền mã SMS nhận được → nhấn <strong>Xác nhận OTP</strong></p>
-                    <p>⚠️ Kết quả debug sẽ hiện bên dưới nếu endpoint chưa khớp.</p>
+                    <p>2. Hệ thống mở luồng đăng nhập sàn trên VPS và chờ OTP</p>
+                    <p>3. Điền mã SMS nhận được → nhấn <strong>Xác nhận OTP</strong></p>
                   </div>
                   {!autoLoginWaiting && (
                     <div>
@@ -1228,7 +1196,7 @@ export default function IntegrationsPage() {
                   )}
                   {autoLoginLoading && (
                     <div className="flex items-center gap-2 text-sm text-orange-700">
-                      <Loader2 className="w-4 h-4 animate-spin" /> Đang gửi yêu cầu…
+                      <Loader2 className="w-4 h-4 animate-spin" /> Đang chạy phiên đăng nhập SMS OTP…
                     </div>
                   )}
                 </div>
@@ -1400,7 +1368,7 @@ export default function IntegrationsPage() {
                   onClick={() => autoLoginWaiting?.requiresOtp ? handleAutoLogin(true) : handleAutoLogin(false)}
                   disabled={
                     autoLoginLoading ||
-                    (!autoLoginWaiting && (!autoLoginForm.username || !autoLoginForm.password)) ||
+                    (!autoLoginWaiting && (!autoLoginForm.username || (!autoLoginUsesSmsOtp && !autoLoginForm.password))) ||
                     (!!autoLoginWaiting && !autoLoginForm.otp)
                   }
                   className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50">

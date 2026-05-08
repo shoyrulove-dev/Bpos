@@ -22,6 +22,7 @@ import type { SessionData } from '@/integrations/types'
 const AUTOMATION_URL    = process.env.AUTOMATION_SERVICE_URL ?? ''
 const AUTOMATION_SECRET = process.env.AUTOMATION_SECRET ?? ''
 const SESSION_LOGIN_PROVIDERS = new Set(['shopee', 'grab', 'xanh_sm', 'be'])
+const SMS_OTP_PROVIDERS = new Set(['shopee', 'xanh_sm'])
 
 // ─── GET – session status ─────────────────────────────────────────────────────
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -110,7 +111,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const sessionKey = body.sessionKey ?? undefined
 
   if (!username) return err('Thiếu username')
-  if (!sessionKey && !password) return err('Thiếu password (bắt buộc cho lần đăng nhập đầu tiên)')
+  if (!sessionKey && !password && !SMS_OTP_PROVIDERS.has(integ.provider)) {
+    return err('Thiếu password (bắt buộc cho lần đăng nhập đầu tiên)')
+  }
 
   // Persist updated credentials if provided
   const credUpdates: Record<string, unknown> = { loginMode: 'auto', automationRunning: true }

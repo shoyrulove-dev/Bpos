@@ -3,8 +3,9 @@
  *
  * Portal: https://merchant.xanhsm.com/login
  * Login flow:
- *   - Phone + Password
- *   - No CAPTCHA reported (as of 2025)
+ *   - Phone number
+ *   - SMS OTP
+ *   - reCAPTCHA may appear before OTP send
  *
  * Session TTL: ~30 days (Authorization Bearer JWT)
  *
@@ -44,37 +45,34 @@ export class XanhSMAutomation implements PlatformAutomation {
       // ── 1. Navigate ────────────────────────────────────────────────────────
       await page.goto(PORTAL_URL, { waitUntil: 'networkidle', timeout: 30_000 })
 
-      // ── 2. Fill phone ──────────────────────────────────────────────────────
-      await page.waitForSelector('input[type="text"], input[name="phone"], input[name="username"]', { timeout: 10_000 })
-      await page.fill('input[type="text"], input[name="phone"], input[name="username"]', credentials.username)
+      // ── 2. Fill phone and request OTP ─────────────────────────────────────
+      await page.waitForSelector('input[type="tel"], input[name="phone"], input[type="text"]', { timeout: 10_000 })
+      await page.fill('input[type="tel"], input[name="phone"], input[type="text"]', credentials.username)
 
-      // ── 3. Fill password ───────────────────────────────────────────────────
-      await page.fill('input[type="password"]', credentials.password)
-
-      // ── 4. Submit ──────────────────────────────────────────────────────────
-      await page.click('button[type="submit"]')
+      // ── 3. Submit phone step ──────────────────────────────────────────────
+      await page.click('button[type="submit"], button:has-text("Tiếp tục")')
       await page.waitForTimeout(3500)
 
-      // ── 5. OTP check ───────────────────────────────────────────────────────
-      const otpInput = await page.$('input[placeholder*="OTP"], input[placeholder*="mã xác nhận"]')
+      // ── 4. OTP check ───────────────────────────────────────────────────────
+      const otpInput = await page.$('input[placeholder*="OTP" i], input[placeholder*="mã" i], input[name*="otp" i], input[inputmode="numeric"]')
       if (otpInput) {
         if (!credentials.otp) {
           await browser.close()
           return { success: false, requiresOtp: true, otpTarget: credentials.username }
         }
         await otpInput.fill(credentials.otp)
-        await page.click('button[type="submit"]')
+        await page.click('button[type="submit"], button:has-text("Xác nhận"), button:has-text("Tiếp tục")')
         await page.waitForTimeout(3000)
       }
 
-      // ── 6. Verify success ──────────────────────────────────────────────────
+      // ── 5. Verify success ──────────────────────────────────────────────────
       if (page.url().includes('/login')) {
         const errorMsg = await page.textContent('[class*="error"], .alert, [role="alert"]').catch(() => null)
         await browser.close()
         return { success: false, error: errorMsg?.trim() ?? 'Đăng nhập Xanh SM thất bại' }
       }
 
-      // ── 7. Extract JWT token from localStorage ─────────────────────────────
+      // ── 6. Extract JWT token from localStorage ─────────────────────────────
       const jwtToken = await page.evaluate(() => {
         return localStorage.getItem('token')
           ?? localStorage.getItem('access_token')
@@ -82,7 +80,7 @@ export class XanhSMAutomation implements PlatformAutomation {
           ?? sessionStorage.getItem('token')
       })
 
-      // ── 8. Capture cookies ─────────────────────────────────────────────────
+      // ── 7. Capture cookies ─────────────────────────────────────────────────
       const rawCookies = await context.cookies('https://merchant.xanhsm.com')
       const cookies: PlaywrightCookie[] = rawCookies.map(c => ({
         name: c.name,

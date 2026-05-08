@@ -3,7 +3,8 @@
  *
  * Portal: https://merchant.shopeefood.vn/account/login
  * Login flow:
- *   - Phone + Password (or Phone + OTP)
+ *   - Phone + SMS OTP
+ *   - Optional password fallback may still exist on some merchant accounts
  *   - Possible slider CAPTCHA → handled by retry / mouse simulation
  *
  * Session TTL: ~7 days (SPC_ST cookie)
@@ -52,15 +53,23 @@ export class ShopeeAutomation implements PlatformAutomation {
       // ── 1. Navigate to login page ──────────────────────────────────────────
       await page.goto(PORTAL_URL, { waitUntil: 'networkidle', timeout: 30_000 })
 
-      // ── 2. Fill phone / username ───────────────────────────────────────────
-      await page.waitForSelector('input[name="loginKey"], input[type="text"]', { timeout: 10_000 })
-      await page.fill('input[name="loginKey"], input[type="text"]', credentials.username)
+      // ── 2. Prefer phone OTP login if available ─────────────────────────────
+      const phoneLoginButton = await page.$('button:has-text("Đăng nhập bằng số điện thoại")')
+      if (phoneLoginButton) {
+        await phoneLoginButton.click()
+        await page.waitForTimeout(1500)
+      }
 
-      // ── 3. Fill password ───────────────────────────────────────────────────
-      await page.fill('input[name="password"], input[type="password"]', credentials.password)
+      // ── 3. Fill phone / username ───────────────────────────────────────────
+      await page.waitForSelector('input[type="tel"], input[name="loginKey"], input[name="phone"], input[type="text"]', { timeout: 10_000 })
+      await page.fill('input[type="tel"], input[name="loginKey"], input[name="phone"], input[type="text"]', credentials.username)
 
-      // ── 4. Click login ─────────────────────────────────────────────────────
-      await page.click('button[type="submit"], button:has-text("Đăng nhập"), button:has-text("Log in")')
+      // ── 4. Click next / send OTP or password login ────────────────────────
+      const passwordInput = await page.$('input[name="password"], input[type="password"]')
+      if (passwordInput && credentials.password) {
+        await passwordInput.fill(credentials.password)
+      }
+      await page.click('button[type="submit"], button:has-text("Gửi OTP"), button:has-text("Gửi mã"), button:has-text("Đăng nhập"), button:has-text("Tiếp tục"), button:has-text("Xác nhận")')
 
       // ── 5. Wait for navigation or OTP prompt ───────────────────────────────
       await page.waitForTimeout(3000)

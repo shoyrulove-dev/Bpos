@@ -213,21 +213,23 @@ export default function OrdersPage() {
               const totalItems = getTotalItems(order)
               const actualReceived = getActualReceived(order)
               const previewItems = order.items.slice(0, 2).map((item) => item.name).join(' · ')
+              const locationLabel = [order.brandName, order.hubName].filter(Boolean).join(' - ')
 
               return (
                 <article key={order._id} className="rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
                   {/* Header row */}
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 mb-3">
-                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <span className={cn('badge shrink-0', CHANNEL_SOURCE_COLOR[order.source])}>{CHANNEL_SOURCE_LABEL[order.source]}</span>
+                      {locationLabel && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">{locationLabel}</span>}
                       <span className="font-mono text-base font-semibold text-sky-600">#{order.externalOrderId || order.shortId}</span>
-                      <span className="text-sm text-gray-700 truncate">{previewItems || 'Chưa có tên món'}{order.brandName ? ` – ${order.brandName}` : ''}{order.hubName ? ` – ${order.hubName}` : ''}</span>
+                      <span className="truncate text-sm text-gray-700">{previewItems || 'Chưa có tên món'}</span>
                     </div>
                     <span className={cn('badge shrink-0', ORDER_STATUS_COLOR[order.status])}>{ORDER_STATUS_LABEL[order.status]}</span>
                   </div>
 
                   {/* Info columns */}
-                  <div className="grid gap-x-6 gap-y-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="grid gap-x-6 gap-y-3 lg:grid-cols-4">
                     <div>
                       <p className="text-xs font-semibold text-gray-500 mb-1">Thông tin khách hàng</p>
                       <p className="text-sm font-medium text-gray-900">{order.customerName || '–'}</p>
