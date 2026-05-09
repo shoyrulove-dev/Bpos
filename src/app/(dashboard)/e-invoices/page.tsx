@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
-import { Plus, Link, Unlink, Building2, Loader2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { Plus, Link as LinkIcon, Unlink, Building2, Printer } from 'lucide-react'
 import { useEInvoices, useCreateEInvoice } from '@/hooks/use-data'
 import { cn, formatDate } from '@/lib/utils'
+import { loadOrderAlertSettings } from '@/lib/order-alerts'
 import type { EInvoiceConnection } from '@/types'
 
 const PROVIDERS = [
@@ -14,12 +16,48 @@ const PROVIDERS = [
   { value: 'other', label: 'Khác', color: 'bg-gray-100 text-gray-700' },
 ]
 
+function openTestPrint(printerSize: string) {
+  const w = ({ A4: '210mm', A5: '148mm', '80mm': '80mm', '58mm': '58mm' } as Record<string, string>)[printerSize] ?? '80mm'
+  const pw = window.open('', '_blank', 'width=420,height=640')
+  if (!pw) return
+  const now = new Date().toLocaleString('vi-VN')
+  pw.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    body{margin:0;padding:8px;width:${w};font-family:monospace;font-size:11px;line-height:1.5}
+    @media print{@page{size:${w};margin:4mm}}
+  </style></head><body><pre>
+=== IN THỬ HÓA ĐƠN ĐIỆN TỬ ===
+Cửa hàng Demo
+MST: 0123456789
+---
+Số HĐ: DEMO-2026-001
+Ngày: ${now}
+---
+Khách hàng: Nguyễn Văn A
+Mặt hàng: Sản phẩm demo x1  100,000đ
+---
+Tổng cộng: 100,000đ
+VAT 10%: 10,000đ
+Thực thu: 110,000đ
+=== CẢM ƠN QUÝ KHÁCH ===
+  </pre></body></html>`)
+  pw.document.close()
+  pw.onload = () => { pw.print(); pw.close() }
+}
+
 export default function EInvoicesPage() {
   const { data: rawConns = [], isLoading } = useEInvoices()
   const connections = rawConns as EInvoiceConnection[]
   const createMutation = useCreateEInvoice()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ provider: 'viettel', taxCode: '', username: '', password: '', brandId: '' })
+  const [printerName, setPrinterName] = useState('')
+  const [printerSize, setPrinterSize] = useState('80mm')
+
+  useEffect(() => {
+    const s = loadOrderAlertSettings()
+    setPrinterName(s.printerName)
+    setPrinterSize(s.printerPaperSize)
+  }, [])
 
   const handleConnect = async () => {
     if (!form.taxCode || !form.username) return
@@ -37,6 +75,18 @@ export default function EInvoicesPage() {
         <button onClick={() => setShowForm(true)} className="btn-primary"><Plus className="w-4 h-4" /> Thêm kết nối</button>
       </div>
 
+      {/* Printer bar */}
+      <div className="card px-4 py-3 flex items-center gap-3 flex-wrap">
+        <Printer className="h-4 w-4 text-gray-400 flex-shrink-0" />
+        <span className="text-sm text-gray-700 font-medium">{printerName || 'Chưa cấu hình máy in'}</span>
+        <span className="badge badge-gray">{printerSize}</span>
+        <div className="flex-1" />
+        <button onClick={() => openTestPrint(printerSize)} className="btn-outline btn-sm gap-1.5">
+          <Printer className="h-3.5 w-3.5" /> In thử
+        </button>
+        <Link href="/settings" className="btn-ghost btn-sm text-gray-500 text-xs">Cài đặt máy in →</Link>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {connections.map(conn => {
           const prov = providerInfo(conn.provider)
@@ -48,7 +98,7 @@ export default function EInvoicesPage() {
                 </span>
                 <div className="flex gap-1">
                   <button className={cn('btn-ghost btn-sm p-1.5', conn.isConnected ? 'text-green-500' : 'text-gray-400')}>
-                    {conn.isConnected ? <Link className="w-4 h-4" /> : <Unlink className="w-4 h-4" />}
+                    {conn.isConnected ? <LinkIcon className="w-4 h-4" /> : <Unlink className="w-4 h-4" />}
                   </button>
                 </div>
               </div>

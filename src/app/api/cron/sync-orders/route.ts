@@ -15,6 +15,13 @@ import { buildSessionFailureUpdate, buildSessionSuccessUpdate } from '@/lib/sess
 import type { NormalizedOrder } from '@/types'
 import type { SessionData } from '@/integrations/types'
 
+function calcCustomerTier(totalSpend: number): 'bronze' | 'silver' | 'gold' | 'platinum' {
+  if (totalSpend >= 20_000_000) return 'platinum'
+  if (totalSpend >= 5_000_000) return 'gold'
+  if (totalSpend >= 1_000_000) return 'silver'
+  return 'bronze'
+}
+
 const CRON_SECRET = process.env.CRON_SECRET
 const AUTOMATION_URL = process.env.AUTOMATION_SERVICE_URL ?? ''
 const AUTOMATION_SECRET = process.env.AUTOMATION_SECRET ?? ''
@@ -220,8 +227,8 @@ export async function GET(req: NextRequest) {
         existingOrders.map((order) => [String(order.externalOrderId ?? ''), order])
       )
 
-      const customersToSave: Array<{ name: string; phone: string; brandId: string }> = []
-      const driversToSave: Array<{ name: string; phone: string; platform: string }> = []
+      const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean }> = []
+      const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean }> = []
 
       for (const normalized of orders) {
         if (!normalized.externalOrderId) continue
@@ -243,7 +250,8 @@ export async function GET(req: NextRequest) {
             buildOrderUpsert(intg, mergedNormalized),
             { upsert: true, new: true, includeResultMetadata: true }
           )
-          if (result?.lastErrorObject?.updatedExisting === false) upserted++
+          const isNewOrder = result?.lastErrorObject?.updatedExisting === false
+          if (isNewOrder) upserted++
           else updated++
 
           // Collect customer info for auto-save
@@ -251,37 +259,61 @@ export async function GET(req: NextRequest) {
           const cPhone = mergedNormalized.customerPhone?.trim()
           const cLower = cName?.toLowerCase()
           if (cName && cPhone && cLower !== 'khách hàng' && cLower !== 'khach hang') {
-            customersToSave.push({ name: cName, phone: cPhone, brandId: String(intg.brandId) })
+            customersToSave.push({ name: cName, phone: cPhone, brandId: String(intg.brandId), total: mergedNormalized.total ?? 0, isNew: isNewOrder })
           }
 
           // Collect driver info for auto-save
           const dName = mergedNormalized.driverInfo?.name?.trim()
           const dPhone = mergedNormalized.driverInfo?.phone?.trim()
           if (dName && dPhone) {
-            driversToSave.push({ name: dName, phone: dPhone, platform: intg.provider })
+            driversToSave.push({ name: dName, phone: dPhone, platform: intg.provider, isNew: isNewOrder })
           }
         } catch { /* skip individual order errors */ }
       }
 
-      // Auto-save customers
+      // Auto-save customers — new orders increment stats and recalculate tier
       for (const c of customersToSave) {
         try {
-          await CustomerModel.findOneAndUpdate(
-            { phone: c.phone, brandId: c.brandId },
-            { $set: { name: c.name, lastOrderAt: new Date() }, $setOnInsert: { points: 0, totalSpend: 0, orderCount: 0, tier: 'bronze', status: 'active' } },
-            { upsert: true }
-          )
+          if (c.isNew) {
+            const saved = await CustomerModel.findOneAndUpdate(
+              { phone: c.phone, brandId: c.brandId },
+              {
+                $set: { name: c.name, lastOrderAt: new Date() },
+                $inc: { orderCount: 1, totalSpend: c.total },
+                $setOnInsert: { points: 0, tier: 'bronze', status: 'active' },
+              },
+              { upsert: true, new: true }
+            )
+            if (saved) {
+              const newTier = calcCustomerTier(saved.totalSpend)
+              if (saved.tier !== newTier) {
+                await CustomerModel.findByIdAndUpdate(saved._id, { $set: { tier: newTier } })
+              }
+            }
+          } else {
+            await CustomerModel.updateOne(
+              { phone: c.phone, brandId: c.brandId },
+              { $set: { name: c.name, lastOrderAt: new Date() } }
+            )
+          }
         } catch { /* skip */ }
       }
 
-      // Auto-save drivers
+      // Auto-save drivers — new orders increment visitCount
       for (const d of driversToSave) {
         try {
-          await DriverModel.findOneAndUpdate(
-            { phone: d.phone, platform: d.platform },
-            { $set: { name: d.name, lastSeenAt: new Date() } },
-            { upsert: true }
-          )
+          if (d.isNew) {
+            await DriverModel.findOneAndUpdate(
+              { phone: d.phone, platform: d.platform },
+              { $set: { name: d.name, lastSeenAt: new Date() }, $inc: { visitCount: 1 } },
+              { upsert: true }
+            )
+          } else {
+            await DriverModel.updateOne(
+              { phone: d.phone, platform: d.platform },
+              { $set: { name: d.name, lastSeenAt: new Date() } }
+            )
+          }
         } catch { /* skip */ }
       }
 

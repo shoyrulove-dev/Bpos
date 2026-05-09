@@ -486,16 +486,40 @@ export class BeAdapter implements PlatformAdapter {
     const { restaurantId: resId, merchantContext } = sessionRestaurant
 
     try {
-      const [previous, cancelledRaw] = await Promise.all([
+      const [previous, merchantCancelled] = await Promise.all([
         this.fetchByTypeWithSession(accessToken, merchantContext, resId, 'previous'),
         this.fetchByTypeWithSession(accessToken, merchantContext, resId, 'cancelled').catch(() => [] as Record<string, unknown>[]),
       ])
 
-      // Fallback: if cancelled bucket returns nothing, try alternate fetch_type spelling
-      let cancelled = cancelledRaw
+      // Fallback: if merchant cancelled bucket returns nothing, try alternate fetch_type spellings
+      let cancelled = merchantCancelled
       if (!cancelled.length) {
         const alt = await this.fetchByTypeWithSession(accessToken, merchantContext, resId, 'cancel').catch(() => [] as Record<string, unknown>[])
         if (alt.length) cancelled = alt
+      }
+
+      // Fallback 2: try the partner API endpoint with the session JWT as bearer token
+      // (same gateway, different path — JWT may be accepted by partner API too)
+      if (!cancelled.length) {
+        try {
+          const partnerRes = await fetch(`${BE_BASE_PROD}/partner/v1/orders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+            body: JSON.stringify({ restaurant_id: resId, fetch_type: 'cancelled' }),
+            signal: AbortSignal.timeout(8000),
+          })
+          if (partnerRes.ok) {
+            const partnerData = await partnerRes.json() as { restaurant_orders?: Record<string, unknown>[] }
+            if (partnerData.restaurant_orders?.length) {
+              cancelled = partnerData.restaurant_orders
+              console.log(`[BE] partner-api cancelled fallback: ${cancelled.length} orders for restaurant=${resId}`)
+            }
+          } else {
+            console.log(`[BE] partner-api cancelled fallback HTTP ${partnerRes.status} for restaurant=${resId}`)
+          }
+        } catch (e) {
+          console.log(`[BE] partner-api cancelled fallback error: ${e instanceof Error ? e.message : String(e)}`)
+        }
       }
 
       const seen = new Set<string>()

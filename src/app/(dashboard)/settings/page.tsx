@@ -154,6 +154,16 @@ export default function SettingsPage() {
           <button type="button" onClick={() => playOrderAlert(1, orderSettings.voiceMessage)} className="btn-outline">
             <Volume2 className="h-4 w-4" /> Test âm thanh
           </button>
+          <button type="button" onClick={() => {
+            const w = ({ A4: '210mm', A5: '148mm', '80mm': '80mm', '58mm': '58mm' } as Record<string, string>)[orderSettings.printerPaperSize] ?? '80mm'
+            const pw = window.open('', '_blank', 'width=420,height=640')
+            if (!pw) return
+            pw.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:8px;width:${w};font-family:monospace;font-size:11px;line-height:1.5}@media print{@page{size:${w};margin:4mm}}</style></head><body><pre>\n=== IN THỬ BIÊN LAI ===\nMáy in: ${orderSettings.printerName || '(chưa đặt)'}\nKhổ giấy: ${orderSettings.printerPaperSize}\n---\nCửa hàng Demo\nNgày: ${new Date().toLocaleString('vi-VN')}\n---\nSản phẩm demo x1    100,000đ\n---\nTổng: 100,000đ\n=== CẢM ƠN QUÝ KHÁCH ===\n    </pre></body></html>`)
+            pw.document.close()
+            pw.onload = () => { pw.print(); pw.close() }
+          }} className="btn-outline">
+            <Printer className="h-4 w-4" /> In thử biên lai
+          </button>
           <button type="button" onClick={handleSaveOrderSettings} className="btn-primary">
             {settingsSaved ? '✓ Đã lưu cài đặt' : 'Lưu cài đặt'}
           </button>
