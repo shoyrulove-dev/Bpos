@@ -142,7 +142,7 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
     if (!order) return null
 
     const context = buildPrintTemplateContext(order, {
-      BillName: templateType === 'label' ? 'TEM IN BEP' : 'PHIEU LAM MON',
+      BillName: templateType === 'label' ? 'TEM IN BẾP' : 'PHIẾU LÀM MÓN',
     })
 
     return renderPrintTemplateHtml(

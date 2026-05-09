@@ -1,5 +1,6 @@
 import { generateId } from '@/lib/utils'
-import { getDisplayCustomerPhone, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
+import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
+import { normalizeCompactPhone } from '@/lib/phone'
 import type { NormalizedOrder, Order } from '@/types'
 
 type IntegrationRef = {
@@ -11,10 +12,83 @@ function hasText(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0
 }
 
-function hasMeaningfulCustomerName(value: unknown) {
-  if (!hasText(value)) return false
-  const normalized = String(value).trim().toLowerCase()
-  return normalized !== 'khách hàng' && normalized !== 'khach hang'
+const CUSTOMER_NAME_PLACEHOLDERS = new Set(['khách hàng', 'khach hang'])
+const DRIVER_NAME_PLACEHOLDERS = new Set(['tài xế', 'tai xe', 'driver', 'shipper'])
+
+function toTrimmedText(value: unknown) {
+  return hasText(value) ? String(value).trim() : undefined
+}
+
+function isRedactedText(value: unknown) {
+  const trimmed = toTrimmedText(value)
+  if (!trimmed) return false
+
+  const compact = trimmed.replace(/\s+/g, '')
+  return compact.includes('*') || /^[xX#._-]+$/.test(compact)
+}
+
+export function hasMeaningfulPhone(value: unknown) {
+  const trimmed = toTrimmedText(value)
+  if (!trimmed || isRedactedText(trimmed)) return false
+  return Boolean(normalizeCompactPhone(trimmed))
+}
+
+function pickPreferredPhone(incoming: unknown, existing: unknown) {
+  if (hasMeaningfulPhone(existing)) return normalizeCompactPhone(toTrimmedText(existing))
+  if (hasMeaningfulPhone(incoming)) return normalizeCompactPhone(toTrimmedText(incoming))
+  return undefined
+}
+
+function hasMeaningfulName(value: unknown, placeholders: Set<string>) {
+  const trimmed = toTrimmedText(value)
+  if (!trimmed || isRedactedText(trimmed)) return false
+  return !placeholders.has(trimmed.toLowerCase())
+}
+
+export function hasMeaningfulCustomerName(value: unknown) {
+  return hasMeaningfulName(value, CUSTOMER_NAME_PLACEHOLDERS)
+}
+
+export function hasMeaningfulDriverName(value: unknown) {
+  return hasMeaningfulName(value, DRIVER_NAME_PLACEHOLDERS)
+}
+
+function pickPreferredName(
+  incoming: unknown,
+  existing: unknown,
+  placeholders: Set<string>,
+  fallback?: string
+) {
+  const existingName = toTrimmedText(existing)
+  if (hasMeaningfulName(existingName, placeholders)) return existingName
+
+  const incomingName = toTrimmedText(incoming)
+  if (hasMeaningfulName(incomingName, placeholders)) return incomingName
+
+  if (existingName && !isRedactedText(existingName)) return existingName
+  if (incomingName && !isRedactedText(incomingName)) return incomingName
+
+  return fallback
+}
+
+function mergeDriverInfoPreservingDetail(
+  existing: NormalizedOrder['driverInfo'] | undefined,
+  incoming: NormalizedOrder['driverInfo'] | undefined,
+) {
+  const merged = mergeInfoObject(existing, incoming)
+  if (!merged) return undefined
+
+  const nextDriverInfo = { ...merged } as Record<string, unknown>
+  const driverName = pickPreferredName(incoming?.name, existing?.name, DRIVER_NAME_PLACEHOLDERS)
+  const driverPhone = pickPreferredPhone(incoming?.phone, existing?.phone)
+
+  if (driverName) nextDriverInfo.name = driverName
+  else delete nextDriverInfo.name
+
+  if (driverPhone) nextDriverInfo.phone = driverPhone
+  else delete nextDriverInfo.phone
+
+  return Object.keys(nextDriverInfo).length ? (nextDriverInfo as NonNullable<NormalizedOrder['driverInfo']>) : undefined
 }
 
 function hasItems(items: unknown) {
@@ -51,17 +125,14 @@ function mergeInfoObject<T extends object>(existing: T | undefined, incoming: T 
 type OrderSnapshot = Partial<NormalizedOrder>
 
 export function mergeNormalizedOrderPreservingDetail(existing: OrderSnapshot | null | undefined, incoming: NormalizedOrder): NormalizedOrder {
-  const mergedCustomerName = hasMeaningfulCustomerName(incoming.customerName)
-    ? incoming.customerName.trim()
-    : hasMeaningfulCustomerName(existing?.customerName)
-    ? String(existing?.customerName).trim()
-    : incoming.customerName
+  const mergedCustomerName = pickPreferredName(
+    incoming.customerName,
+    existing?.customerName,
+    CUSTOMER_NAME_PLACEHOLDERS,
+    incoming.customerName,
+  ) ?? 'Khách hàng'
 
-  const mergedCustomerPhone = hasText(incoming.customerPhone)
-    ? String(incoming.customerPhone).trim()
-    : hasText(existing?.customerPhone)
-    ? String(existing?.customerPhone).trim()
-    : undefined
+  const mergedCustomerPhone = pickPreferredPhone(incoming.customerPhone, existing?.customerPhone)
 
   return {
     ...incoming,
@@ -78,7 +149,7 @@ export function mergeNormalizedOrderPreservingDetail(existing: OrderSnapshot | n
       ? String(existing?.paymentMethod).trim()
       : undefined,
     deliveryInfo: mergeInfoObject(existing?.deliveryInfo, incoming.deliveryInfo),
-    driverInfo: mergeInfoObject(existing?.driverInfo, incoming.driverInfo),
+    driverInfo: mergeDriverInfoPreservingDetail(existing?.driverInfo, incoming.driverInfo),
     rawPayload: {
       ...(existing?.rawPayload ?? {}),
       ...(incoming.rawPayload ?? {}),
@@ -135,15 +206,26 @@ function extractDeliveredDate(normalized: NormalizedOrder) {
 
 export function buildOrderUpsert(integration: IntegrationRef, normalized: NormalizedOrder) {
   const financialBreakdown = getFinancialBreakdown(normalized as unknown as Order)
-  const customerPhone = getDisplayCustomerPhone(normalized as unknown as Order) || normalized.customerPhone
-  const driverPhone = getDisplayDriverPhone(normalized as unknown as Order) || normalized.driverInfo?.phone
+  const recoveredDriverName = getDisplayDriverName(normalized as unknown as Order)
+  const customerName = pickPreferredName(
+    getDisplayCustomerName(normalized as unknown as Order) || normalized.customerName,
+    undefined,
+    CUSTOMER_NAME_PLACEHOLDERS,
+    'Khách hàng'
+  ) ?? 'Khách hàng'
+  const customerPhone = pickPreferredPhone(getDisplayCustomerPhone(normalized as unknown as Order) || normalized.customerPhone, undefined)
+  const driverPhone = pickPreferredPhone(getDisplayDriverPhone(normalized as unknown as Order) || normalized.driverInfo?.phone, undefined)
+  const driverInfo = mergeDriverInfoPreservingDetail(undefined, {
+    ...normalized.driverInfo,
+    ...(recoveredDriverName ? { name: recoveredDriverName } : {}),
+  })
   const discount = financialBreakdown
     ? Number(financialBreakdown.productDiscount ?? 0) + Number(financialBreakdown.orderDiscount ?? 0)
     : normalized.discount
 
   const baseSet: Record<string, unknown> = {
     status: normalized.orderStatus,
-    customerName: normalized.customerName || 'Khách hàng',
+    customerName,
     customerPhone,
     items: normalized.items,
     subtotal: financialBreakdown?.subtotal ?? normalized.subtotal,
@@ -152,7 +234,7 @@ export function buildOrderUpsert(integration: IntegrationRef, normalized: Normal
     platformFee: financialBreakdown?.platformFee ?? normalized.platformFee,
     paymentMethod: normalized.paymentMethod,
     deliveryInfo: normalized.deliveryInfo,
-    driverInfo: normalized.driverInfo ? { ...normalized.driverInfo, ...(driverPhone ? { phone: driverPhone } : {}) } : normalized.driverInfo,
+    driverInfo: driverInfo ? { ...driverInfo, ...(driverPhone ? { phone: driverPhone } : {}) } : driverPhone ? { phone: driverPhone } : undefined,
     rawPayload: normalized.rawPayload,
     source: normalized.source,
     externalOrderId: normalized.externalOrderId,

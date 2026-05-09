@@ -11,37 +11,37 @@ type PrintableTemplateOrder = Pick<Order, 'source' | 'externalOrderId' | 'shortI
 export type EditablePrintTemplateType = Extract<BillType, 'receipt' | 'delivery' | 'label'>
 
 export const PRINT_TEMPLATE_VARIABLES: Array<{ token: string; label: string; example: string }> = [
-  { token: '{{.BillName}}', label: 'Tên phiếu', example: 'PHIEU LAM MON' },
+  { token: '{{.BillName}}', label: 'Tên phiếu', example: 'PHIẾU LÀM MÓN' },
   { token: '{{.SiteName}}', label: 'Tên cửa hàng', example: 'BPOS Demo Hub' },
   { token: '{{.OrderSource}}', label: 'Nguồn đơn', example: 'GrabFood' },
   { token: '{{.ShortOrderID}}', label: 'Mã đơn rút gọn', example: 'GF-001' },
   { token: '{{.CurrentTime}}', label: 'Thời gian hiện tại', example: '09/05/2026 18:30' },
   { token: '{{.OrderCreatedAt}}', label: 'Thời gian đặt đơn', example: '09/05/2026 18:05' },
   { token: '{{.OrderDeliveryAt}}', label: 'Thời gian giao dự kiến', example: '09/05/2026 18:45' },
-  { token: '{{.CustomerName}}', label: 'Tên khách', example: 'Nguyen Van A' },
+  { token: '{{.CustomerName}}', label: 'Tên khách', example: 'Nguyễn Văn A' },
   { token: '{{.CustomerPhone}}', label: 'SĐT khách', example: '+84901234567' },
-  { token: '{{.DriverName}}', label: 'Tên tài xế', example: 'Tai xe BE' },
+  { token: '{{.DriverName}}', label: 'Tên tài xế', example: 'Tài xế BE' },
   { token: '{{.DriverPhone}}', label: 'SĐT tài xế', example: '+84987654321' },
-  { token: '{{.DeliveryAddress}}', label: 'Địa chỉ giao', example: '123 Le Loi, Q1, TP.HCM' },
-  { token: '{{.OrderNote}}', label: 'Ghi chú đơn', example: 'Khong hanh' },
+  { token: '{{.DeliveryAddress}}', label: 'Địa chỉ giao', example: '123 Lê Lợi, Q1, TP.HCM' },
+  { token: '{{.OrderNote}}', label: 'Ghi chú đơn', example: 'Không hành' },
   { token: '{{.Subtotal}}', label: 'Tạm tính', example: '185.000 đ' },
   { token: '{{.Discount}}', label: 'Giảm giá', example: '15.000 đ' },
   { token: '{{.Total}}', label: 'Tổng tiền', example: '170.000 đ' },
   { token: '{{.PlatformFee}}', label: 'Phí sàn', example: '28.000 đ' },
-  { token: '{{.ItemLines}}', label: 'Danh sách món dạng text', example: 'Tra sua x2 70.000 đ' },
+  { token: '{{.ItemLines}}', label: 'Danh sách món dạng text', example: 'Trà sữa x2 70.000 đ' },
 ]
 
 const DEFAULT_TEMPLATES: Record<EditablePrintTemplateType, string> = {
   receipt: [
     '===== {{.BillName}} =====',
     '{{.SiteName}}',
-    'Kenh: {{.OrderSource}}',
-    'Ma don: {{.ShortOrderID}}',
-    'Dat luc: {{.OrderCreatedAt}}',
+    'Kênh: {{.OrderSource}}',
+    'Mã đơn: {{.ShortOrderID}}',
+    'Đặt lúc: {{.OrderCreatedAt}}',
     '----------------------------',
-    'Khach: {{.CustomerName}}',
-    'SDT: {{.CustomerPhone}}',
-    'Dia chi: {{.DeliveryAddress}}',
+    'Khách: {{.CustomerName}}',
+    'SĐT: {{.CustomerPhone}}',
+    'Địa chỉ: {{.DeliveryAddress}}',
     '----------------------------',
     '{{range .Items}}',
     '{{.Name}} x{{.Qty}}',
@@ -49,28 +49,28 @@ const DEFAULT_TEMPLATES: Record<EditablePrintTemplateType, string> = {
     '{{.NoteLine}}',
     '{{end}}',
     '----------------------------',
-    'Tam tinh: {{.Subtotal}}',
-    'Giam gia: {{.Discount}}',
-    'Tong tien: {{.Total}}',
-    'Phi san: {{.PlatformFee}}',
+    'Tạm tính: {{.Subtotal}}',
+    'Giảm giá: {{.Discount}}',
+    'Tổng tiền: {{.Total}}',
+    'Phí sàn: {{.PlatformFee}}',
     '============================',
   ].join('\n'),
   delivery: [
-    '===== PHIEU GIAO HANG =====',
+    '===== PHIẾU GIAO HÀNG =====',
     '{{.SiteName}}',
-    'Ma don: {{.ShortOrderID}}',
-    'Kenh: {{.OrderSource}}',
-    'Giao du kien: {{.OrderDeliveryAt}}',
-    'Khach: {{.CustomerName}}',
-    'SDT: {{.CustomerPhone}}',
-    'Dia chi: {{.DeliveryAddress}}',
-    'Tai xe: {{.DriverName}}',
-    'SDT tai xe: {{.DriverPhone}}',
+    'Mã đơn: {{.ShortOrderID}}',
+    'Kênh: {{.OrderSource}}',
+    'Giao dự kiến: {{.OrderDeliveryAt}}',
+    'Khách: {{.CustomerName}}',
+    'SĐT: {{.CustomerPhone}}',
+    'Địa chỉ: {{.DeliveryAddress}}',
+    'Tài xế: {{.DriverName}}',
+    'SĐT tài xế: {{.DriverPhone}}',
     '----------------------------',
     '{{.ItemLines}}',
   ].join('\n'),
   label: [
-    '===== TEM DON HANG =====',
+    '===== TEM ĐƠN HÀNG =====',
     '{{.ShortOrderID}}',
     '{{.CustomerName}}',
     '{{.OrderSource}}',
@@ -128,7 +128,7 @@ function escapeHtml(value: string) {
 }
 
 function renderItemBlock(block: string, item: OrderItem) {
-  const noteLine = item.note ? `  Ghi chu: ${item.note}` : ''
+  const noteLine = item.note ? `  Ghi chú: ${item.note}` : ''
   const replacements: TemplateContext = {
     Name: item.name,
     Qty: String(item.quantity),
@@ -156,10 +156,10 @@ export function getTemplateTypeForPaperSize(size: BillSize): EditablePrintTempla
 export function buildPrintTemplateContext(order: PrintableTemplateOrder, overrides?: Partial<TemplateContext>) {
   const itemLines = order.items.length
     ? order.items.map((item) => `${item.name} x${item.quantity} ${formatCurrency(getItemTotal(item))}${item.note ? ` (${item.note})` : ''}`).join('\n')
-    : 'Chua co mon nao'
+    : 'Chưa có món nào'
 
   return {
-    BillName: 'PHIEU LAM MON',
+    BillName: 'PHIẾU LÀM MÓN',
     SiteName: order.brandName || getNamedValue(order.brandId, 'BPOS Portal'),
     HubName: order.hubName || getNamedValue(order.hubId),
     OrderSource: CHANNEL_SOURCE_LABEL[order.source] || order.source,
@@ -167,7 +167,7 @@ export function buildPrintTemplateContext(order: PrintableTemplateOrder, overrid
     CurrentTime: formatDateTime(new Date().toISOString()),
     OrderCreatedAt: formatDateTime(order.placedAt),
     OrderDeliveryAt: formatDateTime(order.deliveredAt || order.deliveryInfo?.estimatedTime),
-    CustomerName: order.customerName || 'Khach hang',
+    CustomerName: order.customerName || 'Khách hàng',
     CustomerPhone: order.customerPhone || '',
     DriverName: order.driverInfo?.name || '',
     DriverPhone: order.driverInfo?.phone || '',
@@ -189,13 +189,13 @@ export function buildDemoPrintTemplateContext(type: EditablePrintTemplateType = 
     shortId: 'ORD-DEMO',
     brandName: 'BPOS Demo Hub',
     brandId: '',
-    hubName: 'Chi nhanh Q1',
+    hubName: 'Chi nhánh Q1',
     hubId: '',
-    customerName: 'Nguyen Van A',
+    customerName: 'Nguyễn Văn A',
     customerPhone: '+84901234567',
-    driverInfo: { name: 'Tai xe Demo', phone: '+84987654321' },
-    deliveryInfo: { address: '123 Le Loi, Q1, TP.HCM', note: 'Khong hanh', estimatedTime: new Date(Date.now() + 30 * 60_000).toISOString() },
-    note: type === 'label' ? 'TEM DUNG LEN LY 1' : 'Them da rieng',
+    driverInfo: { name: 'Tài xế Demo', phone: '+84987654321' },
+    deliveryInfo: { address: '123 Lê Lợi, Q1, TP.HCM', note: 'Không hành', estimatedTime: new Date(Date.now() + 30 * 60_000).toISOString() },
+    note: type === 'label' ? 'TEM DÙNG LÊN LY 1' : 'Thêm đá riêng',
     subtotal: 185_000,
     discount: 15_000,
     total: 170_000,
@@ -203,14 +203,14 @@ export function buildDemoPrintTemplateContext(type: EditablePrintTemplateType = 
     placedAt: new Date().toISOString(),
     deliveredAt: new Date(Date.now() + 25 * 60_000).toISOString(),
     items: [
-      { name: 'Tra sua tran chau', quantity: 2, price: 35_000, total: 70_000, note: 'It duong' },
-      { name: 'Banh mi ga xe', quantity: 1, price: 45_000, total: 45_000 },
-      { name: 'Com suon trung', quantity: 1, price: 70_000, total: 70_000, note: 'Them nuoc mam' },
+      { name: 'Trà sữa trân châu', quantity: 2, price: 35_000, total: 70_000, note: 'Ít đường' },
+      { name: 'Bánh mì gà xé', quantity: 1, price: 45_000, total: 45_000 },
+      { name: 'Cơm sườn trứng', quantity: 1, price: 70_000, total: 70_000, note: 'Thêm nước mắm' },
     ],
   }
 
   return buildPrintTemplateContext(demoOrder, {
-    BillName: type === 'label' ? 'TEM IN BEP' : type === 'delivery' ? 'PHIEU GIAO HANG' : 'PHIEU LAM MON',
+    BillName: type === 'label' ? 'TEM IN BẾP' : type === 'delivery' ? 'PHIẾU GIAO HÀNG' : 'PHIẾU LÀM MÓN',
   })
 }
 

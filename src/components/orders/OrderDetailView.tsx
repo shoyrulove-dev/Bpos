@@ -273,7 +273,7 @@ function getGrabDetailItems(order: Order) {
 function getGrabCustomerName(order: Order) {
   const raw = getRecord(order.rawPayload)
   const eater = getRecord(raw?.eater)
-  return String(eater?.name ?? order.customerName ?? 'Khach hang')
+  return String(eater?.name ?? order.customerName ?? 'Khách hàng')
 }
 
 function getGrabCustomerNote(order: Order) {

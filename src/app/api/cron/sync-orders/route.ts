@@ -7,7 +7,7 @@ import { getAdapter } from '@/integrations/registry'
 import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/automation-session'
 import { requestAutomationLogin } from '@/lib/automation-login'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import CustomerModel from '@/models/Customer'
 import DriverModel from '@/models/Driver'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeOrdersByExternalOrderId, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
@@ -257,15 +257,14 @@ export async function GET(req: NextRequest) {
           // Collect customer info for auto-save
           const cName = mergedNormalized.customerName?.trim()
           const cPhone = mergedNormalized.customerPhone?.trim()
-          const cLower = cName?.toLowerCase()
-          if (cName && cPhone && cLower !== 'khách hàng' && cLower !== 'khach hang') {
+          if (cName && cPhone && hasMeaningfulCustomerName(cName) && hasMeaningfulPhone(cPhone)) {
             customersToSave.push({ name: cName, phone: cPhone, brandId: String(intg.brandId), total: mergedNormalized.total ?? 0, isNew: isNewOrder })
           }
 
           // Collect driver info for auto-save
           const dName = mergedNormalized.driverInfo?.name?.trim()
           const dPhone = mergedNormalized.driverInfo?.phone?.trim()
-          if (dName && dPhone) {
+          if (dName && dPhone && hasMeaningfulDriverName(dName) && hasMeaningfulPhone(dPhone)) {
             driversToSave.push({ name: dName, phone: dPhone, platform: intg.provider, isNew: isNewOrder })
           }
         } catch { /* skip individual order errors */ }
@@ -274,27 +273,27 @@ export async function GET(req: NextRequest) {
       // Auto-save customers — new orders increment stats and recalculate tier
       for (const c of customersToSave) {
         try {
-          if (c.isNew) {
-            const saved = await CustomerModel.findOneAndUpdate(
-              { phone: c.phone, brandId: c.brandId },
-              {
-                $set: { name: c.name, lastOrderAt: new Date() },
-                $inc: { orderCount: 1, totalSpend: c.total },
-                $setOnInsert: { points: 0, tier: 'bronze', status: 'active' },
-              },
-              { upsert: true, new: true }
-            )
-            if (saved) {
-              const newTier = calcCustomerTier(saved.totalSpend)
-              if (saved.tier !== newTier) {
-                await CustomerModel.findByIdAndUpdate(saved._id, { $set: { tier: newTier } })
-              }
+          const existingCustomer = await CustomerModel.findOne({ phone: c.phone, brandId: c.brandId }).select('name').lean() as { name?: string } | null
+          const shouldUpdateName = !existingCustomer || !hasMeaningfulCustomerName(existingCustomer.name)
+          const saved = await CustomerModel.findOneAndUpdate(
+            { phone: c.phone, brandId: c.brandId },
+            c.isNew
+              ? {
+                  $set: { ...(shouldUpdateName ? { name: c.name } : {}), lastOrderAt: new Date() },
+                  $inc: { orderCount: 1, totalSpend: c.total },
+                  $setOnInsert: { points: 0, tier: 'bronze', status: 'active', name: c.name },
+                }
+              : {
+                  $set: { ...(shouldUpdateName ? { name: c.name } : {}), lastOrderAt: new Date() },
+                  $setOnInsert: { points: 0, tier: 'bronze', status: 'active', orderCount: 1, totalSpend: c.total, name: c.name },
+                },
+            { upsert: true, new: true }
+          )
+          if (saved) {
+            const newTier = calcCustomerTier(saved.totalSpend)
+            if (saved.tier !== newTier) {
+              await CustomerModel.findByIdAndUpdate(saved._id, { $set: { tier: newTier } })
             }
-          } else {
-            await CustomerModel.updateOne(
-              { phone: c.phone, brandId: c.brandId },
-              { $set: { name: c.name, lastOrderAt: new Date() } }
-            )
           }
         } catch { /* skip */ }
       }
@@ -302,18 +301,22 @@ export async function GET(req: NextRequest) {
       // Auto-save drivers — new orders increment visitCount
       for (const d of driversToSave) {
         try {
-          if (d.isNew) {
-            await DriverModel.findOneAndUpdate(
-              { phone: d.phone, platform: d.platform },
-              { $set: { name: d.name, lastSeenAt: new Date() }, $inc: { visitCount: 1 } },
-              { upsert: true }
-            )
-          } else {
-            await DriverModel.updateOne(
-              { phone: d.phone, platform: d.platform },
-              { $set: { name: d.name, lastSeenAt: new Date() } }
-            )
-          }
+          const existingDriver = await DriverModel.findOne({ phone: d.phone, platform: d.platform }).select('name').lean() as { name?: string } | null
+          const shouldUpdateName = !existingDriver || !hasMeaningfulDriverName(existingDriver.name)
+          await DriverModel.findOneAndUpdate(
+            { phone: d.phone, platform: d.platform },
+            d.isNew
+              ? {
+                  $set: { ...(shouldUpdateName ? { name: d.name } : {}), lastSeenAt: new Date() },
+                  $inc: { visitCount: 1 },
+                  $setOnInsert: { name: d.name },
+                }
+              : {
+                  $set: { ...(shouldUpdateName ? { name: d.name } : {}), lastSeenAt: new Date() },
+                  $setOnInsert: { visitCount: 1, name: d.name },
+                },
+            { upsert: true }
+          )
         } catch { /* skip */ }
       }
 

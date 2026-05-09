@@ -15,7 +15,7 @@ export default function CustomersReportPage() {
 
   const handleExport = () => {
     downloadWorkbook(`bao-cao-khach-hang-${fromDate}-${toDate}`, [{
-      name: 'Khach hang',
+      name: 'Khách hàng',
       rows: customers.map((customer, index) => ({
         'Hạng': index + 1,
         'Khách hàng': String(customer.name ?? ''),

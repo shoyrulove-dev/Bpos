@@ -1,8 +1,8 @@
 import { decryptJSON } from '@/lib/crypto'
 import { hasBeCancelSignal } from '@/lib/be-order-status'
 import { getAdapter } from '@/integrations/registry'
-import { buildOrderUpsert, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
-import { getDisplayCustomerPhone, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
+import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
 import { buildSessionStoreId } from '@/lib/realtime-order-sync'
 import { normalizeCompactPhone } from '@/lib/phone'
 import IntegrationModel from '@/models/Integration'
@@ -184,7 +184,7 @@ async function repairStoredOrders(providers: string[], options?: { externalOrder
   const forceCancelledOrderIdSet = options?.forceCancelledOrderIds?.length ? new Set(options.forceCancelledOrderIds) : null
 
   const cursor = OrderModel.find({ source: { $in: providers } })
-    .select('source externalOrderId customerPhone driverInfo subtotal discount total platformFee status cancelReason cancelledAt deliveredAt updatedAt rawPayload')
+    .select('source externalOrderId customerName customerPhone driverInfo subtotal discount total platformFee status cancelReason cancelledAt deliveredAt updatedAt rawPayload')
     .lean()
     .cursor()
 
@@ -193,22 +193,32 @@ async function repairStoredOrders(providers: string[], options?: { externalOrder
     if (orderIdSet && !orderIdSet.has(String(order.externalOrderId ?? ''))) continue
     scanned += 1
 
+    const nextCustomerName = getDisplayCustomerName(order as unknown as Order) || undefined
     const nextCustomerPhone = getDisplayCustomerPhone(order as unknown as Order) || undefined
+    const nextDriverName = getDisplayDriverName(order as unknown as Order) || undefined
     const nextDriverPhone = getDisplayDriverPhone(order as unknown as Order) || undefined
     const financialBreakdown = getFinancialBreakdown(order as unknown as Order)
 
     const set: Record<string, unknown> = {}
     const unset: Record<string, ''> = {}
 
-    if (nextCustomerPhone && nextCustomerPhone !== order.customerPhone) {
+    if (nextCustomerName && !hasMeaningfulCustomerName(order.customerName)) {
+      set.customerName = nextCustomerName
+    }
+
+    if (nextCustomerPhone && !hasMeaningfulPhone(order.customerPhone)) {
       set.customerPhone = nextCustomerPhone
     }
 
-    const currentDriverPhone = order.driverInfo?.phone
-    if (nextDriverPhone && nextDriverPhone !== currentDriverPhone) {
+    const currentDriverInfo = order.driverInfo ?? {}
+    const nextDriverInfo = {
+      ...currentDriverInfo,
+      ...(nextDriverName && !hasMeaningfulDriverName(currentDriverInfo.name) ? { name: nextDriverName } : {}),
+      ...(nextDriverPhone && !hasMeaningfulPhone(currentDriverInfo.phone) ? { phone: nextDriverPhone } : {}),
+    }
+    if (Object.keys(nextDriverInfo).some((key) => nextDriverInfo[key as keyof typeof nextDriverInfo] !== currentDriverInfo[key as keyof typeof currentDriverInfo])) {
       set.driverInfo = {
-        ...(order.driverInfo ?? {}),
-        phone: nextDriverPhone,
+        ...nextDriverInfo,
       }
     }
 
@@ -275,10 +285,14 @@ async function repairStoredOrders(providers: string[], options?: { externalOrder
 async function repairCustomers() {
   const docs = await CustomerModel.find({}).lean() as unknown as StoredCustomer[]
   const grouped = new Map<string, StoredCustomer[]>()
+  const invalidIds: string[] = []
 
   for (const doc of docs) {
     const normalizedPhone = normalizeCompactPhone(doc.phone)
-    if (!normalizedPhone) continue
+    if (!normalizedPhone || !hasMeaningfulPhone(normalizedPhone) || !hasMeaningfulCustomerName(doc.name)) {
+      invalidIds.push(String(doc._id))
+      continue
+    }
     const key = `${String(doc.brandId)}:${normalizedPhone}`
     const list = grouped.get(key) ?? []
     list.push(doc)
@@ -288,9 +302,16 @@ async function repairCustomers() {
   let updated = 0
   let removed = 0
 
+  if (invalidIds.length) {
+    await CustomerModel.deleteMany({ _id: { $in: invalidIds } })
+    removed += invalidIds.length
+  }
+
   for (const [key, group] of Array.from(grouped.entries())) {
     const [brandId, normalizedPhone] = key.split(':')
-    const primary = group.find((item: StoredCustomer) => item.phone === normalizedPhone) ?? group[0]
+    const primary = group.find((item: StoredCustomer) => item.phone === normalizedPhone && hasMeaningfulCustomerName(item.name))
+      ?? group.find((item: StoredCustomer) => hasMeaningfulCustomerName(item.name))
+      ?? group[0]
     const duplicates = group.filter((item: StoredCustomer) => String(item._id) !== String(primary._id))
     const totalSpend = group.reduce((sum: number, item: StoredCustomer) => sum + Number(item.totalSpend ?? 0), 0)
     const orderCount = group.reduce((sum: number, item: StoredCustomer) => sum + Number(item.orderCount ?? 0), 0)
@@ -331,10 +352,14 @@ async function repairCustomers() {
 async function repairDrivers() {
   const docs = await DriverModel.find({}).lean() as unknown as StoredDriver[]
   const grouped = new Map<string, StoredDriver[]>()
+  const invalidIds: string[] = []
 
   for (const doc of docs) {
     const normalizedPhone = normalizeCompactPhone(doc.phone)
-    if (!normalizedPhone) continue
+    if (!normalizedPhone || !hasMeaningfulPhone(normalizedPhone) || !hasMeaningfulDriverName(doc.name)) {
+      invalidIds.push(String(doc._id))
+      continue
+    }
     const key = `${String(doc.platform)}:${normalizedPhone}`
     const list = grouped.get(key) ?? []
     list.push(doc)
@@ -344,9 +369,16 @@ async function repairDrivers() {
   let updated = 0
   let removed = 0
 
+  if (invalidIds.length) {
+    await DriverModel.deleteMany({ _id: { $in: invalidIds } })
+    removed += invalidIds.length
+  }
+
   for (const [key, group] of Array.from(grouped.entries())) {
     const [platform, normalizedPhone] = key.split(':')
-    const primary = group.find((item: StoredDriver) => item.phone === normalizedPhone) ?? group[0]
+    const primary = group.find((item: StoredDriver) => item.phone === normalizedPhone && hasMeaningfulDriverName(item.name))
+      ?? group.find((item: StoredDriver) => hasMeaningfulDriverName(item.name))
+      ?? group[0]
     const duplicates = group.filter((item: StoredDriver) => String(item._id) !== String(primary._id))
     const visitCount = group.reduce((sum: number, item: StoredDriver) => sum + Number(item.visitCount ?? 0), 0)
     const lastSeenAt = group.reduce((latest: Date | undefined, item: StoredDriver) => {

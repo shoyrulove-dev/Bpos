@@ -2,13 +2,15 @@ import { NextRequest } from 'next/server'
 import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import OrderModel from '@/models/Order'
+import CustomerModel from '@/models/Customer'
+import DriverModel from '@/models/Driver'
 import SyncLogModel from '@/models/SyncLog'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { getAdapter } from '@/integrations/registry'
 import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/automation-session'
 import { requestAutomationLogin } from '@/lib/automation-login'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeOrdersByExternalOrderId, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
 import { buildSessionFailureUpdate, buildSessionSuccessUpdate } from '@/lib/session-health'
 import type { NormalizedOrder } from '@/types'
@@ -20,6 +22,13 @@ const AUTOMATION_SECRET = process.env.AUTOMATION_SECRET ?? ''
 type AutomationRefreshResult = {
   session: SessionData
   orders: NormalizedOrder[]
+}
+
+function calcCustomerTier(totalSpend: number): 'bronze' | 'silver' | 'gold' | 'platinum' {
+  if (totalSpend >= 20_000_000) return 'platinum'
+  if (totalSpend >= 5_000_000) return 'gold'
+  if (totalSpend >= 1_000_000) return 'silver'
+  return 'bronze'
 }
 
 async function refreshSessionIfPossible(integration: {
@@ -215,6 +224,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const existingOrdersByExternalId = new Map(
       existingOrders.map((order) => [String(order.externalOrderId ?? ''), order])
     )
+    const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean }> = []
+    const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean }> = []
 
     for (const normalized of orders) {
       try {
@@ -235,11 +246,77 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           buildOrderUpsert(intg, mergedNormalized),
           { upsert: true, new: true, includeResultMetadata: true }
         )
+        const isNewOrder = result?.lastErrorObject?.updatedExisting === false
 
-        if (result?.lastErrorObject?.updatedExisting === false) upserted++
+        if (isNewOrder) upserted++
         else updated++
+
+        const cName = mergedNormalized.customerName?.trim()
+        const cPhone = mergedNormalized.customerPhone?.trim()
+        if (cName && cPhone && hasMeaningfulCustomerName(cName) && hasMeaningfulPhone(cPhone)) {
+          customersToSave.push({ name: cName, phone: cPhone, brandId: String(intg.brandId), total: mergedNormalized.total ?? 0, isNew: isNewOrder })
+        }
+
+        const dName = mergedNormalized.driverInfo?.name?.trim()
+        const dPhone = mergedNormalized.driverInfo?.phone?.trim()
+        if (dName && dPhone && hasMeaningfulDriverName(dName) && hasMeaningfulPhone(dPhone)) {
+          driversToSave.push({ name: dName, phone: dPhone, platform: intg.provider, isNew: isNewOrder })
+        }
       } catch (orderErr) {
         errors.push(`${normalized.externalOrderId}: ${orderErr instanceof Error ? orderErr.message : String(orderErr)}`)
+      }
+    }
+
+    for (const c of customersToSave) {
+      try {
+        const existingCustomer = await CustomerModel.findOne({ phone: c.phone, brandId: c.brandId }).select('name').lean() as { name?: string } | null
+        const shouldUpdateName = !existingCustomer || !hasMeaningfulCustomerName(existingCustomer.name)
+        const saved = await CustomerModel.findOneAndUpdate(
+          { phone: c.phone, brandId: c.brandId },
+          c.isNew
+            ? {
+                $set: { ...(shouldUpdateName ? { name: c.name } : {}), lastOrderAt: new Date() },
+                $inc: { orderCount: 1, totalSpend: c.total },
+                $setOnInsert: { points: 0, tier: 'bronze', status: 'active', name: c.name },
+              }
+            : {
+                $set: { ...(shouldUpdateName ? { name: c.name } : {}), lastOrderAt: new Date() },
+                $setOnInsert: { points: 0, tier: 'bronze', status: 'active', orderCount: 1, totalSpend: c.total, name: c.name },
+              },
+          { upsert: true, new: true }
+        )
+
+        if (saved) {
+          const newTier = calcCustomerTier(saved.totalSpend)
+          if (saved.tier !== newTier) {
+            await CustomerModel.findByIdAndUpdate(saved._id, { $set: { tier: newTier } })
+          }
+        }
+      } catch {
+        continue
+      }
+    }
+
+    for (const d of driversToSave) {
+      try {
+        const existingDriver = await DriverModel.findOne({ phone: d.phone, platform: d.platform }).select('name').lean() as { name?: string } | null
+        const shouldUpdateName = !existingDriver || !hasMeaningfulDriverName(existingDriver.name)
+        await DriverModel.findOneAndUpdate(
+          { phone: d.phone, platform: d.platform },
+          d.isNew
+            ? {
+                $set: { ...(shouldUpdateName ? { name: d.name } : {}), lastSeenAt: new Date() },
+                $inc: { visitCount: 1 },
+                $setOnInsert: { name: d.name },
+              }
+            : {
+                $set: { ...(shouldUpdateName ? { name: d.name } : {}), lastSeenAt: new Date() },
+                $setOnInsert: { visitCount: 1, name: d.name },
+              },
+          { upsert: true }
+        )
+      } catch {
+        continue
       }
     }
 

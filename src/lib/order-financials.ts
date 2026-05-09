@@ -22,6 +22,23 @@ function getRecord(value: unknown) {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
 }
 
+function hasText(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+function normalizeDisplayName(value: unknown, placeholders: string[]) {
+  if (!hasText(value)) return undefined
+
+  const trimmed = String(value).trim()
+  const compact = trimmed.replace(/\s+/g, '')
+  if (compact.includes('*') || /^[xX#._-]+$/.test(compact)) return undefined
+
+  const normalized = trimmed.toLowerCase()
+  if (placeholders.includes(normalized)) return undefined
+
+  return trimmed
+}
+
 function getBreakdownAmount(raw: Record<string, unknown>, keys: string[]) {
   const sources = [getRecord(raw.financialBreakdown), raw]
 
@@ -304,6 +321,7 @@ export function getFinancialBreakdown(order: Order) {
 export function getDisplayCustomerPhone(order: Order) {
   const raw = getRecord(order.rawPayload)
   const customer = getRecord(raw?.customer)
+  const receiver = getRecord(raw?.receiver)
   const consumer = getRecord(raw?.consumer)
   const eater = getRecord(raw?.eater)
 
@@ -314,27 +332,96 @@ export function getDisplayCustomerPhone(order: Order) {
     ?? customer?.phone
     ?? customer?.phoneNumber
     ?? customer?.mobileNumber
+    ?? receiver?.phone
+    ?? receiver?.phoneNumber
+    ?? receiver?.mobileNumber
     ?? consumer?.phone
     ?? consumer?.phoneNumber
     ?? consumer?.mobileNumber
     ?? eater?.phone
     ?? eater?.phoneNumber
     ?? eater?.mobileNumber
+    ?? extractPhone(String(receiver?.comment ?? ''))
+    ?? extractPhone(String(consumer?.comment ?? ''))
     ?? extractPhone(String(eater?.comment ?? ''))
     ?? ''
   )) ?? ''
 }
 
+export function getDisplayCustomerName(order: Order) {
+  const raw = getRecord(order.rawPayload)
+  const customer = getRecord(raw?.customer)
+  const receiver = getRecord(raw?.receiver)
+  const consumer = getRecord(raw?.consumer)
+  const eater = getRecord(raw?.eater)
+
+  const candidates = [
+    customer?.name,
+    customer?.displayName,
+    receiver?.name,
+    receiver?.displayName,
+    consumer?.name,
+    consumer?.displayName,
+    eater?.name,
+    eater?.displayName,
+    raw?.customer_name,
+    raw?.receiver_name,
+    order.customerName,
+  ]
+
+  for (const candidate of candidates) {
+    const name = normalizeDisplayName(candidate, ['khách hàng', 'khach hang'])
+    if (name) return name
+  }
+
+  return undefined
+}
+
 export function getDisplayDriverPhone(order: Order) {
   const raw = getRecord(order.rawPayload)
+  const delivery = getRecord(raw?.delivery)
+  const deliveryDriver = getRecord(delivery?.driver)
   const driver = getRecord(raw?.driver)
+  const rider = getRecord(raw?.rider)
 
   return normalizeCompactPhone(String(
     order.driverInfo?.phone
     ?? raw?.driver_phone_no
+    ?? deliveryDriver?.phone
+    ?? deliveryDriver?.phoneNumber
+    ?? deliveryDriver?.mobileNumber
     ?? driver?.phone
     ?? driver?.phoneNumber
     ?? driver?.mobileNumber
+    ?? rider?.phone
+    ?? rider?.phoneNumber
+    ?? rider?.mobileNumber
     ?? ''
   )) ?? ''
+}
+
+export function getDisplayDriverName(order: Order) {
+  const raw = getRecord(order.rawPayload)
+  const delivery = getRecord(raw?.delivery)
+  const deliveryDriver = getRecord(delivery?.driver)
+  const driver = getRecord(raw?.driver)
+  const rider = getRecord(raw?.rider)
+
+  const candidates = [
+    deliveryDriver?.name,
+    deliveryDriver?.displayName,
+    driver?.name,
+    driver?.displayName,
+    rider?.name,
+    rider?.displayName,
+    raw?.driver_name,
+    order.driverInfo?.name,
+  ]
+
+  for (const candidate of candidates) {
+    const name = normalizeDisplayName(candidate, ['tài xế', 'tai xe', 'driver', 'shipper'])
+    if (name) return name
+  }
+
+  return undefined
 }

@@ -15,7 +15,7 @@ export default function ChannelsReportPage() {
 
   const handleExport = () => {
     downloadWorkbook(`bao-cao-kenh-ban-${fromDate}-${toDate}`, [{
-      name: 'Kenh ban',
+      name: 'Kênh bán',
       rows: rows.map((row) => ({
         'Kênh bán': String(row.name ?? ''),
         'Nguồn': CHANNEL_SOURCE_LABEL[String(row.source)] ?? String(row.source ?? ''),
