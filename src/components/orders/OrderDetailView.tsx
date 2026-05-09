@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { ArrowLeft, Loader2, MapPin, Phone, Printer, RefreshCw, TicketPercent, Truck, UtensilsCrossed } from 'lucide-react'
 import { useOrder } from '@/hooks/use-orders-channels'
-import { getActualReceived as getSettlementActualReceived, getDisplayCustomerPhone, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown } from '@/lib/order-financials'
+import { getActualReceived as getSettlementActualReceived, getDisplayCustomerPhone, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown, getGrabMoneyBreakdown as getSettlementGrabMoneyBreakdown } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
 import { CHANNEL_SOURCE_COLOR, CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, PAYMENT_METHOD_LABEL } from '@/lib/utils'
 import type { Order } from '@/types'
@@ -853,7 +853,7 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
   const totalItems = order.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
   const displayOrderCode = getOrderDisplayCode(order)
   const financialBreakdown = getSettlementFinancialBreakdown(order)
-  const grabMoneyBreakdown = getGrabMoneyBreakdown(order)
+  const grabMoneyBreakdown = getSettlementGrabMoneyBreakdown(order)
   const showExternalReference = Boolean(order.externalOrderId && order.externalOrderId !== displayOrderCode)
 
   if (order.source === 'grab') {

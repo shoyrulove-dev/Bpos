@@ -395,3 +395,74 @@ export async function runOrderRepair(options?: { days?: number; providers?: stri
     drivers,
   }
 }
+
+export async function getOrderRepairReport(options?: { providers?: string[]; limit?: number }) {
+  const providers = (options?.providers?.length ? options.providers : ['be', 'grab']).map((value) => value.trim()).filter(Boolean)
+  const limit = Math.max(1, Math.min(100, Number(options?.limit ?? 20) || 20))
+  const samples: Array<Record<string, unknown>> = []
+  let scanned = 0
+  let changed = 0
+
+  const cursor = OrderModel.find({ source: { $in: providers } })
+    .select('source externalOrderId customerPhone driverInfo subtotal discount total platformFee status cancelReason cancelledAt deliveredAt rawPayload')
+    .lean()
+    .cursor()
+
+  for await (const rawOrder of cursor) {
+    const order = rawOrder as unknown as StoredOrder
+    scanned += 1
+
+    const nextCustomerPhone = getDisplayCustomerPhone(order as unknown as Order) || undefined
+    const nextDriverPhone = getDisplayDriverPhone(order as unknown as Order) || undefined
+    const financialBreakdown = getFinancialBreakdown(order as unknown as Order)
+    const nextDiscount = financialBreakdown
+      ? Number(financialBreakdown.productDiscount ?? 0) + Number(financialBreakdown.orderDiscount ?? 0)
+      : undefined
+
+    const issues: string[] = []
+    if (nextCustomerPhone && nextCustomerPhone !== order.customerPhone) issues.push('customerPhone')
+    if (nextDriverPhone && nextDriverPhone !== order.driverInfo?.phone) issues.push('driverPhone')
+    if (financialBreakdown && !sameNumber(order.subtotal, financialBreakdown.subtotal)) issues.push('subtotal')
+    if (typeof nextDiscount === 'number' && !sameNumber(order.discount, nextDiscount)) issues.push('discount')
+    if (financialBreakdown && !sameNumber(order.total, financialBreakdown.revenueAfterPromotion)) issues.push('total')
+    if (financialBreakdown && !sameNumber(order.platformFee, financialBreakdown.platformFee)) issues.push('platformFee')
+    if (order.source === 'be' && order.rawPayload && hasBeCancelSignal(order.rawPayload) && order.status !== 'cancelled') issues.push('status')
+
+    if (!issues.length) continue
+    changed += 1
+
+    if (samples.length < limit) {
+      samples.push({
+        source: order.source,
+        externalOrderId: order.externalOrderId,
+        current: {
+          status: order.status,
+          customerPhone: order.customerPhone,
+          driverPhone: order.driverInfo?.phone,
+          subtotal: order.subtotal,
+          discount: order.discount,
+          total: order.total,
+          platformFee: order.platformFee,
+        },
+        next: {
+          status: order.source === 'be' && order.rawPayload && hasBeCancelSignal(order.rawPayload) ? 'cancelled' : order.status,
+          customerPhone: nextCustomerPhone,
+          driverPhone: nextDriverPhone,
+          subtotal: financialBreakdown?.subtotal,
+          discount: nextDiscount,
+          total: financialBreakdown?.revenueAfterPromotion,
+          platformFee: financialBreakdown?.platformFee,
+        },
+        issues,
+      })
+    }
+  }
+
+  return {
+    ok: true,
+    providers,
+    scanned,
+    changed,
+    samples,
+  }
+}
