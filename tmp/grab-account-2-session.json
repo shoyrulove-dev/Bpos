@@ -1,0 +1,180 @@
+{
+  "integrationId": "69fccd0724b62919945878f6",
+  "provider": "grab",
+  "username": "ketoan@takogroup.com.vn",
+  "ttlSeconds": 28800,
+  "cookies": [
+    ]
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "AWSELBCORS",
+      "value": "53B7490F14CB44B3C3CAE476A7D8BD7A112F66C8F897137DB7575E2A439B1C1499A08AB7534BA5674BE47D52B41AEDC0C91AC16DC11A5408B0DB1AB4DDA2A4B0230E4B23C8",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "DEVICE_ID",
+      "value": "ad6a9b6a-48a1-4743-b6f3-0813eec71ca5",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "hwuuidtime",
+      "value": "1778339443",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "hwuuid",
+      "value": "8f12d7bd-3880-4d39-94c6-daa127552da7",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "hwToken",
+      "value": "8ed451e7352df4e1eb5104d3edd605e7",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "hwTime",
+      "value": "1778340490658",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "mexusers_authn_token_jti",
+      "value": "913bfbd9-aed7-4f6c-95f3-43ff7a8421b9",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    }
+  ],
+  "localStorage": {
+    "profileInfo": "{\"name\":\"CÔNG TY CỔ PHẦN THƯƠNG MẠI TAKO VIỆT NAM\",\"currency\":\"VND\",\"mobileNumber\":\"840933432521\",\"balance\":0,\"email\":\"info@takogroup.com.vn\",\"correspondence_email\":\"info@takogroup.com.vn\",\"config\":{\"features\":null,\"language\":\"\"}}",
+    "userprofileInfo": "{\"enable_tc\":false,\"user_type\":6,\"user_profile\":{\"service_id\":991951368545832000,\"grab_id\":\"1887fe33-fe11-43a2-82ad-bb08aa7f28a0\",\"username\":\"ketoan@takogroup.com.vn\",\"mobile_number\":\"84387065813\",\"correspondence_email\":\"nguyenduyphuoc25@gmail.com\",\"verification_status\":true,\"profile_status\":\"ACTIVE\",\"platform\":\"TROY\",\"agent\":\"grabfood\",\"role\":\"Owner\",\"country\":704,\"mcc\":0,\"links\":[{\"id\":37483461,\"user_profile_service_id\":991951368545832000,\"user_profile_grab_id\":\"1887fe33-fe11-43a2-82ad-bb08aa7f28a0\",\"link_entity_business_line\":\"GF\",\"link_entity_id\":\"VNMG20240514104738018706\",\"link_entity_type\":\"MERCHANT\",\"created_at\":\"2024-05-16T09:00:59Z\",\"updated_at\":\"2025-01-09T17:19:56Z\",\"deleted_at\":null}],\"last_login_at\":\"2026-05-09T15:28:04Z\",\"grab_food_entity_id\":\"VNMG20240514104738018706\",\"merchant_grab_id\":\"564bd0b3-7b78-4ae2-930c-c0bfb31e07a9\"},\"merchant_grab_id\":\"564bd0b3-7b78-4ae2-930c-c0bfb31e07a9\"}",
+    "selectedResource": "\"zeus_merchant:VNMG20240514104738018706\""
+  }
+}{
+  "provider": "grab",
+  "storeId": "VNMG20240514104738018706",
+  "username": "info@takogroup.com.vn",
+  "ttlSeconds": 28800,
+  "cookies": [
+    {
+      "name": "AWSELB",
+      "value": "53B7490F14CB44B3C3CAE476A7D8BD7A112F66C8F897137DB7575E2A439B1C1499A08AB7534BA5674BE47D52B41AEDC0C91AC16DC11A5408B0DB1AB4DDA2A4B0230E4B23C8",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "AWSELBCORS",
+      "value": "53B7490F14CB44B3C3CAE476A7D8BD7A112F66C8F897137DB7575E2A439B1C1499A08AB7534BA5674BE47D52B41AEDC0C91AC16DC11A5408B0DB1AB4DDA2A4B0230E4B23C8",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "DEVICE_ID",
+      "value": "ad6a9b6a-48a1-4743-b6f3-0813eec71ca5",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "hwuuidtime",
+      "value": "1778339443",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "hwuuid",
+      "value": "8f12d7bd-3880-4d39-94c6-daa127552da7",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "hwToken",
+      "value": "9ed50fd032c43b8c69793b532bc0e374",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "hwTime",
+      "value": "1778340039134",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "mexusers_authn_token_jti",
+      "value": "31c9e9d6-aa07-4e69-88be-5b049732f489",
+      "domain": ".grab.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    }
+  ],
+  "localStorage": {
+    "profileInfo": "{\"name\":\"CÔNG TY CỔ PHẦN THƯƠNG MẠI TAKO VIỆT NAM\",\"currency\":\"VND\",\"mobileNumber\":\"840933432521\",\"balance\":0,\"email\":\"info@takogroup.com.vn\",\"correspondence_email\":\"info@takogroup.com.vn\",\"config\":{\"features\":null,\"language\":\"\"}}",
+    "userprofileInfo": "{\"enable_tc\":false,\"user_type\":6,\"user_profile\":{\"service_id\":991951368545832000,\"grab_id\":\"1887fe33-fe11-43a2-82ad-bb08aa7f28a0\",\"username\":\"ketoan@takogroup.com.vn\",\"mobile_number\":\"84387065813\",\"correspondence_email\":\"nguyenduyphuoc25@gmail.com\",\"verification_status\":true,\"profile_status\":\"ACTIVE\",\"platform\":\"TROY\",\"agent\":\"grabfood\",\"role\":\"Owner\",\"country\":704,\"mcc\":0,\"links\":[{\"id\":37483461,\"user_profile_service_id\":991951368545832000,\"user_profile_grab_id\":\"1887fe33-fe11-43a2-82ad-bb08aa7f28a0\",\"link_entity_business_line\":\"GF\",\"link_entity_id\":\"VNMG20240514104738018706\",\"link_entity_type\":\"MERCHANT\",\"created_at\":\"2024-05-16T09:00:59Z\",\"updated_at\":\"2025-01-09T17:19:56Z\",\"deleted_at\":null}],\"last_login_at\":\"2026-05-09T15:18:25Z\",\"grab_food_entity_id\":\"VNMG20240514104738018706\"},\"merchant_grab_id\":\"564bd0b3-7b78-4ae2-930c-c0bfb31e07a9\"}",
+    "selectedResource": "\"zeus_merchant:VNMG20240514104738018706\""
+  }
+}
