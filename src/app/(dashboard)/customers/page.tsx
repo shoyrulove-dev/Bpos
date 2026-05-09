@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Search, Star, TrendingUp, Gift, Edit, Trash2, Loader2 } from 'lucide-react'
+import { Plus, Search, Star, TrendingUp, Gift, Edit, Trash2, Loader2, Download } from 'lucide-react'
 import { useCustomers, useCreateCustomer, useUpdateCustomer, useDeleteCustomer } from '@/hooks/use-data'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn, formatCurrency, formatDate, LOYALTY_TIER_LABEL, LOYALTY_TIER_COLOR } from '@/lib/utils'
@@ -75,7 +75,21 @@ export default function CustomersPage() {
           <h1 className="page-title">Khách hàng & Loyalty</h1>
           <p className="page-subtitle">{isLoading ? '...' : `${customers.length} khách hàng`}</p>
         </div>
-        <button onClick={openCreate} className="btn-primary"><Plus className="w-4 h-4" /> Thêm khách</button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              const p = new URLSearchParams()
+              if (dq) p.set('q', dq)
+              if (tierFilter) p.set('tier', tierFilter)
+              p.set('export', 'csv')
+              window.location.href = `/api/customers?${p.toString()}`
+            }}
+            className="btn-outline h-9 text-sm"
+          >
+            <Download className="w-4 h-4" /> Xuất Excel
+          </button>
+          <button onClick={openCreate} className="btn-primary"><Plus className="w-4 h-4" /> Thêm khách</button>
+        </div>
       </div>
 
       {/* Tier summary */}

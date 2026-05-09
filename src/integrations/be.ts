@@ -331,7 +331,8 @@ export class BeAdapter implements PlatformAdapter {
     ])
     const seen = new Set<string>()
     const all: NormalizedOrder[] = []
-    for (const [orders, fetchType] of [[previous, 'previous'], [cancelled, 'cancelled']] as [Record<string, unknown>[], string][]) {
+    // Process cancelled FIRST so cancelled orders win if an order appears in both buckets
+    for (const [orders, fetchType] of [[cancelled, 'cancelled'], [previous, 'previous']] as [Record<string, unknown>[], string][]) {
       const enriched = await this.enrichOrdersWithDetails(orders, config, fetchType)
       for (const order of enriched) {
         const id = String(order.externalOrderId ?? '')
@@ -469,7 +470,8 @@ export class BeAdapter implements PlatformAdapter {
       ])
       const seen = new Set<string>()
       const all: NormalizedOrder[] = []
-      for (const [orders, fetchType] of [[previous, 'previous'], [cancelled, 'cancelled']] as [Record<string, unknown>[], string][]) {
+      // Process cancelled FIRST so cancelled orders win if an order appears in both buckets
+      for (const [orders, fetchType] of [[cancelled, 'cancelled'], [previous, 'previous']] as [Record<string, unknown>[], string][]) {
         const enriched = await this.enrichSessionOrdersWithDetails(orders, accessToken, merchantContext, resId, fetchType)
         for (const o of enriched) {
           const id = String(o.externalOrderId ?? '')

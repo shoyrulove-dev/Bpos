@@ -3,6 +3,13 @@ import { connectDB } from '@/lib/db'
 import CustomerModel from '@/models/Customer'
 import { ok, err, requireAuth } from '@/lib/api-helpers'
 
+function toCsvRow(fields: (string | number | undefined | null)[]) {
+  return fields.map(f => {
+    const v = f == null ? '' : String(f)
+    return v.includes(',') || v.includes('"') || v.includes('\n') ? `"${v.replace(/"/g, '""')}"` : v
+  }).join(',')
+}
+
 export async function GET(req: NextRequest) {
   const { res } = await requireAuth(req)
   if (res) return res
@@ -11,6 +18,7 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get('q') || ''
   const tier = searchParams.get('tier') || ''
   const brandId = searchParams.get('brandId') || ''
+  const exportCsv = searchParams.get('export') === 'csv'
   const filter: Record<string, unknown> = {}
   if (q) filter.$or = [
     { name: { $regex: q, $options: 'i' } },
@@ -20,6 +28,23 @@ export async function GET(req: NextRequest) {
   if (tier) filter.tier = tier
   if (brandId) filter.brandId = brandId
   const customers = await CustomerModel.find(filter).sort({ totalSpend: -1 }).lean()
+
+  if (exportCsv) {
+    const header = toCsvRow(['Tên', 'Số điện thoại', 'Email', 'Hạng', 'Điểm tích lũy', 'Tổng chi tiêu', 'Số đơn', 'Đơn cuối'])
+    const rows = customers.map(c => toCsvRow([
+      c.name, c.phone, c.email,
+      c.tier, c.points, c.totalSpend, c.orderCount,
+      c.lastOrderAt ? new Date(c.lastOrderAt).toLocaleDateString('vi-VN') : '',
+    ]))
+    const csv = [header, ...rows].join('\r\n')
+    return new Response('\uFEFF' + csv, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="khach-hang.csv"',
+      },
+    })
+  }
+
   return ok(customers)
 }
 

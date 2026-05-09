@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, Truck, Loader2 } from 'lucide-react'
+import { Search, Truck, Loader2, Download } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useDebounce } from '@/hooks/use-debounce'
 import { formatDate } from '@/lib/utils'
@@ -69,6 +69,18 @@ export default function DriversPage() {
           <h1 className="page-title">Dữ liệu tài xế</h1>
           <p className="page-subtitle">{isLoading ? '...' : `${drivers.length} tài xế`}</p>
         </div>
+        <button
+          onClick={() => {
+            const p = new URLSearchParams()
+            if (dq) p.set('q', dq)
+            if (platformFilter) p.set('platform', platformFilter)
+            p.set('export', 'csv')
+            window.location.href = `/api/drivers?${p.toString()}`
+          }}
+          className="btn-outline h-9 text-sm"
+        >
+          <Download className="w-4 h-4" /> Xuất Excel
+        </button>
       </div>
 
       {/* Platform summary */}
