@@ -28,6 +28,7 @@ const STATUS_BY_FETCH: Record<string, OrderStatus> = {
   on_delivery: 'delivering',
   pending:     'waiting_pickup',
   previous:    'completed',
+  cancelled:   'cancelled',
 }
 
 // Simple in-process token cache keyed by clientId (lives in memory per serverless instance)
@@ -447,8 +448,22 @@ export class BeAdapter implements PlatformAdapter {
     const { restaurantId: resId, merchantContext } = sessionRestaurant
 
     try {
-      const previous = await this.fetchByTypeWithSession(accessToken, merchantContext, resId, 'previous')
-      return this.enrichSessionOrdersWithDetails(previous, accessToken, merchantContext, resId, 'previous')
+      const [previous, cancelled] = await Promise.all([
+        this.fetchByTypeWithSession(accessToken, merchantContext, resId, 'previous'),
+        this.fetchByTypeWithSession(accessToken, merchantContext, resId, 'cancelled').catch(() => [] as Record<string, unknown>[]),
+      ])
+      const seen = new Set<string>()
+      const all: NormalizedOrder[] = []
+      for (const [orders, fetchType] of [[previous, 'previous'], [cancelled, 'cancelled']] as [Record<string, unknown>[], string][]) {
+        const enriched = await this.enrichSessionOrdersWithDetails(orders, accessToken, merchantContext, resId, fetchType)
+        for (const o of enriched) {
+          const id = String(o.externalOrderId ?? '')
+          if (!id || seen.has(id)) continue
+          seen.add(id)
+          all.push(o)
+        }
+      }
+      return all
     } catch {
       return null
     }

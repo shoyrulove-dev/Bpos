@@ -110,18 +110,17 @@ export default function SettingsPage() {
 
         <div className="rounded-xl border border-gray-200 px-4 py-3">
           <p className="text-sm font-medium text-gray-900">Số lần phát âm thanh</p>
-          <p className="text-xs text-gray-500 mt-0.5">Số lần hệ thống phát thông báo khi có đơn mới (1–10).</p>
+          <p className="text-xs text-gray-500 mt-0.5">Số lần hệ thống phát thông báo khi có đơn mới.</p>
           <input
             type="number"
             min={1}
-            max={10}
             className="input mt-3 w-24"
             value={orderSettings.soundRepeatCount}
             onChange={(event) => {
-              const val = Math.min(10, Math.max(1, parseInt(event.target.value, 10) || 1))
-              setOrderSettings((prev) => ({ ...prev, soundRepeatCount: val }))
+              const val = parseInt(event.target.value, 10)
+              setOrderSettings((prev) => ({ ...prev, soundRepeatCount: Number.isFinite(val) && val > 0 ? val : prev.soundRepeatCount }))
             }}
-            readOnly={!isAdmin}
+            disabled={!isAdmin}
           />
         </div>
 

@@ -43,7 +43,7 @@ export async function PATCH(req: NextRequest) {
   if (voiceMessage.length > 200) return err('Câu thông báo quá dài')
 
   const rawRepeat = Number(body?.soundRepeatCount)
-  const soundRepeatCount = Number.isFinite(rawRepeat) && rawRepeat >= 1 && rawRepeat <= 10
+  const soundRepeatCount = Number.isFinite(rawRepeat) && rawRepeat >= 1
     ? Math.round(rawRepeat)
     : undefined
 

@@ -85,7 +85,7 @@ function writeRecentPrintedIds(orderIds: string[]) {
 export function loadOrderAlertSettings(): OrderAlertSettings {
   const printerPaperSize = readStringSetting(PRINTER_PAPER_SIZE_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.printerPaperSize)
   const rawRepeat = parseInt(readStringSetting(SOUND_REPEAT_COUNT_SETTING_KEY, String(ORDER_ALERT_DEFAULT_REPEAT_COUNT)), 10)
-  const soundRepeatCount = Number.isFinite(rawRepeat) && rawRepeat >= 1 && rawRepeat <= 10 ? rawRepeat : ORDER_ALERT_DEFAULT_REPEAT_COUNT
+  const soundRepeatCount = Number.isFinite(rawRepeat) && rawRepeat >= 1 ? rawRepeat : ORDER_ALERT_DEFAULT_REPEAT_COUNT
 
   return {
     soundEnabled: readBooleanSetting(SOUND_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.soundEnabled),
