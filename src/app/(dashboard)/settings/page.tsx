@@ -87,67 +87,62 @@ export default function SettingsPage() {
           />
         </label>
 
-        <div className="rounded-xl border border-gray-200 px-4 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
+        <div className="rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex items-start gap-4 border-b border-gray-100 px-4 py-3">
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900">Câu thông báo đọc lên</p>
-              <p className="text-xs text-gray-500">
-                {isAdmin ? 'Admin có thể đổi câu này.' : 'Chỉ admin mới được đổi câu thông báo chung.'}
-              </p>
+              <p className="text-xs text-gray-500">{isAdmin ? 'Admin có thể đổi câu này.' : 'Chỉ admin mới được đổi câu thông báo chung.'}</p>
+              <textarea
+                className="input mt-2 w-full resize-none text-sm"
+                rows={2}
+                maxLength={200}
+                value={orderSettings.voiceMessage}
+                onChange={(event) => setOrderSettings((prev) => ({ ...prev, voiceMessage: event.target.value }))}
+                readOnly={!isAdmin}
+                placeholder="Anh ơi. Mình có đơn hàng mới. Anh kiểm tra giúp em nhé."
+              />
+              <p className="mt-0.5 text-right text-[11px] text-gray-400">{orderSettings.voiceMessage.length}/200</p>
+            </div>
+            <div className="flex-shrink-0 pt-0.5">
+              <p className="text-sm font-medium text-gray-900 mb-1">Số lần phát</p>
+              <input
+                type="number"
+                min={1}
+                className="input w-20 text-center text-sm"
+                value={orderSettings.soundRepeatCount}
+                onChange={(event) => {
+                  const val = parseInt(event.target.value, 10)
+                  setOrderSettings((prev) => ({ ...prev, soundRepeatCount: Number.isFinite(val) && val > 0 ? val : prev.soundRepeatCount }))
+                }}
+                disabled={!isAdmin}
+              />
             </div>
           </div>
-          <textarea
-            className="input mt-3 w-full resize-none"
-            rows={3}
-            maxLength={200}
-            value={orderSettings.voiceMessage}
-            onChange={(event) => setOrderSettings((prev) => ({ ...prev, voiceMessage: event.target.value }))}
-            readOnly={!isAdmin}
-            placeholder="Anh ơi. Mình có đơn hàng mới. Anh kiểm tra giúp em nhé."
-          />
-          <p className="mt-1 text-right text-xs text-gray-400">{orderSettings.voiceMessage.length}/200</p>
-        </div>
-
-        <div className="rounded-xl border border-gray-200 px-4 py-3">
-          <p className="text-sm font-medium text-gray-900">Số lần phát âm thanh</p>
-          <p className="text-xs text-gray-500 mt-0.5">Số lần hệ thống phát thông báo khi có đơn mới.</p>
-          <input
-            type="number"
-            min={1}
-            className="input mt-3 w-24"
-            value={orderSettings.soundRepeatCount}
-            onChange={(event) => {
-              const val = parseInt(event.target.value, 10)
-              setOrderSettings((prev) => ({ ...prev, soundRepeatCount: Number.isFinite(val) && val > 0 ? val : prev.soundRepeatCount }))
-            }}
-            disabled={!isAdmin}
-          />
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="form-group">
-            <label className="label">Tên máy in</label>
-            <input
-              className="input"
-              value={orderSettings.printerName}
-              onChange={(event) => setOrderSettings((prev) => ({ ...prev, printerName: event.target.value }))}
-              placeholder="VD: Xprinter XP-T80L"
-            />
-          </div>
-          <div className="form-group">
-            <label className="label">Khổ giấy mặc định</label>
-            <select
-              className="input"
-              value={orderSettings.printerPaperSize}
-              onChange={(event) => setOrderSettings((prev) => ({
-                ...prev,
-                printerPaperSize: event.target.value as OrderAlertSettings['printerPaperSize'],
-              }))}
-            >
-              <option value="80mm">80mm</option>
-              <option value="58mm">58mm</option>
-              <option value="A4">A4</option>
-            </select>
+          <div className="grid grid-cols-2 divide-x divide-gray-100">
+            <div className="px-4 py-3">
+              <p className="text-xs font-medium text-gray-500 mb-1">Tên máy in</p>
+              <input
+                className="input text-sm"
+                value={orderSettings.printerName}
+                onChange={(event) => setOrderSettings((prev) => ({ ...prev, printerName: event.target.value }))}
+                placeholder="VD: Xprinter XP-T80L"
+              />
+            </div>
+            <div className="px-4 py-3">
+              <p className="text-xs font-medium text-gray-500 mb-1">Khổ giấy mặc định</p>
+              <select
+                className="input text-sm"
+                value={orderSettings.printerPaperSize}
+                onChange={(event) => setOrderSettings((prev) => ({
+                  ...prev,
+                  printerPaperSize: event.target.value as OrderAlertSettings['printerPaperSize'],
+                }))}
+              >
+                <option value="80mm">80mm</option>
+                <option value="58mm">58mm</option>
+                <option value="A4">A4</option>
+              </select>
+            </div>
           </div>
         </div>
 

@@ -73,6 +73,12 @@ export class BeAdapter implements PlatformAdapter {
     restaurantId: number,
     fetchType: string
   ) {
+    // For cancelled orders, skip detail enrichment to preserve cancelled status — the detail
+    // endpoint may return status 21 (completed) which would incorrectly override 'cancelled'.
+    if (fetchType === 'cancelled') {
+      return rawOrders.map((order) => this.normalizeOrder(order, fetchType))
+    }
+
     const detailMap = new Map<string, Record<string, unknown>>()
     const orderIds = rawOrders
       .map((order) => String(order.order_id ?? ''))
