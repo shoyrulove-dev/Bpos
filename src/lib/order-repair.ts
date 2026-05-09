@@ -65,6 +65,24 @@ function sameNumber(left: unknown, right: unknown) {
   return Number(left ?? 0) === Number(right ?? 0)
 }
 
+function buildScopedOrderQuery(options: {
+  providers: string[]
+  externalOrderIds?: string[]
+  shortIds?: string[]
+}) {
+  const query: Record<string, unknown> = { source: { $in: options.providers } }
+
+  if (options.externalOrderIds?.length) {
+    query.externalOrderId = { $in: options.externalOrderIds }
+  }
+
+  if (options.shortIds?.length) {
+    query.shortId = { $in: options.shortIds }
+  }
+
+  return query
+}
+
 async function upsertHistoricalOrders(days: number, providers: string[], targetExternalOrderIds?: string[]) {
   const integrations = await IntegrationModel.find({ isActive: true, provider: { $in: providers } })
     .select('+credentials +sessionData')
@@ -196,7 +214,7 @@ async function repairStoredOrders(
   const forceCancelledOrderIdSet = options?.forceCancelledOrderIds?.length ? new Set(options.forceCancelledOrderIds) : null
   const forceCompletedShortIdSet = options?.forceCompletedShortIds?.length ? new Set(options.forceCompletedShortIds) : null
 
-  const cursor = OrderModel.find({ source: { $in: providers } })
+  const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds }))
     .select('shortId source externalOrderId customerName customerPhone driverInfo subtotal discount total platformFee status cancelReason cancelledAt deliveredAt updatedAt rawPayload')
     .lean()
     .cursor()
@@ -358,7 +376,7 @@ async function backfillDriversFromOrders(options?: {
   let scanned = 0
   let updated = 0
 
-  const cursor = OrderModel.find({ source: { $in: providers } })
+  const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds }))
     .select('shortId source externalOrderId driverInfo rawPayload')
     .lean()
     .cursor()
@@ -408,7 +426,7 @@ async function backfillCustomersFromOrders(options?: {
   let scanned = 0
   let updated = 0
 
-  const cursor = OrderModel.find({ source: { $in: providers } })
+  const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds }))
     .select('shortId source externalOrderId brandId customerName customerPhone total placedAt rawPayload')
     .lean()
     .cursor()
@@ -705,7 +723,7 @@ export async function getOrderRepairReport(options?: { providers?: string[]; lim
   let scanned = 0
   let changed = 0
 
-  const cursor = OrderModel.find({ source: { $in: providers } })
+  const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds }))
     .select('shortId source externalOrderId customerPhone driverInfo subtotal discount total platformFee status cancelReason cancelledAt deliveredAt rawPayload')
     .lean()
     .cursor()
