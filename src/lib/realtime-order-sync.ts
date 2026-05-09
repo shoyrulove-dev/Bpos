@@ -7,6 +7,39 @@ const RECENT_HISTORY_DAYS = 1
 const BE_HISTORY_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000
 const BE_HISTORY_DAYS = 30
 
+function getOrderTransitionTimestamp(order: NormalizedOrder) {
+  const raw = order.rawPayload ?? {}
+
+  const candidates = order.orderStatus === 'completed'
+    ? [
+        order.deliveredAt,
+        raw.deliveredAt,
+        raw.completedAt,
+        raw.updatedAt,
+      ]
+    : order.orderStatus === 'cancelled'
+    ? [
+        raw.cancelledAt,
+        raw.canceledAt,
+        raw.cancelled_at,
+        raw.cancel_time,
+        raw.cancel_date,
+        raw.updatedAt,
+      ]
+    : [
+        order.placedAt,
+        raw.updatedAt,
+      ]
+
+  for (const value of candidates) {
+    if (!value) continue
+    const timestamp = new Date(String(value)).getTime()
+    if (Number.isFinite(timestamp)) return timestamp
+  }
+
+  return Number.NaN
+}
+
 export function buildSessionStoreId(externalStoreId: string | undefined, session: SessionData) {
   return session.extraHeaders?.['x-grab-store-id']
     ?? session.extraHeaders?.['x-restaurant-id']
@@ -23,10 +56,8 @@ export function filterRecentHistoricalOrders(
   const cutoff = now - lookbackMs
 
   return orders.filter((order) => {
-    // Always include cancelled orders so their status is synced regardless of when they were placed
-    if (order.orderStatus === 'cancelled') return true
-    const placedAt = new Date(order.placedAt).getTime()
-    return Number.isFinite(placedAt) && placedAt >= cutoff
+    const transitionAt = getOrderTransitionTimestamp(order)
+    return Number.isFinite(transitionAt) && transitionAt >= cutoff
   })
 }
 
