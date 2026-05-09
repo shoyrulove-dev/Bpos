@@ -1,5 +1,6 @@
 import { generateId } from '@/lib/utils'
-import type { NormalizedOrder } from '@/types'
+import { getDisplayCustomerPhone, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
+import type { NormalizedOrder, Order } from '@/types'
 
 type IntegrationRef = {
   brandId: string
@@ -133,18 +134,25 @@ function extractDeliveredDate(normalized: NormalizedOrder) {
 }
 
 export function buildOrderUpsert(integration: IntegrationRef, normalized: NormalizedOrder) {
+  const financialBreakdown = getFinancialBreakdown(normalized as unknown as Order)
+  const customerPhone = getDisplayCustomerPhone(normalized as unknown as Order) || normalized.customerPhone
+  const driverPhone = getDisplayDriverPhone(normalized as unknown as Order) || normalized.driverInfo?.phone
+  const discount = financialBreakdown
+    ? Number(financialBreakdown.productDiscount ?? 0) + Number(financialBreakdown.orderDiscount ?? 0)
+    : normalized.discount
+
   const baseSet: Record<string, unknown> = {
     status: normalized.orderStatus,
     customerName: normalized.customerName || 'Khách hàng',
-    customerPhone: normalized.customerPhone,
+    customerPhone,
     items: normalized.items,
-    subtotal: normalized.subtotal,
-    discount: normalized.discount,
-    total: normalized.total,
-    platformFee: normalized.platformFee,
+    subtotal: financialBreakdown?.subtotal ?? normalized.subtotal,
+    discount,
+    total: financialBreakdown?.revenueAfterPromotion ?? normalized.total,
+    platformFee: financialBreakdown?.platformFee ?? normalized.platformFee,
     paymentMethod: normalized.paymentMethod,
     deliveryInfo: normalized.deliveryInfo,
-    driverInfo: normalized.driverInfo,
+    driverInfo: normalized.driverInfo ? { ...normalized.driverInfo, ...(driverPhone ? { phone: driverPhone } : {}) } : normalized.driverInfo,
     rawPayload: normalized.rawPayload,
     source: normalized.source,
     externalOrderId: normalized.externalOrderId,
