@@ -392,6 +392,11 @@ export function getDisplayDriverPhone(order: Order) {
   return normalizeCompactPhone(String(
     order.driverInfo?.phone
     ?? raw?.driver_phone_no
+    ?? raw?.driver_contact
+    ?? raw?.driver_phone
+    ?? raw?.driverPhone
+    ?? raw?.driverContactNo
+    ?? raw?.driverPhoneNumber
     ?? deliveryDriver?.phone
     ?? deliveryDriver?.phoneNumber
     ?? deliveryDriver?.mobileNumber

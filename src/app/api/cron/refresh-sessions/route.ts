@@ -31,6 +31,15 @@ export async function GET(req: NextRequest) {
 
   await connectDB()
 
+  // Reset any integrations stuck with automationRunning:true for more than 10 minutes.
+  // This can happen if a Vercel function hard-timed-out before cleanup ran.
+  const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000)
+  const stuckReset = await IntegrationModel.updateMany(
+    { loginMode: 'auto', isActive: true, automationRunning: true, updatedAt: { $lt: tenMinAgo } },
+    { $set: { automationRunning: false } }
+  )
+  const stuckCount = stuckReset.modifiedCount ?? 0
+
   const thirtyMinFromNow = new Date(Date.now() + 30 * 60 * 1000)
   const query = {
     loginMode:         'auto',
@@ -50,7 +59,7 @@ export async function GET(req: NextRequest) {
     .select('+loginPassword')
 
   if (integrations.length === 0) {
-    return NextResponse.json({ refreshed: 0, message: 'Không có session nào cần refresh' })
+    return NextResponse.json({ refreshed: 0, stuckReset: stuckCount, message: 'Không có session nào cần refresh' })
   }
 
   const results: { id: string; provider: string; success: boolean; error?: string }[] = []
@@ -166,6 +175,7 @@ export async function GET(req: NextRequest) {
     refreshed: integrations.length,
     remaining: Math.max(pendingCount - integrations.length, 0),
     batchSize: SESSION_REFRESH_BATCH_SIZE,
+    stuckReset: stuckCount,
     results,
   })
 }

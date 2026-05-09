@@ -16,6 +16,8 @@ function getOrderTransitionTimestamp(order: NormalizedOrder) {
         raw.deliveredAt,
         raw.completedAt,
         raw.updatedAt,
+        raw.updated_at,
+        order.placedAt,
       ]
     : order.orderStatus === 'cancelled'
     ? [
@@ -25,10 +27,13 @@ function getOrderTransitionTimestamp(order: NormalizedOrder) {
         raw.cancel_time,
         raw.cancel_date,
         raw.updatedAt,
+        raw.updated_at,  // Be uses snake_case
+        order.placedAt,  // last resort: include if placed within lookback window
       ]
     : [
         order.placedAt,
         raw.updatedAt,
+        raw.updated_at,
       ]
 
   for (const value of candidates) {

@@ -956,7 +956,12 @@ export class GrabAdapter implements PlatformAdapter {
       deliveryInfo:    { address },
       driverInfo:      {
         name: String(driver.name ?? driver.displayName ?? '') || undefined,
-        phone: normalizeCompactPhone(String(driver.phone ?? driver.phoneNumber ?? driver.mobileNumber ?? driver.contact ?? '')),
+        phone: normalizeCompactPhone(String(
+          driver.phone ?? driver.phoneNumber ?? driver.mobileNumber ?? driver.contact ??
+          raw.driverPhone ?? raw.driverContactNo ?? raw.driverPhoneNumber ??
+          raw.driver_phone_no ?? raw.driver_contact ?? raw.driver_phone ??
+          ''
+        )),
       },
       orderStatus,
       placedAt:        String(raw.orderTime ?? raw.createdAt ?? raw.createTime ?? new Date().toISOString()),
