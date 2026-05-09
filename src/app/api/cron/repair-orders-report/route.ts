@@ -21,8 +21,12 @@ export async function GET(req: NextRequest) {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean)
+  const shortIds = (req.nextUrl.searchParams.get('shortIds') ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
 
   await connectDB()
-  const result = await getOrderRepairReport({ providers, limit, externalOrderIds })
+  const result = await getOrderRepairReport({ providers, limit, externalOrderIds, shortIds })
   return NextResponse.json(result)
 }

@@ -14,6 +14,7 @@ import type { NormalizedOrder, Order } from '@/types'
 
 type StoredOrder = Order & {
   _id: string
+  shortId?: string
   brandId?: string
   driverInfo?: { name?: string; phone?: string; vehiclePlate?: string; status?: string }
   rawPayload?: Record<string, unknown>
@@ -176,21 +177,32 @@ async function upsertHistoricalOrders(days: number, providers: string[], targetE
   return summary
 }
 
-async function repairStoredOrders(providers: string[], options?: { externalOrderIds?: string[]; forceCancelledOrderIds?: string[] }) {
+async function repairStoredOrders(
+  providers: string[],
+  options?: {
+    externalOrderIds?: string[]
+    shortIds?: string[]
+    forceCancelledOrderIds?: string[]
+    forceCompletedShortIds?: string[]
+  }
+) {
   let scanned = 0
   let updated = 0
 
   const orderIdSet = options?.externalOrderIds?.length ? new Set(options.externalOrderIds) : null
+  const shortIdSet = options?.shortIds?.length ? new Set(options.shortIds) : null
   const forceCancelledOrderIdSet = options?.forceCancelledOrderIds?.length ? new Set(options.forceCancelledOrderIds) : null
+  const forceCompletedShortIdSet = options?.forceCompletedShortIds?.length ? new Set(options.forceCompletedShortIds) : null
 
   const cursor = OrderModel.find({ source: { $in: providers } })
-    .select('source externalOrderId customerName customerPhone driverInfo subtotal discount total platformFee status cancelReason cancelledAt deliveredAt updatedAt rawPayload')
+    .select('shortId source externalOrderId customerName customerPhone driverInfo subtotal discount total platformFee status cancelReason cancelledAt deliveredAt updatedAt rawPayload')
     .lean()
     .cursor()
 
   for await (const rawOrder of cursor) {
     const order = rawOrder as unknown as StoredOrder
     if (orderIdSet && !orderIdSet.has(String(order.externalOrderId ?? ''))) continue
+    if (shortIdSet && !shortIdSet.has(String(order.shortId ?? ''))) continue
     scanned += 1
 
     const nextCustomerName = getDisplayCustomerName(order as unknown as Order) || undefined
@@ -301,6 +313,18 @@ async function repairStoredOrders(providers: string[], options?: { externalOrder
         ?? order.updatedAt
       ) ?? new Date()
       unset.deliveredAt = ''
+    }
+
+    if (forceCompletedShortIdSet?.has(String(order.shortId ?? '')) && order.status !== 'completed') {
+      set.status = 'completed'
+      set.deliveredAt = parseDateValue(
+        order.rawPayload?.deliveredAt
+        ?? order.rawPayload?.completedAt
+        ?? order.rawPayload?.updatedAt
+        ?? order.updatedAt
+      ) ?? new Date()
+      unset.cancelledAt = ''
+      unset.cancelReason = ''
     }
 
     if (!Object.keys(set).length && !Object.keys(unset).length) continue
@@ -416,6 +440,35 @@ async function repairDrivers() {
     removed += invalidIds.length
   }
 
+  const orderCursor = OrderModel.find({ source: { $in: ['grab', 'be', 'shopee', 'xanh_sm'] } })
+    .select('source driverInfo rawPayload')
+    .lean()
+    .cursor()
+
+  for await (const rawOrder of orderCursor) {
+    const order = rawOrder as unknown as StoredOrder
+    const phone = getDisplayDriverPhone(order as unknown as Order) || undefined
+    if (!phone || !hasMeaningfulPhone(phone)) continue
+
+    const displayName = getDisplayDriverName(order as unknown as Order) || undefined
+    const fallbackName = displayName && hasMeaningfulDriverName(displayName)
+      ? displayName
+      : `(Tài xế ${String(order.source ?? '').trim() || 'platform'})`
+
+    const key = `${String(order.source)}:${phone}`
+    const synthetic: StoredDriver = {
+      _id: `order:${key}`,
+      phone,
+      name: fallbackName,
+      platform: String(order.source),
+      visitCount: 1,
+      lastSeenAt: new Date(),
+    }
+    const list = grouped.get(key) ?? []
+    list.push(synthetic)
+    grouped.set(key, list)
+  }
+
   for (const [key, group] of Array.from(grouped.entries())) {
     const [platform, normalizedPhone] = key.split(':')
     const primary = group.find((item: StoredDriver) => item.phone === normalizedPhone && hasMeaningfulDriverName(item.name) && !isDriverNamePlaceholder(item.name))
@@ -436,30 +489,57 @@ async function repairDrivers() {
       removed += duplicates.length
     }
 
-    await DriverModel.updateOne(
-      { _id: primary._id },
-      {
-        $set: {
-          phone: normalizedPhone,
-          platform,
-          name: primary.name,
-          visitCount,
-          ...(lastSeenAt ? { lastSeenAt } : {}),
+    if (String(primary._id).startsWith('order:')) {
+      await DriverModel.updateOne(
+        { phone: normalizedPhone, platform },
+        {
+          $set: {
+            phone: normalizedPhone,
+            platform,
+            name: primary.name,
+            ...(lastSeenAt ? { lastSeenAt } : {}),
+          },
+          $inc: { visitCount },
+          $setOnInsert: { visitCount },
         },
-      }
-    )
+        { upsert: true }
+      )
+    } else {
+      await DriverModel.updateOne(
+        { _id: primary._id },
+        {
+          $set: {
+            phone: normalizedPhone,
+            platform,
+            name: primary.name,
+            visitCount,
+            ...(lastSeenAt ? { lastSeenAt } : {}),
+          },
+        }
+      )
+    }
     updated += 1
   }
 
   return { scanned: docs.length, updated, removed }
 }
 
-export async function runOrderRepair(options?: { days?: number; providers?: string[]; includeHistorical?: boolean; externalOrderIds?: string[]; forceCancelledOrderIds?: string[] }) {
+export async function runOrderRepair(options?: {
+  days?: number
+  providers?: string[]
+  includeHistorical?: boolean
+  externalOrderIds?: string[]
+  shortIds?: string[]
+  forceCancelledOrderIds?: string[]
+  forceCompletedShortIds?: string[]
+}) {
   const providers = (options?.providers?.length ? options.providers : ['be', 'grab']).map((value) => value.trim()).filter(Boolean)
   const days = Math.max(1, Math.min(90, Number(options?.days ?? 30) || 30))
   const includeHistorical = options?.includeHistorical !== false
   const externalOrderIds = (options?.externalOrderIds ?? []).map((value) => value.trim()).filter(Boolean)
+  const shortIds = (options?.shortIds ?? []).map((value) => value.trim()).filter(Boolean)
   const forceCancelledOrderIds = (options?.forceCancelledOrderIds ?? []).map((value) => value.trim()).filter(Boolean)
+  const forceCompletedShortIds = (options?.forceCompletedShortIds ?? []).map((value) => value.trim()).filter(Boolean)
 
   const historical = includeHistorical
     ? await upsertHistoricalOrders(days, providers, externalOrderIds)
@@ -471,7 +551,7 @@ export async function runOrderRepair(options?: { days?: number; providers?: stri
         failed: 0,
         skipped: true,
       }
-  const orders = await repairStoredOrders(providers, { externalOrderIds, forceCancelledOrderIds })
+  const orders = await repairStoredOrders(providers, { externalOrderIds, shortIds, forceCancelledOrderIds, forceCompletedShortIds })
   const customers = await repairCustomers()
   const drivers = await repairDrivers()
 
@@ -481,7 +561,9 @@ export async function runOrderRepair(options?: { days?: number; providers?: stri
     days,
     includeHistorical,
     externalOrderIds,
+    shortIds,
     forceCancelledOrderIds,
+    forceCompletedShortIds,
     historical,
     orders,
     customers,
@@ -489,10 +571,11 @@ export async function runOrderRepair(options?: { days?: number; providers?: stri
   }
 }
 
-export async function getOrderRepairReport(options?: { providers?: string[]; limit?: number; externalOrderIds?: string[] }) {
+export async function getOrderRepairReport(options?: { providers?: string[]; limit?: number; externalOrderIds?: string[]; shortIds?: string[] }) {
   const providers = (options?.providers?.length ? options.providers : ['be', 'grab']).map((value) => value.trim()).filter(Boolean)
   const limit = Math.max(1, Math.min(100, Number(options?.limit ?? 20) || 20))
   const orderIdSet = options?.externalOrderIds?.length ? new Set(options.externalOrderIds.map((value) => value.trim()).filter(Boolean)) : null
+  const shortIdSet = options?.shortIds?.length ? new Set(options.shortIds.map((value) => value.trim()).filter(Boolean)) : null
   const samples: Array<Record<string, unknown>> = []
   let scanned = 0
   let changed = 0
@@ -505,6 +588,7 @@ export async function getOrderRepairReport(options?: { providers?: string[]; lim
   for await (const rawOrder of cursor) {
     const order = rawOrder as unknown as StoredOrder
     if (orderIdSet && !orderIdSet.has(String(order.externalOrderId ?? ''))) continue
+    if (shortIdSet && !shortIdSet.has(String(order.shortId ?? ''))) continue
     scanned += 1
 
     const nextCustomerPhone = getDisplayCustomerPhone(order as unknown as Order) || undefined
@@ -528,6 +612,7 @@ export async function getOrderRepairReport(options?: { providers?: string[]; lim
 
     if (samples.length < limit) {
       samples.push({
+        shortId: order.shortId,
         source: order.source,
         externalOrderId: order.externalOrderId,
         current: {
