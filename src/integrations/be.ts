@@ -386,11 +386,23 @@ export class BeAdapter implements PlatformAdapter {
     // Be API uses integer status codes — map via fetch_type context when available
     // Known: in_progress = waiting_confirm, pending = waiting_pickup
     // status integers observed: 2 = in-process, 21 = completed
+    // Cancellation codes observed: 99, 100 (partner API); 3–10 may indicate various cancel reasons
     const statusInt = Number(raw.status ?? -1)
     let orderStatus: OrderStatus = (fetchType ? STATUS_BY_FETCH[fetchType] : undefined) ?? 'waiting_confirm'
     // Don't let a completed status integer override an explicitly cancelled fetch bucket
     if ((statusInt === 21 || statusInt === 20) && fetchType !== 'cancelled') orderStatus = 'completed'
-    if (statusInt === 99 || statusInt === 100) orderStatus = 'cancelled'
+    // Broad cancelled detection: 99/100 (partner), 3-10 (merchant portal cancel reasons)
+    const CANCELLED_INTS = new Set([3, 4, 5, 6, 7, 8, 9, 10, 99, 100])
+    if (CANCELLED_INTS.has(statusInt)) orderStatus = 'cancelled'
+    // Check explicit cancellation fields in raw payload (merchant API may include these)
+    const hasCancelField =
+      Boolean(raw.cancel_reason) ||
+      Boolean(raw.cancel_time) ||
+      Boolean(raw.cancelled_at) ||
+      raw.is_cancelled === true ||
+      raw.cancelled === true ||
+      (typeof raw.status_reason === 'string' && raw.status_reason.toLowerCase().includes('cancel'))
+    if (hasCancelField) orderStatus = 'cancelled'
 
     const total    = Number(raw.order_amount ?? raw.originial_amount ?? raw.original_amount ?? raw.sub_total ?? raw.subtotal ?? raw.total_amount ?? raw.final_amount ?? 0)
     const original = Number(raw.originial_amount ?? raw.original_amount ?? raw.sub_total ?? raw.subtotal ?? raw.order_amount ?? raw.net_order_amount ?? total)
@@ -474,10 +486,18 @@ export class BeAdapter implements PlatformAdapter {
     const { restaurantId: resId, merchantContext } = sessionRestaurant
 
     try {
-      const [previous, cancelled] = await Promise.all([
+      const [previous, cancelledRaw] = await Promise.all([
         this.fetchByTypeWithSession(accessToken, merchantContext, resId, 'previous'),
         this.fetchByTypeWithSession(accessToken, merchantContext, resId, 'cancelled').catch(() => [] as Record<string, unknown>[]),
       ])
+
+      // Fallback: if cancelled bucket returns nothing, try alternate fetch_type spelling
+      let cancelled = cancelledRaw
+      if (!cancelled.length) {
+        const alt = await this.fetchByTypeWithSession(accessToken, merchantContext, resId, 'cancel').catch(() => [] as Record<string, unknown>[])
+        if (alt.length) cancelled = alt
+      }
+
       const seen = new Set<string>()
       const all: NormalizedOrder[] = []
       // Process cancelled FIRST so cancelled orders win if an order appears in both buckets
@@ -519,9 +539,22 @@ export class BeAdapter implements PlatformAdapter {
     })
 
     if (res.status === 401 || res.status === 403) return []
-    if (!res.ok) return []
+    if (!res.ok) {
+      console.error(`[BE] fetchByTypeWithSession(${fetchType}) HTTP ${res.status} restaurant=${restaurantId}`)
+      return []
+    }
 
-    const data = await res.json() as { restaurant_orders?: Record<string, unknown>[] }
-    return data.restaurant_orders ?? []
+    const data = await res.json() as {
+      restaurant_orders?: Record<string, unknown>[]
+      orders?: Record<string, unknown>[]
+      data?: { restaurant_orders?: Record<string, unknown>[] }
+      code?: number
+      message?: string
+    }
+    if (fetchType === 'cancelled') {
+      console.log(`[BE] cancelled bucket code=${data.code} msg=${data.message ?? ''} orders=${(data.restaurant_orders ?? data.orders ?? []).length}`)
+    }
+    // Support alternate response shapes the merchant API might use
+    return data.restaurant_orders ?? data.orders ?? data.data?.restaurant_orders ?? []
   }
 }

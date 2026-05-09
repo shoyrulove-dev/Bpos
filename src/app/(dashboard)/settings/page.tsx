@@ -88,27 +88,31 @@ export default function SettingsPage() {
         </label>
 
         <div className="rounded-xl border border-gray-200 overflow-hidden">
-          <div className="flex items-start gap-4 border-b border-gray-100 px-4 py-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900">Câu thông báo đọc lên</p>
-              <p className="text-xs text-gray-500">{isAdmin ? 'Admin có thể đổi câu này.' : 'Chỉ admin mới được đổi câu thông báo chung.'}</p>
-              <textarea
-                className="input mt-2 w-full resize-none text-sm"
-                rows={2}
-                maxLength={200}
-                value={orderSettings.voiceMessage}
-                onChange={(event) => setOrderSettings((prev) => ({ ...prev, voiceMessage: event.target.value }))}
-                readOnly={!isAdmin}
-                placeholder="Anh ơi. Mình có đơn hàng mới. Anh kiểm tra giúp em nhé."
-              />
-              <p className="mt-0.5 text-right text-[11px] text-gray-400">{orderSettings.voiceMessage.length}/200</p>
+          <div className="border-b border-gray-100 px-4 py-3">
+            <div className="flex items-start justify-between gap-4 mb-2">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Câu thông báo đọc lên</p>
+                <p className="text-xs text-gray-500">{isAdmin ? 'Admin có thể đổi câu này.' : 'Chỉ admin mới được đổi câu thông báo chung.'}</p>
+              </div>
+              <p className="text-sm font-medium text-gray-900 flex-shrink-0">Số lần phát</p>
             </div>
-            <div className="flex-shrink-0 pt-0.5">
-              <p className="text-sm font-medium text-gray-900 mb-1">Số lần phát</p>
+            <div className="flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <textarea
+                  className="input w-full resize-none text-sm"
+                  rows={2}
+                  maxLength={200}
+                  value={orderSettings.voiceMessage}
+                  onChange={(event) => setOrderSettings((prev) => ({ ...prev, voiceMessage: event.target.value }))}
+                  readOnly={!isAdmin}
+                  placeholder="Anh ơi. Mình có đơn hàng mới. Anh kiểm tra giúp em nhé."
+                />
+                <p className="mt-0.5 text-right text-[11px] text-gray-400">{orderSettings.voiceMessage.length}/200</p>
+              </div>
               <input
                 type="number"
                 min={1}
-                className="input w-20 text-center text-sm"
+                className="input w-20 text-center text-sm flex-shrink-0"
                 value={orderSettings.soundRepeatCount}
                 onChange={(event) => {
                   const val = parseInt(event.target.value, 10)
