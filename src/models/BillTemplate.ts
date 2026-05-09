@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose'
 
 export interface IBillTemplate extends Document {
   name: string
-  type: 'order' | 'delivery' | 'receipt'
+  type: 'order' | 'delivery' | 'receipt' | 'label'
   size: 'A4' | 'A5' | '80mm' | '58mm'
   isActive: boolean
   templateContent: string
@@ -11,7 +11,7 @@ export interface IBillTemplate extends Document {
 
 const BillTemplateSchema = new Schema<IBillTemplate>({
   name:            { type: String, required: true },
-  type:            { type: String, enum: ['order', 'delivery', 'receipt'], default: 'order' },
+  type:            { type: String, enum: ['order', 'delivery', 'receipt', 'label'], default: 'order' },
   size:            { type: String, enum: ['A4', 'A5', '80mm', '58mm'], default: '80mm' },
   isActive:        { type: Boolean, default: true },
   templateContent: { type: String, default: '' },

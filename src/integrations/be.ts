@@ -1,4 +1,5 @@
 import type { NormalizedOrder, OrderItem, OrderStatus } from '@/types'
+import { hasBeCancelSignal } from '@/lib/be-order-status'
 import { normalizeCompactPhone } from '@/lib/phone'
 import type { PlatformAdapter, AdapterConfig, SessionData } from './types'
 
@@ -39,25 +40,7 @@ export class BeAdapter implements PlatformAdapter {
   source = 'be' as const
 
   private hasCancelSignal(raw: Record<string, unknown>): boolean {
-    if (
-      Boolean(raw.cancel_reason) ||
-      Boolean(raw.cancel_time) ||
-      Boolean(raw.cancelled_at) ||
-      Boolean(raw.cancel_date) ||
-      Boolean(raw.cancel_code) ||
-      Boolean(raw.cancel_status) ||
-      Boolean(raw.cancel_by) ||
-      Boolean(raw.cancel_note) ||
-      Boolean(raw.order_cancel_reason_id) ||
-      Boolean(raw.driver_cancel_reason) ||
-      Boolean(raw.restaurant_cancel_reason) ||
-      Boolean(raw.customer_cancel_reason) ||
-      raw.is_cancelled === true ||
-      raw.is_cancel === true ||
-      raw.cancelled === true
-    ) return true
-    if (typeof raw.status_reason === 'string' && raw.status_reason.toLowerCase().includes('cancel')) return true
-    return false
+    return hasBeCancelSignal(raw)
   }
 
   private async fetchOrderDetailWithSession(

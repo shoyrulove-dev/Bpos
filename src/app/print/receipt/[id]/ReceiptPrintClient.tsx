@@ -2,8 +2,8 @@
 
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { CHANNEL_SOURCE_LABEL, formatCurrency, formatDate } from '@/lib/utils'
-import type { Order, OrderItem } from '@/types'
+import { buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, renderPrintTemplateHtml } from '@/lib/print-template'
+import type { BillTemplate, Order } from '@/types'
 
 type NamedRef = string | { _id?: string; name?: string } | null | undefined
 
@@ -11,48 +11,6 @@ type PrintableOrder = Omit<Order, 'brandId' | 'hubId' | 'channelId'> & {
   brandId?: NamedRef
   hubId?: NamedRef
   channelId?: NamedRef | { _id?: string; name?: string; source?: string }
-}
-
-const SOURCE_PREFIX: Record<string, string> = {
-  grab: 'GF',
-  be: 'BE',
-  shopee: 'SP',
-  xanh_sm: 'XS',
-  internal: 'NB',
-  other: 'OD',
-}
-
-function getNamedValue(value: NamedRef, fallback?: string) {
-  if (typeof value === 'string') return fallback ?? value
-  if (value && typeof value === 'object' && typeof value.name === 'string') return value.name
-  return fallback ?? ''
-}
-
-function formatReceiptDate(value: string, formatString: string) {
-  try {
-    return formatDate(value, formatString)
-  } catch {
-    return value
-  }
-}
-
-function getReceiptCode(order: PrintableOrder) {
-  const prefix = SOURCE_PREFIX[order.source] ?? 'OD'
-  const digits = String(order.externalOrderId ?? order.shortId ?? '').replace(/\D/g, '')
-  const suffix = digits.slice(-3) || order.shortId.replace(/[^A-Z0-9]/gi, '').slice(-3) || '001'
-  return `${prefix}-${suffix}`
-}
-
-function getOrderNote(order: PrintableOrder) {
-  return order.note || order.deliveryInfo?.note || ''
-}
-
-function getItemNote(item: OrderItem) {
-  return item.note || ''
-}
-
-function getItemTotal(item: OrderItem) {
-  return item.total > 0 ? item.total : item.quantity * item.price
 }
 
 export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
@@ -66,8 +24,10 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
     : '80mm'
 
   const [order, setOrder] = useState<PrintableOrder | null>(null)
+  const [templateContent, setTemplateContent] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const templateType = getTemplateTypeForPaperSize(paperSize)
 
   useEffect(() => {
     let cancelled = false
@@ -110,6 +70,40 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
   }, [embedded, error, orderId])
 
   useEffect(() => {
+    let cancelled = false
+
+    const loadTemplate = async () => {
+      const fallbackTemplate = getDefaultTemplateContent(templateType)
+
+      try {
+        const response = await fetch('/api/bill-templates')
+        if (!response.ok) {
+          if (!cancelled) setTemplateContent(fallbackTemplate)
+          return
+        }
+
+        const templates = await response.json() as BillTemplate[]
+        const activeTemplate = templates.find((template) => template.isActive && template.type === templateType && template.size === paperSize)
+          ?? templates.find((template) => template.isActive && template.type === templateType)
+
+        if (!cancelled) {
+          setTemplateContent(activeTemplate?.templateContent?.trim() || fallbackTemplate)
+        }
+      } catch {
+        if (!cancelled) {
+          setTemplateContent(fallbackTemplate)
+        }
+      }
+    }
+
+    loadTemplate()
+
+    return () => {
+      cancelled = true
+    }
+  }, [paperSize, templateType])
+
+  useEffect(() => {
     if (!order || !autoPrint) return
 
     let finalized = false
@@ -144,70 +138,31 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
     }
   }, [autoPrint, embedded, order, orderId])
 
-  const viewModel = useMemo(() => {
+  const renderedTemplate = useMemo(() => {
     if (!order) return null
 
-    return {
-      brandName: order.brandName || getNamedValue(order.brandId, 'BPOS'),
-      hubName: order.hubName || getNamedValue(order.hubId),
-      sourceLabel: CHANNEL_SOURCE_LABEL[order.source] || 'Đơn hàng',
-      receiptCode: getReceiptCode(order),
-      note: getOrderNote(order),
-      estimatedTime: order.deliveryInfo?.estimatedTime,
-    }
-  }, [order])
+    const context = buildPrintTemplateContext(order, {
+      BillName: templateType === 'label' ? 'TEM IN BEP' : 'PHIEU LAM MON',
+    })
+
+    return renderPrintTemplateHtml(
+      templateContent || getDefaultTemplateContent(templateType),
+      context,
+      order.items,
+    )
+  }, [order, templateContent, templateType])
 
   if (loading) {
     return <ReceiptShell paperSize={paperSize}><div className="receipt-state">Đang tải phiếu in...</div></ReceiptShell>
   }
 
-  if (!order || !viewModel) {
+  if (!order || !renderedTemplate) {
     return <ReceiptShell paperSize={paperSize}><div className="receipt-state receipt-state-error">{error || 'Không tìm thấy đơn hàng'}</div></ReceiptShell>
   }
 
   return (
     <ReceiptShell paperSize={paperSize}>
-      <div className="receipt-wrap">
-        <header className="receipt-header">
-          <div className="receipt-title">PHIẾU LÀM MÓN</div>
-          <div className="receipt-brand">{viewModel.brandName}</div>
-          <div className="receipt-source">{viewModel.sourceLabel} - {viewModel.receiptCode}</div>
-          <div className="receipt-meta">Thời gian đặt: {formatReceiptDate(order.placedAt, 'dd/MM/yyyy HH:mm:ss')}</div>
-          {viewModel.estimatedTime && (
-            <div className="receipt-meta">Thời gian giao dự kiến: {formatReceiptDate(viewModel.estimatedTime, 'dd/MM/yyyy HH:mm')}</div>
-          )}
-          <div className="receipt-customer">Tên KH: {order.customerName}</div>
-          {viewModel.hubName && <div className="receipt-hub">Điểm bán: {viewModel.hubName}</div>}
-        </header>
-
-        <table className="receipt-table">
-          <thead>
-            <tr>
-              <th>Tên món</th>
-              <th>SL</th>
-              <th>Giá</th>
-            </tr>
-          </thead>
-          <tbody>
-            {order.items.map((item, index) => (
-              <tr key={`${item.name}-${index}`}>
-                <td>
-                  <div className="item-name">{item.name}</div>
-                  {getItemNote(item) && <div className="item-note">Mô tả: {getItemNote(item)}</div>}
-                </td>
-                <td className="qty-col">{item.quantity}</td>
-                <td className="price-col">{formatCurrency(getItemTotal(item))}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {viewModel.note && (
-          <div className="receipt-note">Ghi chú đơn: {viewModel.note}</div>
-        )}
-
-        <footer className="receipt-footer">Cảm ơn quý khách!</footer>
-      </div>
+      <div className="receipt-wrap receipt-template" dangerouslySetInnerHTML={{ __html: renderedTemplate }} />
     </ReceiptShell>
   )
 }
@@ -244,6 +199,36 @@ function ReceiptShell({ children, paperSize }: { children: ReactNode; paperSize:
           width: ${layout.wrapWidth};
           margin: 0 auto;
           padding: 2mm 0 4mm;
+        }
+
+        .receipt-template {
+          font-family: 'Courier New', monospace;
+          font-size: 4.1mm;
+          line-height: 1.32;
+          white-space: normal;
+        }
+
+        .tpl-line {
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+
+        .tpl-center {
+          text-align: center;
+        }
+
+        .tpl-strong {
+          font-weight: 800;
+          letter-spacing: 0.04em;
+        }
+
+        .tpl-divider {
+          border-top: 0.35mm dashed #000000;
+          margin: 1.5mm 0;
+        }
+
+        .tpl-indent {
+          padding-left: 3mm;
         }
 
         .receipt-header {

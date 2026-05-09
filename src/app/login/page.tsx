@@ -168,7 +168,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-primary-100 text-xs mt-6">
-          © 2024 BPOS Portal · v1.0.0
+          © 2026 BPOS Portal · v1.0.0
         </p>
       </div>
     </div>

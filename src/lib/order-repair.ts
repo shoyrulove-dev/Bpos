@@ -1,4 +1,5 @@
 import { decryptJSON } from '@/lib/crypto'
+import { hasBeCancelSignal } from '@/lib/be-order-status'
 import { getAdapter } from '@/integrations/registry'
 import { buildOrderUpsert, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import { getDisplayCustomerPhone, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
@@ -53,27 +54,6 @@ function calcCustomerTier(totalSpend: number): 'bronze' | 'silver' | 'gold' | 'p
   return 'bronze'
 }
 
-function hasBeCancelSignal(raw: Record<string, unknown>) {
-  return Boolean(
-    raw.cancel_reason ||
-    raw.cancel_time ||
-    raw.cancelled_at ||
-    raw.cancel_date ||
-    raw.cancel_code ||
-    raw.cancel_status ||
-    raw.cancel_by ||
-    raw.cancel_note ||
-    raw.order_cancel_reason_id ||
-    raw.driver_cancel_reason ||
-    raw.restaurant_cancel_reason ||
-    raw.customer_cancel_reason ||
-    raw.is_cancelled === true ||
-    raw.is_cancel === true ||
-    raw.cancelled === true ||
-    (typeof raw.status_reason === 'string' && raw.status_reason.toLowerCase().includes('cancel'))
-  )
-}
-
 function parseDateValue(value: unknown) {
   if (!value) return undefined
   const date = new Date(String(value))
@@ -84,7 +64,7 @@ function sameNumber(left: unknown, right: unknown) {
   return Number(left ?? 0) === Number(right ?? 0)
 }
 
-async function upsertHistoricalOrders(days: number, providers: string[]) {
+async function upsertHistoricalOrders(days: number, providers: string[], targetExternalOrderIds?: string[]) {
   const integrations = await IntegrationModel.find({ isActive: true, provider: { $in: providers } })
     .select('+credentials +sessionData')
     .lean()
@@ -139,6 +119,11 @@ async function upsertHistoricalOrders(days: number, providers: string[]) {
         }, { days })
       }
 
+      if (targetExternalOrderIds?.length) {
+        const orderIdSet = new Set(targetExternalOrderIds)
+        orders = orders.filter((order) => orderIdSet.has(String(order.externalOrderId ?? '')))
+      }
+
       if (!orders.length) {
         summary.integrations += 1
         continue
@@ -191,9 +176,12 @@ async function upsertHistoricalOrders(days: number, providers: string[]) {
   return summary
 }
 
-async function repairStoredOrders(providers: string[]) {
+async function repairStoredOrders(providers: string[], options?: { externalOrderIds?: string[]; forceCancelledOrderIds?: string[] }) {
   let scanned = 0
   let updated = 0
+
+  const orderIdSet = options?.externalOrderIds?.length ? new Set(options.externalOrderIds) : null
+  const forceCancelledOrderIdSet = options?.forceCancelledOrderIds?.length ? new Set(options.forceCancelledOrderIds) : null
 
   const cursor = OrderModel.find({ source: { $in: providers } })
     .select('source customerPhone driverInfo subtotal discount total platformFee status cancelReason cancelledAt deliveredAt rawPayload')
@@ -202,6 +190,7 @@ async function repairStoredOrders(providers: string[]) {
 
   for await (const rawOrder of cursor) {
     const order = rawOrder as unknown as StoredOrder
+    if (orderIdSet && !orderIdSet.has(String(order.externalOrderId ?? ''))) continue
     scanned += 1
 
     const nextCustomerPhone = getDisplayCustomerPhone(order as unknown as Order) || undefined
@@ -250,6 +239,20 @@ async function repairStoredOrders(providers: string[]) {
         ?? order.rawPayload.cancel_date
         ?? order.cancelledAt
         ?? order.rawPayload.updatedAt
+      ) ?? new Date()
+      unset.deliveredAt = ''
+    }
+
+    if (forceCancelledOrderIdSet?.has(String(order.externalOrderId ?? '')) && order.status !== 'cancelled') {
+      set.status = 'cancelled'
+      set.cancelReason = String(order.cancelReason ?? order.rawPayload?.cancel_reason ?? order.rawPayload?.status_reason ?? 'BE xác nhận đơn đã hủy')
+      set.cancelledAt = parseDateValue(
+        order.rawPayload?.cancelled_at
+        ?? order.rawPayload?.cancel_time
+        ?? order.rawPayload?.cancel_date
+        ?? order.cancelledAt
+        ?? order.rawPayload?.updatedAt
+        ?? order.updatedAt
       ) ?? new Date()
       unset.deliveredAt = ''
     }
@@ -376,13 +379,15 @@ async function repairDrivers() {
   return { scanned: docs.length, updated, removed }
 }
 
-export async function runOrderRepair(options?: { days?: number; providers?: string[]; includeHistorical?: boolean }) {
+export async function runOrderRepair(options?: { days?: number; providers?: string[]; includeHistorical?: boolean; externalOrderIds?: string[]; forceCancelledOrderIds?: string[] }) {
   const providers = (options?.providers?.length ? options.providers : ['be', 'grab']).map((value) => value.trim()).filter(Boolean)
   const days = Math.max(1, Math.min(90, Number(options?.days ?? 30) || 30))
   const includeHistorical = options?.includeHistorical !== false
+  const externalOrderIds = (options?.externalOrderIds ?? []).map((value) => value.trim()).filter(Boolean)
+  const forceCancelledOrderIds = (options?.forceCancelledOrderIds ?? []).map((value) => value.trim()).filter(Boolean)
 
   const historical = includeHistorical
-    ? await upsertHistoricalOrders(days, providers)
+    ? await upsertHistoricalOrders(days, providers, externalOrderIds)
     : {
         integrations: 0,
         fetched: 0,
@@ -391,7 +396,7 @@ export async function runOrderRepair(options?: { days?: number; providers?: stri
         failed: 0,
         skipped: true,
       }
-  const orders = await repairStoredOrders(providers)
+  const orders = await repairStoredOrders(providers, { externalOrderIds, forceCancelledOrderIds })
   const customers = await repairCustomers()
   const drivers = await repairDrivers()
 
@@ -400,6 +405,8 @@ export async function runOrderRepair(options?: { days?: number; providers?: stri
     providers,
     days,
     includeHistorical,
+    externalOrderIds,
+    forceCancelledOrderIds,
     historical,
     orders,
     customers,
@@ -407,9 +414,10 @@ export async function runOrderRepair(options?: { days?: number; providers?: stri
   }
 }
 
-export async function getOrderRepairReport(options?: { providers?: string[]; limit?: number }) {
+export async function getOrderRepairReport(options?: { providers?: string[]; limit?: number; externalOrderIds?: string[] }) {
   const providers = (options?.providers?.length ? options.providers : ['be', 'grab']).map((value) => value.trim()).filter(Boolean)
   const limit = Math.max(1, Math.min(100, Number(options?.limit ?? 20) || 20))
+  const orderIdSet = options?.externalOrderIds?.length ? new Set(options.externalOrderIds.map((value) => value.trim()).filter(Boolean)) : null
   const samples: Array<Record<string, unknown>> = []
   let scanned = 0
   let changed = 0
@@ -421,6 +429,7 @@ export async function getOrderRepairReport(options?: { providers?: string[]; lim
 
   for await (const rawOrder of cursor) {
     const order = rawOrder as unknown as StoredOrder
+    if (orderIdSet && !orderIdSet.has(String(order.externalOrderId ?? ''))) continue
     scanned += 1
 
     const nextCustomerPhone = getDisplayCustomerPhone(order as unknown as Order) || undefined

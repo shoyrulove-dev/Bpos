@@ -204,7 +204,7 @@ export interface Promotion {
 
 // ---- Bill Template (Hóa đơn mẫu) ----
 export type BillSize = 'A4' | 'A5' | '80mm' | '58mm'
-export type BillType = 'order' | 'delivery' | 'receipt'
+export type BillType = 'order' | 'delivery' | 'receipt' | 'label'
 
 export interface BillTemplate {
   _id: string

@@ -18,8 +18,16 @@ export async function GET(req: NextRequest) {
     .map((value) => value.trim())
     .filter(Boolean)
   const includeHistorical = req.nextUrl.searchParams.get('historical') !== 'false'
+  const externalOrderIds = (req.nextUrl.searchParams.get('orderIds') ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+  const forceCancelledOrderIds = (req.nextUrl.searchParams.get('forceCancelledOrderIds') ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
 
   await connectDB()
-  const result = await runOrderRepair({ days, providers, includeHistorical })
+  const result = await runOrderRepair({ days, providers, includeHistorical, externalOrderIds, forceCancelledOrderIds })
   return NextResponse.json(result)
 }

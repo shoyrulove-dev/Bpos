@@ -1,69 +1,76 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Plus, Edit, Eye, FileText, ToggleLeft, ToggleRight, Printer } from 'lucide-react'
+import { Edit, Eye, FileText, Plus, Printer, Sparkles, ToggleLeft, ToggleRight } from 'lucide-react'
 import { useBillTemplates, useCreateBillTemplate, useUpdateBillTemplate } from '@/hooks/use-data'
-import { cn } from '@/lib/utils'
 import { loadOrderAlertSettings } from '@/lib/order-alerts'
-import type { BillTemplate } from '@/types'
+import { buildDemoPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, PRINT_TEMPLATE_VARIABLES, renderPrintTemplateHtml } from '@/lib/print-template'
+import { cn } from '@/lib/utils'
+import type { BillSize, BillTemplate, BillType } from '@/types'
 
-const TEMPLATE_VARS = ['{{.BillName}}', '{{.SiteName}}', '{{.OrderSource}}', '{{.ShortOrderID}}', '{{.CurrentTime}}', '{{.OrderCreatedAt}}', '{{.OrderDeliveryAt}}', '{{.CustomerName}}', '{{.DeliveryAddress}}']
-const sizeColor: Record<string, string> = { A4: 'badge-blue', A5: 'badge-blue', '80mm': 'badge-orange', '58mm': 'badge-yellow' }
-const typeLabel: Record<string, string> = { order: 'Đơn hàng', delivery: 'Giao hàng', receipt: 'Biên lai' }
-
-const SAMPLE_DATA: Record<string, string> = {
-  BillName: 'HÓA ĐƠN ĐẶT HÀNG',
-  SiteName: 'Cửa hàng Demo',
-  OrderSource: 'GrabFood',
-  ShortOrderID: 'GF-2026-001',
-  CurrentTime: new Date().toLocaleString('vi-VN'),
-  OrderCreatedAt: new Date().toLocaleString('vi-VN'),
-  OrderDeliveryAt: new Date(Date.now() + 30 * 60000).toLocaleString('vi-VN'),
-  CustomerName: 'Nguyễn Văn A',
-  DeliveryAddress: '123 Đường Lê Lợi, Q.1, TP.HCM',
+type TemplateFormState = {
+  name: string
+  type: BillType
+  size: BillSize
+  isActive: boolean
+  templateContent: string
+  brandId: string
 }
 
-function fillSampleData(content: string) {
-  let filled = content
-  for (const [key, val] of Object.entries(SAMPLE_DATA)) {
-    filled = filled.replace(new RegExp(`\\{\\{\\s*\\.?${key}\\s*\\}\\}`, 'g'), val)
+const sizeColor: Record<BillSize, string> = {
+  A4: 'badge-blue',
+  A5: 'badge-blue',
+  '80mm': 'badge-orange',
+  '58mm': 'badge-yellow',
+}
+
+const typeLabel: Record<BillType, string> = {
+  order: 'Đơn hàng cũ',
+  delivery: 'Phiếu giao hàng',
+  receipt: 'Mẫu tự động in',
+  label: 'Mẫu tem 58mm',
+}
+
+function createFormState(type: BillType = 'receipt', size?: BillSize): TemplateFormState {
+  const resolvedSize = size ?? (type === 'label' ? '58mm' : '80mm')
+  const demoType = type === 'label' ? 'label' : type === 'delivery' ? 'delivery' : 'receipt'
+
+  return {
+    name: type === 'label' ? 'Tem bếp 58mm' : type === 'delivery' ? 'Phiếu giao hàng' : 'Phiếu tự động in 80mm',
+    type,
+    size: resolvedSize,
+    isActive: true,
+    templateContent: getDefaultTemplateContent(demoType),
+    brandId: '',
   }
-  return filled
 }
 
-function escapeHtml(s: string) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+function getTemplateGuide(type: BillType, size: BillSize) {
+  if (type === 'label' || size === '58mm') return 'Nút In phiếu tem sẽ dùng mẫu này khi in 58mm.'
+  if (type === 'delivery') return 'Dùng cho phiếu giao hàng hoặc phiếu tài xế.'
+  return 'Auto print và In đơn 80mm sẽ ưu tiên mẫu receipt đang bật.'
 }
 
-function textToReceiptHtml(content: string): string {
-  return content.split('\n').map(line => {
-    const t = line.trim()
-    if (t.match(/^={3,}/)) return `<div style="text-align:center;font-weight:bold;letter-spacing:1px">${escapeHtml(t)}</div>`
-    if (t.match(/^-{3,}$/) || t === '---') return `<hr style="border:none;border-top:1px dashed #999;margin:3px 0"/>`
-    // right-align lines that look like amount/label pairs (contain digit at end or start with spaces)
-    if (/\d/.test(t) && /^\s/.test(line)) return `<div style="text-align:right">${escapeHtml(t)}</div>`
-    return `<div>${escapeHtml(t) || '\u00a0'}</div>`
-  }).join('')
-}
+function openTemplatePrintWindow(content: string, type: BillType, size: BillSize) {
+  const templateType = type === 'label' ? 'label' : type === 'delivery' ? 'delivery' : getTemplateTypeForPaperSize(size)
+  const context = buildDemoPrintTemplateContext(templateType)
+  const html = renderPrintTemplateHtml(content, context, [
+    { name: 'Trà sữa trân châu', quantity: 2, price: 35000, total: 70000, note: 'Ít đá' },
+    { name: 'Cơm sườn trứng', quantity: 1, price: 70000, total: 70000, note: 'Thêm nước mắm' },
+  ])
+  const paperWidth = size === '58mm' ? '58mm' : size === 'A4' ? '210mm' : size === 'A5' ? '148mm' : '80mm'
+  const printWindow = window.open('', '_blank', 'width=520,height=760')
+  if (!printWindow) return
 
-function openTestPrint(content: string, size: string) {
-  const widthMap: Record<string, string> = { A4: '210mm', A5: '148mm', '80mm': '80mm', '58mm': '58mm' }
-  const w = widthMap[size] ?? '80mm'
-  const filled = fillSampleData(content)
-  const pw = window.open('', '_blank', 'width=480,height=700')
-  if (!pw) return
-  pw.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    *{box-sizing:border-box}body{margin:0;background:#e5e5e5;display:flex;flex-direction:column;align-items:center;padding:20px;min-height:100vh}
-    .paper{background:#fff;width:${w};max-width:100%;padding:10px;font-family:'Courier New',monospace;font-size:11px;line-height:1.6;box-shadow:0 2px 12px rgba(0,0,0,.18);border-radius:2px;word-break:break-word}
-    .toolbar{display:flex;gap:8px;margin-bottom:14px}.toolbar button{padding:6px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}
-    .btn-print{background:#f97316;color:#fff}.btn-close{background:#e5e7eb;color:#374151}
-    @media print{body{background:#fff;padding:0}.toolbar{display:none}.paper{box-shadow:none;padding:4mm}@page{size:${w};margin:4mm}}
-  </style></head><body>
-    <div class="toolbar"><button class="btn-print" onclick="window.print()">&#128424; In</button><button class="btn-close" onclick="window.close()">&#x2715; Đóng</button></div>
-    <div class="paper">${textToReceiptHtml(filled)}</div>
-  </body></html>`)
-  pw.document.close()
+  printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview</title><style>
+    *{box-sizing:border-box}body{margin:0;background:#ebe7df;padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px;font-family:Arial,sans-serif}
+    .toolbar{display:flex;gap:10px}.toolbar button{border:0;border-radius:999px;padding:10px 18px;font-weight:700;cursor:pointer}.print{background:#111827;color:#fff}.close{background:#fff;color:#111827;border:1px solid #d1d5db}
+    .paper{width:${paperWidth};max-width:100%;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.16);padding:12px;font-family:'Courier New',monospace;font-size:12px;line-height:1.35;border-radius:10px}
+    .tpl-line{white-space:pre-wrap;word-break:break-word}.tpl-center{text-align:center}.tpl-strong{font-weight:800;letter-spacing:.04em}.tpl-divider{border-top:1px dashed #111;margin:6px 0}.tpl-indent{padding-left:12px}
+    @media print{body{background:#fff;padding:0}.toolbar{display:none}.paper{box-shadow:none;border-radius:0;padding:4mm}@page{size:${paperWidth};margin:4mm}}
+  </style></head><body><div class="toolbar"><button class="print" onclick="window.print()">In thử</button><button class="close" onclick="window.close()">Đóng</button></div><div class="paper">${html}</div></body></html>`)
+  printWindow.document.close()
 }
 
 export default function BillTemplatesPage() {
@@ -72,187 +79,270 @@ export default function BillTemplatesPage() {
   const createMutation = useCreateBillTemplate()
   const updateMutation = useUpdateBillTemplate()
   const [showForm, setShowForm] = useState(false)
-  const [editTpl, setEditTpl] = useState<BillTemplate | null>(null)
-  const [form, setForm] = useState({ name: '', type: 'order', size: '80mm', isActive: true, templateContent: '', brandId: '' })
-  const [preview, setPreview] = useState<BillTemplate | null>(null)
+  const [editTemplate, setEditTemplate] = useState<BillTemplate | null>(null)
+  const [previewTemplate, setPreviewTemplate] = useState<BillTemplate | null>(null)
+  const [form, setForm] = useState<TemplateFormState>(createFormState())
   const [printerName, setPrinterName] = useState('')
-  const [printerSize, setPrinterSize] = useState('80mm')
+  const [printerSize, setPrinterSize] = useState<BillSize>('80mm')
   const saving = createMutation.isPending || updateMutation.isPending
 
   useEffect(() => {
-    const s = loadOrderAlertSettings()
-    setPrinterName(s.printerName)
-    setPrinterSize(s.printerPaperSize)
+    const settings = loadOrderAlertSettings()
+    setPrinterName(settings.printerName)
+    setPrinterSize(settings.printerPaperSize)
   }, [])
 
-  const openEdit = (t: BillTemplate) => {
-    setEditTpl(t)
-    setForm({ name: t.name, type: t.type, size: t.size, isActive: t.isActive, templateContent: t.templateContent, brandId: t.brandId ?? '' })
+  const livePreviewHtml = useMemo(() => {
+    const previewType = form.type === 'label' ? 'label' : form.type === 'delivery' ? 'delivery' : getTemplateTypeForPaperSize(form.size)
+    return renderPrintTemplateHtml(form.templateContent, buildDemoPrintTemplateContext(previewType), [
+      { name: 'Trà sữa trân châu', quantity: 2, price: 35000, total: 70000, note: 'Ít đá' },
+      { name: 'Cơm sườn trứng', quantity: 1, price: 70000, total: 70000, note: 'Thêm nước mắm' },
+    ])
+  }, [form])
+
+  const openCreate = (type: BillType = 'receipt', size?: BillSize) => {
+    setEditTemplate(null)
+    setForm(createFormState(type, size))
     setShowForm(true)
-    setPreview(null)
+  }
+
+  const openEdit = (template: BillTemplate) => {
+    setEditTemplate(template)
+    setForm({
+      name: template.name,
+      type: template.type,
+      size: template.size,
+      isActive: template.isActive,
+      templateContent: template.templateContent,
+      brandId: template.brandId ?? '',
+    })
+    setShowForm(true)
   }
 
   const handleSave = async () => {
-    if (!form.name) return
-    if (editTpl) {
-      await updateMutation.mutateAsync({ id: editTpl._id, ...form })
+    if (!form.name.trim()) return
+
+    if (editTemplate) {
+      await updateMutation.mutateAsync({ id: editTemplate._id, ...form })
     } else {
       await createMutation.mutateAsync(form)
     }
+
     setShowForm(false)
   }
 
-  const toggleActive = (tpl: BillTemplate) => updateMutation.mutate({ id: tpl._id, isActive: !tpl.isActive })
+  const toggleActive = (template: BillTemplate) => updateMutation.mutate({ id: template._id, isActive: !template.isActive })
 
-  const insertVar = (v: string) => setForm(prev => ({ ...prev, templateContent: prev.templateContent + v }))
+  const insertVariable = (token: string) => setForm((current) => ({ ...current, templateContent: `${current.templateContent}${current.templateContent.endsWith('\n') || !current.templateContent ? '' : '\n'}${token}` }))
+
+  const handleTypeChange = (nextType: BillType) => {
+    const nextSize: BillSize = nextType === 'label' ? '58mm' : form.size === '58mm' ? '80mm' : form.size
+    setForm((current) => ({
+      ...current,
+      type: nextType,
+      size: nextSize,
+      templateContent: current.templateContent.trim() ? current.templateContent : createFormState(nextType, nextSize).templateContent,
+    }))
+  }
+
+  const recommendedTemplates = [
+    { title: 'Mẫu tự động in', subtitle: 'Dùng cho auto print và In đơn 80mm', type: 'receipt' as BillType, size: '80mm' as BillSize },
+    { title: 'Mẫu tem bếp', subtitle: 'Dùng cho nút In phiếu tem 58mm', type: 'label' as BillType, size: '58mm' as BillSize },
+  ]
 
   return (
     <div className="space-y-5">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Hóa đơn mẫu</h1>
-          <p className="page-subtitle">{isLoading ? '...' : `${templates.length} mẫu hóa đơn`}</p>
+          <h1 className="page-title">Hóa đơn mẫu và tem in</h1>
+          <p className="page-subtitle">{isLoading ? 'Đang tải...' : `${templates.length} mẫu đang có`} · Preview trong trang này và auto print dùng cùng renderer.</p>
         </div>
-        <button onClick={() => { setEditTpl(null); setForm({ name: '', type: 'order', size: '80mm', isActive: true, templateContent: '', brandId: '' }); setShowForm(true) }} className="btn-primary">
+        <button onClick={() => openCreate('receipt', '80mm')} className="btn-primary">
           <Plus className="w-4 h-4" /> Tạo mẫu mới
         </button>
       </div>
 
-      {/* Printer bar */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {recommendedTemplates.map((item) => (
+          <div key={item.title} className="card p-5 flex items-start gap-4">
+            <div className="w-11 h-11 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-semibold text-gray-900">{item.title}</h2>
+                <span className={cn('badge', sizeColor[item.size])}>{item.size}</span>
+                <span className="badge badge-gray">{typeLabel[item.type]}</span>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">{item.subtitle}</p>
+              <p className="text-xs text-gray-400 mt-2">{getTemplateGuide(item.type, item.size)}</p>
+            </div>
+            <button onClick={() => openCreate(item.type, item.size)} className="btn-outline btn-sm whitespace-nowrap">Mở editor</button>
+          </div>
+        ))}
+      </div>
+
       <div className="card px-4 py-3 flex items-center gap-3 flex-wrap">
         <Printer className="h-4 w-4 text-gray-400 flex-shrink-0" />
         <span className="text-sm text-gray-700 font-medium">{printerName || 'Chưa cấu hình máy in'}</span>
-        <span className="badge badge-gray">{printerSize}</span>
+        <span className="badge badge-gray">Auto print hiện tại: {printerSize}</span>
         <div className="flex-1" />
-        <button
-          onClick={() => openTestPrint('=== IN THỬ ===\n{{.BillName}}\n{{.SiteName}}\n---\nĐơn: {{.ShortOrderID}}\nKhách: {{.CustomerName}}\nĐịa chỉ: {{.DeliveryAddress}}\n---\nNgày: {{.CurrentTime}}\n=== CẢM ƠN QUÝ KHÁCH ===', printerSize)}
-          className="btn-outline btn-sm gap-1.5"
-        >
-          <Printer className="h-3.5 w-3.5" /> In thử
+        <button onClick={() => openTemplatePrintWindow(getDefaultTemplateContent(getTemplateTypeForPaperSize(printerSize)), getTemplateTypeForPaperSize(printerSize), printerSize)} className="btn-outline btn-sm gap-1.5">
+          <Printer className="h-3.5 w-3.5" /> In thử renderer chung
         </button>
         <Link href="/settings" className="btn-ghost btn-sm text-gray-500 text-xs">Cài đặt máy in →</Link>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {templates.map(tpl => (
-          <div key={tpl._id} className="card p-5 hover:shadow-md transition-shadow">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        {templates.map((template) => (
+          <div key={template._id} className="card p-5 hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between mb-3">
               <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
                 <FileText className="w-5 h-5 text-gray-500" />
               </div>
               <div className="flex items-center gap-1">
-                <button onClick={() => openEdit(tpl)} className="btn-ghost btn-sm p-1.5"><Edit className="w-3.5 h-3.5" /></button>
-                <button onClick={() => setPreview(tpl)} className="btn-ghost btn-sm p-1.5"><Eye className="w-3.5 h-3.5" /></button>
-                <button onClick={() => openTestPrint(tpl.templateContent, tpl.size)} className="btn-ghost btn-sm p-1.5" title="In thử"><Printer className="w-3.5 h-3.5" /></button>
-                <button onClick={() => toggleActive(tpl)} className={cn('btn-ghost btn-sm p-1.5', tpl.isActive ? 'text-green-500' : 'text-gray-400')}>
-                  {tpl.isActive ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                <button onClick={() => openEdit(template)} className="btn-ghost btn-sm p-1.5"><Edit className="w-3.5 h-3.5" /></button>
+                <button onClick={() => setPreviewTemplate(template)} className="btn-ghost btn-sm p-1.5"><Eye className="w-3.5 h-3.5" /></button>
+                <button onClick={() => openTemplatePrintWindow(template.templateContent, template.type, template.size)} className="btn-ghost btn-sm p-1.5" title="In thử"><Printer className="w-3.5 h-3.5" /></button>
+                <button onClick={() => toggleActive(template)} className={cn('btn-ghost btn-sm p-1.5', template.isActive ? 'text-green-500' : 'text-gray-400')}>
+                  {template.isActive ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
                 </button>
               </div>
             </div>
-            <h3 className="font-semibold text-gray-900">{tpl.name}</h3>
-            <div className="flex gap-2 mt-2">
-              <span className="badge badge-gray">{typeLabel[tpl.type]}</span>
-              <span className={cn('badge', sizeColor[tpl.size])}>{tpl.size}</span>
-              <span className={cn('badge', tpl.isActive ? 'badge-green' : 'badge-red')}>
-                {tpl.isActive ? 'Kích hoạt' : 'Tắt'}
-              </span>
+            <h3 className="font-semibold text-gray-900">{template.name}</h3>
+            <div className="flex gap-2 mt-2 flex-wrap">
+              <span className="badge badge-gray">{typeLabel[template.type]}</span>
+              <span className={cn('badge', sizeColor[template.size])}>{template.size}</span>
+              <span className={cn('badge', template.isActive ? 'badge-green' : 'badge-red')}>{template.isActive ? 'Kích hoạt' : 'Tắt'}</span>
             </div>
+            <p className="mt-3 text-xs text-gray-500 line-clamp-3">{getTemplateGuide(template.type, template.size)}</p>
           </div>
         ))}
       </div>
 
-      {/* Edit Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">{editTpl ? 'Chỉnh sửa hóa đơn mẫu' : 'Tạo hóa đơn mẫu'}</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-3 form-group">
-                  <label className="label">Tên hóa đơn</label>
-                  <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Hóa đơn 80mm" />
-                </div>
-                <div className="form-group">
-                  <label className="label">Loại</label>
-                  <select className="input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
-                    <option value="order">Đơn hàng</option>
-                    <option value="delivery">Giao hàng</option>
-                    <option value="receipt">Biên lai</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="label">Kích thước</label>
-                  <select className="input" value={form.size} onChange={e => setForm({ ...form, size: e.target.value })}>
-                    <option value="A4">A4</option>
-                    <option value="A5">A5</option>
-                    <option value="80mm">80mm</option>
-                    <option value="58mm">58mm</option>
-                  </select>
-                </div>
-                <div className="form-group flex items-end">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={form.isActive} onChange={e => setForm({ ...form, isActive: e.target.checked })} className="rounded" />
-                    <span className="text-sm font-medium text-gray-700">Kích hoạt</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Variables helper */}
+        <div className="fixed inset-0 z-50 bg-black/55 p-4 overflow-y-auto">
+          <div className="max-w-7xl mx-auto bg-white rounded-[28px] shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <p className="label">Biến template (click để chèn)</p>
-                <div className="flex flex-wrap gap-1.5 mt-1">
-                  {TEMPLATE_VARS.map(v => (
-                    <button key={v} onClick={() => insertVar(v)} className="text-xs bg-orange-50 text-orange-600 px-2 py-1 rounded font-mono hover:bg-orange-100 transition-colors">
-                      {v}
+                <h2 className="text-lg font-semibold text-gray-900">{editTemplate ? 'Sửa mẫu in' : 'Tạo mẫu in mới'}</h2>
+                <p className="text-sm text-gray-500 mt-1">Editor text bên trái, preview live bên phải. {getTemplateGuide(form.type, form.size)}</p>
+              </div>
+              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] min-h-[75vh]">
+              <div className="p-6 space-y-5 border-r border-gray-100">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="md:col-span-4 form-group">
+                    <label className="label">Tên mẫu</label>
+                    <input className="input" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ví dụ: Phiếu tự động in 80mm" />
+                  </div>
+                  <div className="form-group md:col-span-2">
+                    <label className="label">Loại mẫu</label>
+                    <select className="input" value={form.type} onChange={(event) => handleTypeChange(event.target.value as BillType)}>
+                      <option value="receipt">Mẫu tự động in</option>
+                      <option value="label">Mẫu tem 58mm</option>
+                      <option value="delivery">Phiếu giao hàng</option>
+                      <option value="order">Mẫu order cũ</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Khổ giấy</label>
+                    <select className="input" value={form.size} onChange={(event) => setForm({ ...form, size: event.target.value as BillSize })}>
+                      <option value="A4">A4</option>
+                      <option value="A5">A5</option>
+                      <option value="80mm">80mm</option>
+                      <option value="58mm">58mm</option>
+                    </select>
+                  </div>
+                  <div className="form-group flex items-end">
+                    <label className="flex items-center gap-2 cursor-pointer min-h-11">
+                      <input type="checkbox" checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} className="rounded" />
+                      <span className="text-sm font-medium text-gray-700">Kích hoạt</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-orange-100 bg-orange-50/60 p-4">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">Biến template</p>
+                      <p className="text-xs text-gray-500 mt-1">Click để chèn vào editor text. Hỗ trợ {'{{range .Items}} ... {{end}}'} cho danh sách món.</p>
+                    </div>
+                    <button onClick={() => setForm((current) => ({ ...current, templateContent: getDefaultTemplateContent(form.type === 'label' ? 'label' : form.type === 'delivery' ? 'delivery' : 'receipt') }))} className="btn-outline btn-sm whitespace-nowrap">Nạp mẫu gợi ý</button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-3">
+                    {PRINT_TEMPLATE_VARIABLES.map((item) => (
+                      <button key={item.token} onClick={() => insertVariable(item.token)} className="text-xs bg-white text-orange-700 px-2.5 py-1.5 rounded-lg font-mono border border-orange-200 hover:bg-orange-100 transition-colors" title={`${item.label}: ${item.example}`}>
+                        {item.token}
+                      </button>
+                    ))}
+                    <button onClick={() => insertVariable('{{range .Items}}\n{{.Name}} x{{.Qty}}\n  {{.Total}}\n{{.NoteLine}}\n{{end}}')} className="text-xs bg-white text-orange-700 px-2.5 py-1.5 rounded-lg font-mono border border-orange-200 hover:bg-orange-100 transition-colors">
+                      {'{{range .Items}} ... {{end}}'}
                     </button>
-                  ))}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="label">Nội dung text template</label>
+                  <textarea className="input min-h-[420px] resize-y font-mono text-[12px] leading-6" value={form.templateContent} onChange={(event) => setForm({ ...form, templateContent: event.target.value })} placeholder="Nhập nội dung template..." />
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="label">Nội dung template</label>
-                <textarea
-                  className="input font-mono text-xs"
-                  rows={12}
-                  value={form.templateContent}
-                  onChange={e => setForm({ ...form, templateContent: e.target.value })}
-                  placeholder="Nhập nội dung template hóa đơn..."
-                />
+              <div className="bg-[#f6f1e8] p-6 xl:sticky xl:top-0 xl:max-h-[85vh] overflow-y-auto">
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">Preview live</p>
+                    <p className="text-xs text-gray-500 mt-1">Đây là renderer thật đang được dùng cho preview và trang in.</p>
+                  </div>
+                  <button onClick={() => openTemplatePrintWindow(form.templateContent, form.type, form.size)} className="btn-primary btn-sm gap-1.5 whitespace-nowrap">
+                    <Printer className="h-3.5 w-3.5" /> In thử
+                  </button>
+                </div>
+
+                <div className="rounded-[24px] border border-black/5 bg-white shadow-[0_20px_45px_rgba(15,23,42,0.10)] p-5">
+                  <div className="mb-3 flex items-center gap-2 text-[11px] text-gray-500 uppercase tracking-[0.22em]">
+                    <span>{typeLabel[form.type]}</span>
+                    <span>•</span>
+                    <span>{form.size}</span>
+                  </div>
+                  <div className="mx-auto bg-white text-black font-mono text-xs leading-5" style={{ width: form.size === '58mm' ? '58mm' : form.size === 'A4' ? '210mm' : form.size === 'A5' ? '148mm' : '80mm', maxWidth: '100%', padding: '10px' }} dangerouslySetInnerHTML={{ __html: livePreviewHtml }} />
+                </div>
               </div>
             </div>
-            <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button onClick={() => setShowForm(false)} className="btn-outline">Hủy</button>
-              <button onClick={handleSave} className="btn-primary">Lưu</button>
+              <button onClick={handleSave} className="btn-primary" disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu mẫu'}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Preview Modal */}
-      {preview && (
+      {previewTemplate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">Xem trước: {preview.name}</h2>
-              <button onClick={() => setPreview(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+              <div>
+                <h2 className="font-semibold text-gray-900">Xem nhanh: {previewTemplate.name}</h2>
+                <p className="text-xs text-gray-500 mt-1">{getTemplateGuide(previewTemplate.type, previewTemplate.size)}</p>
+              </div>
+              <button onClick={() => setPreviewTemplate(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
-            <div className="p-6">
-              <div className="bg-gray-100 rounded-lg p-4 flex justify-center">
-                <div
-                  className="bg-white shadow-md rounded font-mono text-xs leading-relaxed max-h-80 overflow-y-auto p-3"
-                  style={{ width: preview.size === '58mm' ? '58mm' : '80mm', minWidth: '200px', wordBreak: 'break-word' }}
-                  dangerouslySetInnerHTML={{ __html: textToReceiptHtml(fillSampleData(preview.templateContent)) }}
-                />
+            <div className="p-6 bg-[#f6f1e8]">
+              <div className="bg-white rounded-2xl shadow-sm p-4">
+                <div className="mx-auto font-mono text-xs leading-5" style={{ width: previewTemplate.size === '58mm' ? '58mm' : previewTemplate.size === 'A4' ? '210mm' : previewTemplate.size === 'A5' ? '148mm' : '80mm', maxWidth: '100%' }} dangerouslySetInnerHTML={{ __html: renderPrintTemplateHtml(previewTemplate.templateContent, buildDemoPrintTemplateContext(previewTemplate.type === 'label' ? 'label' : previewTemplate.type === 'delivery' ? 'delivery' : 'receipt'), [
+                  { name: 'Trà sữa trân châu', quantity: 2, price: 35000, total: 70000, note: 'Ít đá' },
+                  { name: 'Cơm sườn trứng', quantity: 1, price: 70000, total: 70000 },
+                ]) }} />
               </div>
             </div>
             <div className="px-6 pb-5 flex justify-end gap-2">
-              <button onClick={() => openTestPrint(preview.templateContent, preview.size)} className="btn-outline gap-1.5">
+              <button onClick={() => openTemplatePrintWindow(previewTemplate.templateContent, previewTemplate.type, previewTemplate.size)} className="btn-outline gap-1.5">
                 <Printer className="h-4 w-4" /> In thử
               </button>
-              <button onClick={() => setPreview(null)} className="btn-primary">Đóng</button>
+              <button onClick={() => setPreviewTemplate(null)} className="btn-primary">Đóng</button>
             </div>
           </div>
         </div>

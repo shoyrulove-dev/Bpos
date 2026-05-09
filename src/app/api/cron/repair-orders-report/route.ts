@@ -17,8 +17,12 @@ export async function GET(req: NextRequest) {
     .map((value) => value.trim())
     .filter(Boolean)
   const limit = Math.max(1, Math.min(100, Number(req.nextUrl.searchParams.get('limit') ?? 20) || 20))
+  const externalOrderIds = (req.nextUrl.searchParams.get('orderIds') ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
 
   await connectDB()
-  const result = await getOrderRepairReport({ providers, limit })
+  const result = await getOrderRepairReport({ providers, limit, externalOrderIds })
   return NextResponse.json(result)
 }

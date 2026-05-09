@@ -40,7 +40,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
 
         <footer className="text-center text-xs text-gray-400 py-3 border-t border-gray-200 bg-white">
-          BPOS Portal v1.0.0 · © 2024
+          BPOS Portal v1.0.0 · © 2026
         </footer>
       </div>
     </div>
