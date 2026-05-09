@@ -184,7 +184,7 @@ async function repairStoredOrders(providers: string[], options?: { externalOrder
   const forceCancelledOrderIdSet = options?.forceCancelledOrderIds?.length ? new Set(options.forceCancelledOrderIds) : null
 
   const cursor = OrderModel.find({ source: { $in: providers } })
-    .select('source customerPhone driverInfo subtotal discount total platformFee status cancelReason cancelledAt deliveredAt rawPayload')
+    .select('source externalOrderId customerPhone driverInfo subtotal discount total platformFee status cancelReason cancelledAt deliveredAt updatedAt rawPayload')
     .lean()
     .cursor()
 
