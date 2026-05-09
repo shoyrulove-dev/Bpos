@@ -581,7 +581,7 @@ export async function getOrderRepairReport(options?: { providers?: string[]; lim
   let changed = 0
 
   const cursor = OrderModel.find({ source: { $in: providers } })
-    .select('source externalOrderId customerPhone driverInfo subtotal discount total platformFee status cancelReason cancelledAt deliveredAt rawPayload')
+    .select('shortId source externalOrderId customerPhone driverInfo subtotal discount total platformFee status cancelReason cancelledAt deliveredAt rawPayload')
     .lean()
     .cursor()
 
