@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Plus, Search, Building2, Phone, MapPin, Tag, Edit, Trash2, Loader2 } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Plus, Search, Building2, Phone, MapPin, Tag, Edit, Trash2, Loader2, Upload, X } from 'lucide-react'
 import { useBrands, useCreateBrand, useUpdateBrand, useDeleteBrand } from '@/hooks/use-brands'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn, BRAND_TYPE_LABEL } from '@/lib/utils'
@@ -45,6 +45,21 @@ export default function BrandsPage() {
   const [showForm, setShowForm] = useState(false)
   const [editBrand, setEditBrand] = useState<Brand | null>(null)
   const [form, setForm] = useState(emptyForm)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Ảnh không được lớn hơn 2MB')
+      e.target.value = ''
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => setForm(f => ({ ...f, logo: reader.result as string }))
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
 
   const dq = useDebounce(search)
   const { data: brands = [], isLoading, error } = useBrands({ q: dq, type: typeFilter })
@@ -195,12 +210,39 @@ export default function BrandsPage() {
                 <input className="input" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="123 Nguyễn Huệ, Q.1..." />
               </div>
               <div className="form-group">
-                <label className="label">Logo (URL hình ảnh)</label>
-                <input className="input" value={form.logo} onChange={e => setForm({ ...form, logo: e.target.value })} placeholder="https://..." />
+                <label className="label">Logo</label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1 min-w-0">
+                    <input
+                      className="input text-sm"
+                      value={form.logo.startsWith('data:') ? '' : form.logo}
+                      onChange={e => setForm({ ...form, logo: e.target.value })}
+                      placeholder="https://..."
+                      readOnly={form.logo.startsWith('data:')}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-outline shrink-0 flex items-center gap-1.5 text-sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Upload ảnh từ thiết bị"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span className="hidden sm:inline">Tải lên</span>
+                  </button>
+                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+                </div>
                 {form.logo && (
                   <div className="mt-2 flex items-center gap-2">
                     <img src={form.logo} alt="preview" className="h-14 w-14 rounded-xl border object-contain bg-white p-1" onError={e => (e.currentTarget.style.display = 'none')} />
-                    <span className="text-xs text-gray-400">Preview</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-gray-500 truncate">
+                        {form.logo.startsWith('data:') ? '📁 Ảnh đã tải lên từ thiết bị' : form.logo.length > 50 ? `${form.logo.slice(0, 30)}...${form.logo.slice(-17)}` : form.logo}
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => setForm({ ...form, logo: '' })} className="text-gray-400 hover:text-red-500 shrink-0">
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 )}
               </div>

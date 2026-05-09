@@ -1,11 +1,13 @@
 import { NextRequest } from 'next/server'
 import { connectDB } from '@/lib/db'
 import OrderModel from '@/models/Order'
+import '@/models/Brand'
+import '@/models/Hub'
 import { ok, err, requireAuth } from '@/lib/api-helpers'
 import { buildOrderFilterFromSearchParams } from '@/lib/order-query'
 
 const ORDER_STATUS_KEYS = ['draft', 'pre_order', 'waiting_confirm', 'waiting_pickup', 'delivering', 'completed', 'cancelled'] as const
-const ORDER_LIST_SELECT = 'shortId source externalOrderId brandId hubId channelId customerName customerPhone items.name items.quantity discount subtotal total platformFee paymentMethod deliveryInfo driverInfo note status placedAt deliveredAt createdAt updatedAt'
+const ORDER_LIST_SELECT = 'shortId source externalOrderId brandId hubId channelId customerName customerPhone items.name items.quantity discount subtotal total platformFee paymentMethod deliveryInfo driverInfo note status placedAt deliveredAt createdAt updatedAt rawPayload'
 
 type PopulatedRef = { _id?: { toString(): string } | string; name?: string } | string | null | undefined
 
@@ -32,8 +34,19 @@ export async function GET(req: NextRequest) {
   const filter = buildOrderFilterFromSearchParams(searchParams)
   const countFilter = { ...filter }
   delete countFilter.status
+  // Use Vietnam timezone (UTC+7) for day boundaries
+  const VN_OFFSET_MS = 7 * 60 * 60 * 1000
+  const vnNowMs = Date.now() + VN_OFFSET_MS
+  const vnDayStartMs = Math.floor(vnNowMs / (24 * 60 * 60 * 1000)) * (24 * 60 * 60 * 1000)
+  const todayStart = new Date(vnDayStartMs - VN_OFFSET_MS)
+  const tomorrowStart = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000)
+  const todayStatusFilter = {
+    ...(searchParams.get('source') ? { source: searchParams.get('source') as string } : {}),
+    ...(searchParams.get('brandId') ? { brandId: searchParams.get('brandId') as string } : {}),
+    placedAt: { $gte: todayStart, $lt: tomorrowStart },
+  }
   const skip = (page - 1) * limit
-  const [orderRows, total, statusRows] = await Promise.all([
+  const [orderRows, total, statusRows, todayStatusRows] = await Promise.all([
     OrderModel.find(filter)
       .select(ORDER_LIST_SELECT)
       .populate('brandId', 'name')
@@ -43,6 +56,10 @@ export async function GET(req: NextRequest) {
     OrderModel.countDocuments(filter),
     OrderModel.aggregate([
       { $match: countFilter },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]),
+    OrderModel.aggregate([
+      { $match: todayStatusFilter },
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]),
   ])
@@ -58,6 +75,17 @@ export async function GET(req: NextRequest) {
     }
   })
 
+  const todayStatusCounts = ORDER_STATUS_KEYS.reduce((acc, key) => {
+    acc[key] = 0
+    return acc
+  }, {} as Record<(typeof ORDER_STATUS_KEYS)[number], number>)
+
+  todayStatusRows.forEach((row) => {
+    if (typeof row._id === 'string' && row._id in todayStatusCounts) {
+      todayStatusCounts[row._id as keyof typeof todayStatusCounts] = Number(row.count || 0)
+    }
+  })
+
   const orders = orderRows.map((order) => ({
     ...order,
     brandId: getRefId(order.brandId),
@@ -68,7 +96,7 @@ export async function GET(req: NextRequest) {
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
-  return ok({ orders, total, page, limit, totalPages, statusCounts })
+  return ok({ orders, total, page, limit, totalPages, statusCounts, todayStatusCounts })
 }
 
 export async function POST(req: NextRequest) {

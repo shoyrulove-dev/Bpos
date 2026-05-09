@@ -1,11 +1,15 @@
 import type { PlatformAdapter, AdapterConfig, SessionData } from '@/integrations/types'
+import { mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import type { NormalizedOrder } from '@/types'
 
 export const RECENT_HISTORY_LOOKBACK_MS = 6 * 60 * 60 * 1000
 const RECENT_HISTORY_DAYS = 1
 
 export function buildSessionStoreId(externalStoreId: string | undefined, session: SessionData) {
-  return externalStoreId ?? session.extraHeaders?.['x-grab-store-id'] ?? session.extraHeaders?.['x-restaurant-id'] ?? ''
+  return session.extraHeaders?.['x-grab-store-id']
+    ?? session.extraHeaders?.['x-restaurant-id']
+    ?? externalStoreId
+    ?? ''
 }
 
 export function filterRecentHistoricalOrders(
@@ -17,6 +21,8 @@ export function filterRecentHistoricalOrders(
   const cutoff = now - lookbackMs
 
   return orders.filter((order) => {
+    // Always include cancelled orders so their status is synced regardless of when they were placed
+    if (order.orderStatus === 'cancelled') return true
     const placedAt = new Date(order.placedAt).getTime()
     return Number.isFinite(placedAt) && placedAt >= cutoff
   })
@@ -28,7 +34,9 @@ export function mergeOrdersByExternalOrderId(...groups: NormalizedOrder[][]) {
   for (const orders of groups) {
     for (const order of orders) {
       if (!order.externalOrderId) continue
-      merged.set(order.externalOrderId, order)
+
+      const existing = merged.get(order.externalOrderId)
+      merged.set(order.externalOrderId, existing ? mergeNormalizedOrderPreservingDetail(existing, order) : order)
     }
   }
 

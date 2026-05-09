@@ -10,8 +10,11 @@ export async function GET(req: NextRequest) {
   if (res) return res
   await connectDB()
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  // Use Vietnam timezone (UTC+7) for day boundaries
+  const VN_OFFSET_MS = 7 * 60 * 60 * 1000
+  const vnNowMs = Date.now() + VN_OFFSET_MS
+  const vnDayStartMs = Math.floor(vnNowMs / (24 * 60 * 60 * 1000)) * (24 * 60 * 60 * 1000)
+  const todayStart = new Date(vnDayStartMs - VN_OFFSET_MS)
 
   const [
     totalOrders,
@@ -22,11 +25,11 @@ export async function GET(req: NextRequest) {
     allOrders,
   ] = await Promise.all([
     OrderModel.countDocuments(),
-    OrderModel.countDocuments({ placedAt: { $gte: today } }),
+    OrderModel.countDocuments({ placedAt: { $gte: todayStart }, status: { $ne: 'cancelled' } }),
     BrandModel.countDocuments({ status: 'active' }),
     HubModel.countDocuments({ status: 'active' }),
     OrderModel.countDocuments({ status: { $in: ['waiting_confirm', 'draft'] } }),
-    OrderModel.find({ placedAt: { $gte: today } }).select('total discount platformFee').lean(),
+    OrderModel.find({ placedAt: { $gte: todayStart }, status: { $ne: 'cancelled' } }).select('total discount platformFee').lean(),
   ])
 
   const revenueToday = allOrders.reduce((s, o) => s + (o.total || 0), 0)
