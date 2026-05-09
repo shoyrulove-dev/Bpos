@@ -210,7 +210,32 @@ function extractDeliveredDate(normalized: NormalizedOrder) {
   )
 }
 
+function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
+  const rawPayload = normalized.rawPayload ?? {}
+
+  if (
+    parseDateValue(rawPayload.cancelledAt)
+    || parseDateValue(rawPayload.canceledAt)
+    || parseDateValue(rawPayload.cancelled_at)
+    || rawPayload.cancelCode
+  ) {
+    return 'cancelled' as const
+  }
+
+  if (
+    parseDateValue(normalized.deliveredAt)
+    || parseDateValue(rawPayload.deliveredAt)
+    || parseDateValue(rawPayload.completedAt)
+    || parseDateValue(rawPayload.deliveryCompletedAt)
+  ) {
+    return 'completed' as const
+  }
+
+  return normalized.orderStatus
+}
+
 export function buildOrderUpsert(integration: IntegrationRef, normalized: NormalizedOrder) {
+  const resolvedOrderStatus = resolveNormalizedOrderStatus(normalized)
   const financialBreakdown = getFinancialBreakdown(normalized as unknown as Order)
   const recoveredDriverName = getDisplayDriverName(normalized as unknown as Order)
   const customerName = pickPreferredName(
@@ -230,7 +255,7 @@ export function buildOrderUpsert(integration: IntegrationRef, normalized: Normal
     : normalized.discount
 
   const baseSet: Record<string, unknown> = {
-    status: normalized.orderStatus,
+    status: resolvedOrderStatus,
     customerName,
     customerPhone,
     items: normalized.items,
@@ -249,7 +274,7 @@ export function buildOrderUpsert(integration: IntegrationRef, normalized: Normal
 
   const unsetFields: Record<string, ''> = {}
 
-  if (normalized.orderStatus === 'completed') {
+  if (resolvedOrderStatus === 'completed') {
     const deliveredAt = extractDeliveredDate(normalized)
     if (deliveredAt) {
       baseSet.deliveredAt = deliveredAt
@@ -258,7 +283,7 @@ export function buildOrderUpsert(integration: IntegrationRef, normalized: Normal
     }
     unsetFields.cancelledAt = ''
     unsetFields.cancelReason = ''
-  } else if (normalized.orderStatus === 'cancelled') {
+  } else if (resolvedOrderStatus === 'cancelled') {
     baseSet.cancelledAt = extractCancellationDate(normalized)
     const cancelReason = extractCancellationReason(normalized.rawPayload ?? {})
     if (cancelReason) {

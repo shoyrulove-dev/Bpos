@@ -1,5 +1,6 @@
 import type { NormalizedOrder, OrderItem, OrderStatus } from '@/types'
 import { normalizeCompactPhone } from '@/lib/phone'
+import { mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import type { PlatformAdapter, AdapterConfig, SessionData } from './types'
 
 // GrabFood Partner API (POS) v1.1.3
@@ -117,6 +118,22 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
 
 export class GrabAdapter implements PlatformAdapter {
   source = 'grab' as const
+
+  private getGrabItemUnitPrice(rawItem: Record<string, unknown>) {
+    const fare = rawItem.fare && typeof rawItem.fare === 'object' && !Array.isArray(rawItem.fare)
+      ? rawItem.fare as Record<string, unknown>
+      : undefined
+
+    return Number(
+      fare?.priceFloat ??
+      fare?.priceInMin ??
+      rawItem.itemPrice ??
+      rawItem.price ??
+      rawItem.unitPrice ??
+      this.parseGrabDisplayAmount(fare?.priceDisplay) ??
+      0
+    )
+  }
 
   private async enrichOrdersWithDetails(rawOrders: Record<string, unknown>[], config: AdapterConfig) {
     const detailMap = new Map<string, NormalizedOrder>()
@@ -652,6 +669,18 @@ export class GrabAdapter implements PlatformAdapter {
 
     const pageDetail = await this.fetchPortalOrderDetailPageWithSession(rawOrder, baseHeaders, discoveredStoreId)
     if (pageDetail) {
+      if (bestDetail) {
+        const mergedDetail = mergeNormalizedOrderPreservingDetail(bestDetail, {
+          ...pageDetail,
+          rawPayload: {
+            ...(bestDetail.rawPayload ?? {}),
+            ...(pageDetail.rawPayload ?? {}),
+          },
+        })
+        const mergedScore = this.scoreNormalizedGrabPortalDetail(mergedDetail)
+        if (mergedScore >= bestScore) return mergedDetail
+      }
+
       const pageScore = this.scoreNormalizedGrabPortalDetail(pageDetail)
       if (pageScore > bestScore) return pageDetail
     }
@@ -975,8 +1004,8 @@ export class GrabAdapter implements PlatformAdapter {
     const items: OrderItem[] = itemsRaw.map(i => ({
       name:     String(i.name ?? i.itemName ?? ''),
       quantity: Number(i.quantity ?? 1),
-      price:    Number(i.itemPrice ?? i.price ?? i.unitPrice ?? 0),
-      total:    Number(i.quantity ?? 1) * Number(i.itemPrice ?? i.price ?? i.unitPrice ?? 0),
+      price:    this.getGrabItemUnitPrice(i),
+      total:    Number(i.quantity ?? 1) * this.getGrabItemUnitPrice(i),
     }))
 
     const rawStatus = String(raw.deliveryStatus ?? raw.orderState ?? raw.status ?? raw.orderStatus ?? raw.state ?? '')
@@ -1008,15 +1037,15 @@ export class GrabAdapter implements PlatformAdapter {
       raw.orderTotal ??
       this.parseGrabDisplayAmount(raw.priceDisplay ?? raw.orderValue)
     )
-    const actualReceived = Number(
-      priceObj.merchantPayment ??
-      priceObj.merchantReceivable ??
-      priceObj.payToMerchant ??
-      raw.merchantReceivable ??
-      raw.receivedAmount ??
+    const platformFee = Number(
+      priceObj.platformCommission ??
+      priceObj.platformFee ??
+      raw.platformCommission ??
+      raw.platformFee ??
+      raw.merchantCommission ??
+      raw.commissionFee ??
       0
     )
-    const platformFee = actualReceived > 0 ? Math.max(0, total - actualReceived) : 0
 
     const delivery = (raw.delivery ?? {}) as Record<string, unknown>
     const dropoff  = (delivery.dropoff ?? {}) as Record<string, unknown>
@@ -1065,8 +1094,8 @@ export class GrabAdapter implements PlatformAdapter {
     const items: OrderItem[] = (((raw.items as Record<string, unknown>[]) ?? (itemInfo?.items as Record<string, unknown>[] | undefined) ?? [])).map((i) => ({
       name:     String(i.name ?? i.itemName ?? ''),
       quantity: Number(i.quantity ?? 1),
-      price:    Number(i.price ?? i.itemPrice ?? i.unitPrice ?? 0),
-      total:    Number(i.quantity ?? 1) * Number(i.price ?? i.itemPrice ?? i.unitPrice ?? 0),
+      price:    this.getGrabItemUnitPrice(i),
+      total:    Number(i.quantity ?? 1) * this.getGrabItemUnitPrice(i),
     }))
 
     // orderState field (not 'state')
@@ -1090,7 +1119,15 @@ export class GrabAdapter implements PlatformAdapter {
     const subtotal = Number(price?.subtotal ?? this.parseGrabDisplayAmount(raw.orderValue) ?? 0)
     const discount = Number(price?.basketPromo ?? 0)
     const total = Number(price?.eaterPayment ?? this.parseGrabDisplayAmount(raw.orderValue) ?? 0)
-    const actualReceived = Number(price?.merchantPayment ?? price?.merchantReceivable ?? 0)
+    const platformFee = Number(
+      price?.platformCommission ??
+      price?.platformFee ??
+      raw.platformCommission ??
+      raw.platformFee ??
+      raw.merchantCommission ??
+      raw.commissionFee ??
+      0
+    )
 
     return {
       source:          'grab',
@@ -1102,7 +1139,7 @@ export class GrabAdapter implements PlatformAdapter {
       subtotal,
       discount,
       total,
-      platformFee:     actualReceived > 0 ? Math.max(0, total - actualReceived) : 0,
+      platformFee,
       paymentMethod:   String(raw.paymentType ?? ''),
       deliveryInfo: {
         address: String(receiverAddress?.address ?? receiverAddress?.formattedAddress ?? ''),

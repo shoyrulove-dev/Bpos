@@ -61,6 +61,18 @@ export function useCreateOrder() {
   })
 }
 
+export function useMarkGrabOrderReady() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => fetchJSON(`/api/orders/${id}/grab-ready`, { method: 'POST' }),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ['orders'] })
+      qc.invalidateQueries({ queryKey: ['order', id] })
+      qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
+    },
+  })
+}
+
 // ---- Channels ----
 export function useChannels(params?: { q?: string; brandId?: string }) {
   const sp = new URLSearchParams()

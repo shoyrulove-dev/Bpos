@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, Loader2, MapPin, Phone, Printer, RefreshCw, TicketPercent, Truck, UtensilsCrossed } from 'lucide-react'
+import { ArrowLeft, Loader2, MapPin, Phone, Printer, RefreshCw, TicketPercent, Truck } from 'lucide-react'
 import { useOrder } from '@/hooks/use-orders-channels'
 import { getActualReceived as getSettlementActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown, getGrabMoneyBreakdown as getSettlementGrabMoneyBreakdown } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
@@ -34,52 +34,6 @@ function parseAmount(value: unknown) {
 
 function getRecord(value: unknown) {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
-}
-
-function getBreakdownAmount(raw: Record<string, unknown>, keys: string[]) {
-  const sources = [getRecord(raw.financialBreakdown), raw]
-
-  for (const source of sources) {
-    if (!source) continue
-
-    for (const key of keys) {
-      const amount = parseAmount(source[key])
-      if (typeof amount === 'number') return amount
-    }
-  }
-
-  return undefined
-}
-
-function extractPhone(value?: string) {
-  const match = String(value ?? '').match(/((?:\+?84|0)\d[\d .-]{7,13}\d)/)
-  return match?.[1]?.trim()
-}
-
-function getGrabFareRecord(order: Order) {
-  const raw = getRecord(order.rawPayload)
-  return getRecord(raw?.fare)
-}
-
-function getGrabItemDiscountTotal(order: Order) {
-  const raw = getRecord(order.rawPayload)
-  const itemInfo = getRecord(raw?.itemInfo)
-  const items = Array.isArray(itemInfo?.items) ? itemInfo.items : []
-
-  let totalDiscount = 0
-
-  for (const item of items) {
-    const itemRecord = getRecord(item)
-    const discounts = Array.isArray(itemRecord?.discountInfo) ? itemRecord.discountInfo : []
-
-    for (const discount of discounts) {
-      const discountRecord = getRecord(discount)
-      const amount = parseAmount(discountRecord?.itemDiscountPriceDisplay)
-      if (typeof amount === 'number') totalDiscount += amount
-    }
-  }
-
-  return totalDiscount
 }
 
 function getGrabTimeline(order: Order) {
@@ -129,23 +83,30 @@ function getGrabTimeline(order: Order) {
 }
 
 function getGrabDetailItems(order: Order) {
-  if (order.items.length && order.items.some((item) => (item.price ?? 0) > 0 || (item.total ?? 0) > 0)) {
-    return order.items.map((item) => ({
-      ...item,
-      addonLines: [],
-    }))
-  }
-
   const raw = getRecord(order.rawPayload)
   const itemInfo = getRecord(raw?.itemInfo)
   const rawItems = Array.isArray(itemInfo?.items) ? itemInfo.items : []
 
-  return rawItems.map((item) => {
+  if (!rawItems.length && order.items.length && order.items.some((item) => (item.price ?? 0) > 0 || (item.total ?? 0) > 0)) {
+    return order.items.map((item): GrabDetailItem => ({
+      name: item.name,
+      quantity: Number(item.quantity ?? 1),
+      originalPrice: Number(item.price ?? 0),
+      strikePrice: 0,
+      sellingPrice: Number(item.price ?? 0),
+      total: Number(item.total ?? 0),
+      note: item.note,
+      addonGroups: [],
+    }))
+  }
+
+  return rawItems.map((item): GrabDetailItem => {
     const record = getRecord(item)
     const fare = getRecord(record?.fare)
+    const discountInfo = Array.isArray(record?.discountInfo) ? record.discountInfo : []
     const modifierGroups = Array.isArray(record?.modifierGroups) ? record.modifierGroups : []
     const quantity = Number(record?.quantity ?? 1)
-    const price = Number(
+    const sellingPrice = Number(
       fare?.priceFloat ??
       fare?.priceInMin ??
       parseAmount(fare?.priceDisplay) ??
@@ -154,27 +115,40 @@ function getGrabDetailItems(order: Order) {
       record?.unitPrice ??
       0
     )
+    const itemDiscountTotal = discountInfo.reduce((sum, discount) => {
+      const discountRecord = getRecord(discount)
+      const amount = parseAmount(discountRecord?.itemDiscountPriceDisplay ?? discountRecord?.discountAmount ?? discountRecord?.amount)
+      return sum + (typeof amount === 'number' ? amount : 0)
+    }, 0)
+    const strikePrice = quantity > 0 ? Math.round(itemDiscountTotal / quantity) : itemDiscountTotal
+    const originalPrice = sellingPrice + strikePrice
 
-    const addonLines = modifierGroups.flatMap((group) => {
+    const addonGroups = modifierGroups.map((group) => {
       const groupRecord = getRecord(group)
       const modifiers = Array.isArray(groupRecord?.modifiers) ? groupRecord.modifiers : []
+      const title = String(groupRecord?.modifierGroupName ?? groupRecord?.name ?? '').trim() || 'Tùy chọn'
 
-      return modifiers.map((modifier) => {
+      const lines = modifiers.map((modifier) => {
         const modifierRecord = getRecord(modifier)
         const modifierQuantity = Number(modifierRecord?.quantity ?? 1)
         const quantityLabel = modifierQuantity > 1 ? `${modifierQuantity} x ` : ''
-        const priceLabel = parseAmount(modifierRecord?.priceDisplay ?? modifierRecord?.price)
-        return `${quantityLabel}${String(modifierRecord?.name ?? '').trim()}${typeof priceLabel === 'number' && priceLabel > 0 ? ` ${formatCurrency(priceLabel)}` : ''}`.trim()
+        const modifierName = String(modifierRecord?.modifierName ?? modifierRecord?.name ?? '').trim()
+        const priceLabel = parseAmount(modifierRecord?.priceDisplay ?? modifierRecord?.revampedPriceDisplay ?? modifierRecord?.price)
+        return `${quantityLabel}${modifierName}${typeof priceLabel === 'number' && priceLabel > 0 ? ` ${formatCurrency(priceLabel)}` : ''}`.trim()
       }).filter(Boolean)
+
+      return { title, lines }
     })
 
     return {
       name: String(record?.name ?? ''),
       quantity,
-      price,
-      total: Number(record?.total ?? (quantity * price)),
+      originalPrice,
+      strikePrice,
+      sellingPrice,
+      total: Number(record?.total ?? (quantity * sellingPrice)),
       note: String(record?.comment ?? '').trim() || undefined,
-      addonLines,
+      addonGroups: addonGroups.filter((group) => group.lines.length > 0),
     }
   })
 }
@@ -264,6 +238,22 @@ type GrabVoucherLine = {
   title: string
   discountValue: number | undefined
   scopeLabel: string
+}
+
+type GrabAddonGroup = {
+  title: string
+  lines: string[]
+}
+
+type GrabDetailItem = {
+  name: string
+  quantity: number
+  originalPrice: number
+  strikePrice: number
+  sellingPrice: number
+  total: number
+  note?: string
+  addonGroups: GrabAddonGroup[]
 }
 
 function buildGrabVoucherLine(value: unknown, scopeLabel: string): GrabVoucherLine | null {
@@ -513,8 +503,10 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
               <thead className="bg-gray-100 text-gray-500 text-xs">
                 <tr>
                   <th className="px-3 py-2.5 font-medium">Món</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Giá</th>
                   <th className="px-3 py-2.5 text-center font-medium">SL</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Giá gốc</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Gạch giá</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Giá bán</th>
                   <th className="px-3 py-2.5 text-right font-medium">Thành tiền</th>
                 </tr>
               </thead>
@@ -524,10 +516,23 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
                     <td className="px-3 py-2.5">
                       <p className="text-base font-semibold text-gray-950">{item.name}</p>
                       {item.note && <p className="mt-0.5 whitespace-pre-line text-xs text-gray-500">{item.note}</p>}
-                      {item.addonLines.length > 0 && <div className="mt-0.5 space-y-0.5 text-xs text-gray-500">{item.addonLines.map((addon, addonIndex) => <p key={`${addon}-${addonIndex}`}>• {addon}</p>)}</div>}
+                      {item.addonGroups.length > 0 && (
+                        <div className="mt-1.5 space-y-1.5 text-xs text-gray-500">
+                          {item.addonGroups.map((group, groupIndex) => (
+                            <div key={`${group.title}-${groupIndex}`}>
+                              <p className="font-medium text-gray-600">{group.title}</p>
+                              <div className="space-y-0.5">
+                                {group.lines.map((addon, addonIndex) => <p key={`${addon}-${addonIndex}`}>• {addon}</p>)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </td>
-                    <td className="px-3 py-2.5 text-right text-sm text-gray-700">{renderAmountCell(item.price)}</td>
                     <td className="px-3 py-2.5 text-center text-sm font-medium text-gray-900">{item.quantity}</td>
+                    <td className="px-3 py-2.5 text-right text-sm text-gray-700">{renderAmountCell(item.originalPrice)}</td>
+                    <td className="px-3 py-2.5 text-right text-sm text-gray-700">{renderAmountCell(item.strikePrice)}</td>
+                    <td className="px-3 py-2.5 text-right text-sm text-gray-700">{renderAmountCell(item.sellingPrice)}</td>
                     <td className="px-3 py-2.5 text-right text-sm font-semibold text-gray-950">{renderAmountCell(item.total)}</td>
                   </tr>
                 ))}
