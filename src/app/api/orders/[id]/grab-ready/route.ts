@@ -262,15 +262,15 @@ async function findIntegrationForGrabOrder(order: LeanGrabOrder, merchantId: str
   const withHubAndMerchant = order.hubId
     ? await IntegrationModel.findOne({ ...baseFilter, hubId: order.hubId, externalStoreId: merchantId }).select('+sessionData').lean()
     : null
-  if (withHubAndMerchant) return withHubAndMerchant as LeanGrabIntegration
+  if (withHubAndMerchant) return withHubAndMerchant as unknown as LeanGrabIntegration
 
   const withMerchant = merchantId
     ? await IntegrationModel.findOne({ ...baseFilter, externalStoreId: merchantId }).select('+sessionData').lean()
     : null
-  if (withMerchant) return withMerchant as LeanGrabIntegration
+  if (withMerchant) return withMerchant as unknown as LeanGrabIntegration
 
   const fallback = await IntegrationModel.findOne(baseFilter).select('+sessionData').lean()
-  return fallback as LeanGrabIntegration | null
+  return fallback as unknown as LeanGrabIntegration | null
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
