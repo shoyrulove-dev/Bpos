@@ -185,11 +185,15 @@ export function getGrabMoneyBreakdown(order: Order) {
   ) ?? order.subtotal
   const explicitItemDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['productDiscount', 'itemDiscount'])
   const explicitPromotionDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['orderDiscount', 'merchantDiscount', 'merchantPromotionDiscount'])
+  const explicitRevenueAfterPromotion = getAmountFromSources([financialBreakdown], ['revenueAfterPromotion'])
   const itemDiscount = explicitItemDiscount ?? getGrabItemDiscountTotal(order)
   const promotionDiscount = typeof explicitPromotionDiscount === 'number'
     ? explicitPromotionDiscount
     : 0
-  const revenueAfterPromotion = Math.max(0, originalSubtotal - itemDiscount - promotionDiscount)
+  const computedRevenueAfterPromotion = Math.max(0, originalSubtotal - itemDiscount - promotionDiscount)
+  const revenueAfterPromotion = typeof explicitRevenueAfterPromotion === 'number'
+    ? explicitRevenueAfterPromotion
+    : computedRevenueAfterPromotion
   const deliveryFee = getAmountFromSources([fare, price, raw], ['deliveryFeeDisplay', 'deliveryFee']) ?? 0
   const smallOrderFee = getAmountFromSources([fare, price, raw], ['smallOrderFeeDisplay', 'smallOrderFee']) ?? 0
   const serviceFee = getAmountFromSources([fare, price, raw], ['serviceChargeFeeDisplay', 'serviceFee']) ?? 0
@@ -198,21 +202,30 @@ export function getGrabMoneyBreakdown(order: Order) {
     [financialBreakdown, fare, price, raw],
     ['platformCommission', 'mexCommissionDisplay', 'platformFee', 'commissionFee', 'merchantCommission', 'merchantFee', 'serviceFee'],
   ) ?? Math.abs(order.platformFee ?? 0)
-  const vatAmount = getDeductionAmountFromSources([fare, price, raw], ['mexVatAmountDisplay', 'vatAmount', 'vat', 'commissionVat']) ?? 0
-  const pitAmount = getDeductionAmountFromSources([fare, price, raw], ['mexPitAmountDisplay', 'pitAmount', 'pit', 'personalIncomeTax']) ?? 0
-  const taxWithheld = getDeductionAmountFromSources(
-    [financialBreakdown, fare, price, raw],
+  const explicitTaxWithheld = getDeductionAmountFromSources(
+    [financialBreakdown],
     ['taxWithheld', 'onBehalfWithholdTaxDisplay', 'withholdingTax', 'withheldTax', 'onBehalfWithholdTax', 'deductedTax'],
-  ) ?? 0
+  )
+  const vatAmount = explicitTaxWithheld === undefined
+    ? (getDeductionAmountFromSources([fare, price, raw], ['mexVatAmountDisplay', 'vatAmount', 'vat', 'commissionVat']) ?? 0)
+    : 0
+  const pitAmount = explicitTaxWithheld === undefined
+    ? (getDeductionAmountFromSources([fare, price, raw], ['mexPitAmountDisplay', 'pitAmount', 'pit', 'personalIncomeTax']) ?? 0)
+    : 0
+  const taxWithheld = explicitTaxWithheld
+    ?? getDeductionAmountFromSources(
+      [fare, price, raw],
+      ['onBehalfWithholdTaxDisplay', 'withholdingTax', 'withheldTax', 'onBehalfWithholdTax', 'deductedTax'],
+    )
+    ?? 0
   const explicitActualReceived = getAmountFromSources(
     [financialBreakdown, price, raw],
     ['actualReceived', 'merchantReceivable', 'receivedAmount', 'merchantPayment', 'payToMerchant'],
   )
-  const shouldRecomputeActualReceived = platformCommission > 0 || vatAmount > 0 || pitAmount > 0 || taxWithheld > 0
   const computedActualReceived = Math.max(0, revenueAfterPromotion - platformCommission - vatAmount - pitAmount - taxWithheld)
-  const actualReceived = shouldRecomputeActualReceived
-    ? computedActualReceived
-    : (explicitActualReceived ?? computedActualReceived)
+  const actualReceived = typeof explicitActualReceived === 'number' && explicitActualReceived > 0
+    ? explicitActualReceived
+    : computedActualReceived
 
   return {
     originalSubtotal,

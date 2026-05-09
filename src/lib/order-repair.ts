@@ -397,6 +397,62 @@ async function backfillDriversFromOrders(options?: {
   return { scanned, updated, removed: 0, scoped: true }
 }
 
+async function backfillCustomersFromOrders(options?: {
+  providers?: string[]
+  externalOrderIds?: string[]
+  shortIds?: string[]
+}) {
+  const providers = (options?.providers?.length ? options.providers : ['be', 'grab']).map((value) => value.trim()).filter(Boolean)
+  const orderIdSet = options?.externalOrderIds?.length ? new Set(options.externalOrderIds) : null
+  const shortIdSet = options?.shortIds?.length ? new Set(options.shortIds) : null
+  let scanned = 0
+  let updated = 0
+
+  const cursor = OrderModel.find({ source: { $in: providers } })
+    .select('shortId source externalOrderId brandId customerName customerPhone total placedAt rawPayload')
+    .lean()
+    .cursor()
+
+  for await (const rawOrder of cursor) {
+    const order = rawOrder as unknown as StoredOrder
+    if (orderIdSet && !orderIdSet.has(String(order.externalOrderId ?? ''))) continue
+    if (shortIdSet && !shortIdSet.has(String(order.shortId ?? ''))) continue
+
+    const phone = getDisplayCustomerPhone(order as unknown as Order) || undefined
+    const name = getDisplayCustomerName(order as unknown as Order) || undefined
+    const brandId = String(order.brandId ?? '').trim()
+    if (!brandId || !phone || !name || !hasMeaningfulPhone(phone) || !hasMeaningfulCustomerName(name)) continue
+
+    scanned += 1
+    const existingCustomer = await CustomerModel.findOne({ phone, brandId }).select('name').lean() as { name?: string } | null
+    const shouldUpdateName = !existingCustomer || !hasMeaningfulCustomerName(existingCustomer.name)
+
+    await CustomerModel.updateOne(
+      { phone, brandId },
+      {
+        $set: {
+          ...(shouldUpdateName ? { name } : {}),
+          lastOrderAt: parseDateValue(order.placedAt) ?? new Date(),
+        },
+        $setOnInsert: {
+          phone,
+          brandId,
+          name,
+          points: 0,
+          totalSpend: Number(order.total ?? 0),
+          orderCount: 1,
+          tier: calcCustomerTier(Number(order.total ?? 0)),
+          status: 'active',
+        },
+      },
+      { upsert: true }
+    )
+    updated += 1
+  }
+
+  return { scanned, updated, removed: 0, scoped: true }
+}
+
 async function repairCustomers() {
   const docs = await CustomerModel.find({}).lean() as unknown as StoredCustomer[]
   const grouped = new Map<string, StoredCustomer[]>()
@@ -609,9 +665,15 @@ export async function runOrderRepair(options?: {
         skipped: true,
       }
   const orders = await repairStoredOrders(providers, { externalOrderIds, shortIds, driverPhone, forceCancelledOrderIds, forceCompletedShortIds })
-  const customers = isScopedRepair
-    ? { scanned: 0, updated: 0, removed: 0, scoped: true }
-    : await repairCustomers()
+  const customerBackfill = await backfillCustomersFromOrders({ providers, externalOrderIds, shortIds })
+  const customerRepair = isScopedRepair ? null : await repairCustomers()
+  const customers = customerRepair
+    ? {
+        scanned: customerRepair.scanned + customerBackfill.scanned,
+        updated: customerRepair.updated + customerBackfill.updated,
+        removed: customerRepair.removed,
+      }
+    : customerBackfill
   const drivers = isScopedRepair
     ? await backfillDriversFromOrders({ providers, externalOrderIds, shortIds, driverPhone })
     : await repairDrivers()

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { encryptJSON } from '@/lib/crypto'
+import { enrichGrabSessionExtraHeaders } from '@/lib/grab-session'
 import { buildSessionSuccessUpdate } from '@/lib/session-health'
 import type { PlaywrightCookie, SessionData } from '@/integrations/types'
 
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Integration not found', provider, storeId, integrationId }, { status: 404 })
     }
 
-    const session: SessionData = {
+    let session: SessionData = {
       cookies,
       ...(jwt || extraHeaders
         ? {
@@ -84,6 +85,14 @@ export async function POST(req: NextRequest) {
         ...session.extraHeaders,
         'x-store-id': storeId,
         'x-grab-store-id': storeId,
+      }
+    }
+
+    if (provider === 'grab') {
+      const enriched = enrichGrabSessionExtraHeaders(session, storeId)
+      session = {
+        ...session,
+        extraHeaders: enriched.extraHeaders,
       }
     }
 

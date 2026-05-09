@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { connectDB } from '@/lib/db'
 import { ok, err, requireAuth } from '@/lib/api-helpers'
 import { decryptJSON } from '@/lib/crypto'
+import { enrichGrabSessionExtraHeaders } from '@/lib/grab-session'
 import { buildSessionStoreId } from '@/lib/realtime-order-sync'
 import OrderModel from '@/models/Order'
 import IntegrationModel from '@/models/Integration'
@@ -87,9 +88,8 @@ function buildGrabSessionContext(session: SessionData, storeId: string) {
 
   if (!cookieHeader) return null
 
-  const extraHeaders = session.extraHeaders ?? {}
+  const { extraHeaders, discoveredStoreId } = enrichGrabSessionExtraHeaders(session, storeId)
   const token = extraHeaders['x-grab-token'] ?? extraHeaders['Authorization'] ?? ''
-  const discoveredStoreId = extraHeaders['x-grab-store-id'] ?? storeId
 
   const forwardedHeaders = Object.fromEntries(
     Object.entries(extraHeaders).filter(([key, value]) => {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
+import CustomerModel from '@/models/Customer'
 import OrderModel from '@/models/Order'
 import DriverModel from '@/models/Driver'
 import IntegrationModel from '@/models/Integration'
@@ -44,6 +45,12 @@ export async function GET(req: NextRequest) {
     : null
 
   const brandId = (order as { brandId?: { toString(): string } | string } | null)?.brandId
+  const customerPhone = String((order as { customerPhone?: string } | null)?.customerPhone ?? '').trim()
+  const customer = customerPhone && brandId
+    ? await CustomerModel.findOne({ phone: customerPhone, brandId })
+        .select('name phone brandId points totalSpend orderCount tier status lastOrderAt updatedAt createdAt')
+        .lean()
+    : null
   const integrations = brandId
     ? await IntegrationModel.find({ brandId, ...(source ? { provider: source } : {}) })
         .select('provider externalStoreId externalStoreName loginMode loginUsername sessionStatus sessionCapturedAt sessionExpiresAt sessionError sessionFailureCount automationRunning isActive lastSyncAt syncStatus syncError updatedAt')
@@ -55,6 +62,7 @@ export async function GET(req: NextRequest) {
     query: { shortId, externalOrderId, displayId, bookingCode, source, phone },
     foundOrder: Boolean(order),
     order,
+    customer,
     driver,
     integrations,
   })

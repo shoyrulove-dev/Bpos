@@ -1,4 +1,5 @@
 import type { NormalizedOrder, OrderItem, OrderStatus } from '@/types'
+import { enrichGrabSessionExtraHeaders } from '@/lib/grab-session'
 import { normalizeCompactPhone } from '@/lib/phone'
 import { mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import type { PlatformAdapter, AdapterConfig, SessionData } from './types'
@@ -179,9 +180,8 @@ export class GrabAdapter implements PlatformAdapter {
 
     if (!cookieHeader) return null
 
-    const extraHeaders = session.extraHeaders ?? {}
+    const { extraHeaders, discoveredStoreId } = enrichGrabSessionExtraHeaders(session, storeId)
     const token = extraHeaders['x-grab-token'] ?? extraHeaders['Authorization'] ?? ''
-    const discoveredStoreId = extraHeaders['x-grab-store-id'] ?? storeId
 
     const forwardedHeaders = Object.fromEntries(
       Object.entries(extraHeaders).filter(([key, value]) => {
