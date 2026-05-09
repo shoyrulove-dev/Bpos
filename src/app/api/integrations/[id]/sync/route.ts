@@ -69,7 +69,7 @@ async function refreshSessionIfPossible(integration: {
 
   return {
     session,
-    orders: Array.isArray(data.orders) ? data.orders : [],
+    orders: (Array.isArray(data.orders) ? data.orders : []) as NormalizedOrder[],
   }
 }
 
