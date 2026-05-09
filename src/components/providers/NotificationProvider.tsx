@@ -123,7 +123,7 @@ export default function NotificationProvider({ children }: { children: React.Rea
     void fetch('/api/settings/order-alerts')
       .then(async (response) => {
         if (!response.ok) return null
-        return response.json() as Promise<{ voiceMessage?: string }>
+        return response.json() as Promise<{ voiceMessage?: string; soundRepeatCount?: number }>
       })
       .then((payload) => {
         if (!payload?.voiceMessage) return
