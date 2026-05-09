@@ -94,6 +94,7 @@ const navItems: NavItem[] = [
     children: [
       { href: '/dashboard', label: 'Tổng quan', icon: <LayoutDashboard className="w-4 h-4" /> },
       { href: '/customers', label: 'Khách hàng', icon: <UserCircle className="w-4 h-4" /> },
+      { href: '/drivers', label: 'Tài xế', icon: <Truck className="w-4 h-4" /> },
       { href: '/promotions', label: 'Khuyến mãi', icon: <Tag className="w-4 h-4" /> },
       { href: '/bill-templates', label: 'Hóa đơn mẫu', icon: <FileText className="w-4 h-4" /> },
       { href: '/e-invoices', label: 'Hóa đơn điện tử', icon: <Receipt className="w-4 h-4" /> },

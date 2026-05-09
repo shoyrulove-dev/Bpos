@@ -1,0 +1,142 @@
+'use client'
+
+import { useState } from 'react'
+import { Search, Truck, Loader2 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { useDebounce } from '@/hooks/use-debounce'
+import { formatDate } from '@/lib/utils'
+
+const PLATFORM_LABELS: Record<string, string> = {
+  grab: 'Grab',
+  be: 'Be',
+  shopee: 'ShopeeFood',
+  xanh_sm: 'Xanh SM',
+  internal: 'Nội bộ',
+}
+
+const PLATFORM_COLORS: Record<string, string> = {
+  grab: 'bg-[#e9fff5] text-[#00b14f] ring-[#b7efd0]',
+  be: 'bg-[#fff7cc] text-[#111111] ring-[#f5dd74]',
+  shopee: 'bg-[#fff1eb] text-[#ee4d2d] ring-[#ffd0c4]',
+  xanh_sm: 'bg-[#e8fbf9] text-[#00a79d] ring-[#b8ece6]',
+  internal: 'bg-[#eef2ff] text-[#334155] ring-[#dbe3f5]',
+}
+
+interface Driver {
+  _id: string
+  name: string
+  phone: string
+  platform: string
+  lastSeenAt: string
+}
+
+const PLATFORM_OPTIONS = [
+  { value: '', label: 'Tất cả sàn' },
+  { value: 'grab', label: 'Grab' },
+  { value: 'be', label: 'Be' },
+  { value: 'shopee', label: 'ShopeeFood' },
+  { value: 'xanh_sm', label: 'Xanh SM' },
+]
+
+export default function DriversPage() {
+  const [search, setSearch] = useState('')
+  const [platformFilter, setPlatformFilter] = useState('')
+  const dq = useDebounce(search)
+
+  const params = new URLSearchParams()
+  if (dq) params.set('q', dq)
+  if (platformFilter) params.set('platform', platformFilter)
+
+  const { data: drivers = [], isLoading } = useQuery<Driver[]>({
+    queryKey: ['drivers', dq, platformFilter],
+    queryFn: async () => {
+      const r = await fetch(`/api/drivers?${params.toString()}`)
+      if (!r.ok) throw new Error('Lỗi tải dữ liệu')
+      return r.json()
+    },
+    staleTime: 30_000,
+  })
+
+  const platformCounts = drivers.reduce((acc, d) => {
+    acc[d.platform] = (acc[d.platform] ?? 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+
+  return (
+    <div className="space-y-5">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Dữ liệu tài xế</h1>
+          <p className="page-subtitle">{isLoading ? '...' : `${drivers.length} tài xế`}</p>
+        </div>
+      </div>
+
+      {/* Platform summary */}
+      {!isLoading && Object.keys(platformCounts).length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(platformCounts).map(([platform, count]) => (
+            <button
+              key={platform}
+              type="button"
+              onClick={() => setPlatformFilter(p => p === platform ? '' : platform)}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ${PLATFORM_COLORS[platform] ?? 'bg-gray-100 text-gray-600 ring-gray-200'} ${platformFilter === platform ? 'ring-2' : ''}`}
+            >
+              {PLATFORM_LABELS[platform] ?? platform} <span className="opacity-70">({count})</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="card card-body">
+        <div className="filter-bar">
+          <div className="relative flex-1 min-w-[240px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input className="input pl-9" placeholder="Tìm tên, số điện thoại..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <select className="input w-44" value={platformFilter} onChange={e => setPlatformFilter(e.target.value)}>
+            {PLATFORM_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* States */}
+      {isLoading && <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-primary-400" /></div>}
+
+      {!isLoading && drivers.length === 0 ? (
+        <div className="empty-state card">
+          <Truck className="w-12 h-12 mb-3" />
+          <p className="font-medium">Chưa có dữ liệu tài xế</p>
+          <p className="text-sm text-gray-500 mt-1">Dữ liệu tài xế được tự động ghi nhận khi đồng bộ đơn hàng.</p>
+        </div>
+      ) : (
+        <div className="card overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Tên tài xế</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Số điện thoại</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Sàn</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Lần gần nhất</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {drivers.map((driver) => (
+                <tr key={driver._id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3 font-medium text-gray-900">{driver.name}</td>
+                  <td className="px-4 py-3 text-gray-600">{driver.phone}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${PLATFORM_COLORS[driver.platform] ?? 'bg-gray-100 text-gray-600 ring-gray-200'}`}>
+                      {PLATFORM_LABELS[driver.platform] ?? driver.platform}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{driver.lastSeenAt ? formatDate(driver.lastSeenAt) : '–'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}

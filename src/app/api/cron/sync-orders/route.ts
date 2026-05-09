@@ -71,7 +71,7 @@ async function refreshSessionIfPossible(integration: {
 
   return {
     session,
-    orders: Array.isArray(data.orders) ? data.orders : [],
+    orders: Array.isArray(data.orders) ? (data.orders as NormalizedOrder[]) : [],
   }
 }
 
@@ -212,7 +212,7 @@ export async function GET(req: NextRequest) {
 
       const existingOrders = externalOrderIds.length
         ? await OrderModel.find({ source: intg.provider, externalOrderId: { $in: externalOrderIds } })
-            .select('externalOrderId customerName customerPhone items subtotal discount total platformFee paymentMethod deliveryInfo driverInfo rawPayload')
+            .select('externalOrderId status customerName customerPhone items subtotal discount total platformFee paymentMethod deliveryInfo driverInfo rawPayload')
             .lean()
         : []
 
@@ -226,10 +226,17 @@ export async function GET(req: NextRequest) {
       for (const normalized of orders) {
         if (!normalized.externalOrderId) continue
         try {
+          const existingDoc = existingOrdersByExternalId.get(normalized.externalOrderId)
           const mergedNormalized = mergeNormalizedOrderPreservingDetail(
-            existingOrdersByExternalId.get(normalized.externalOrderId) as Partial<NormalizedOrder> | undefined,
+            existingDoc as Partial<NormalizedOrder> | undefined,
             normalized
           )
+
+          // Don't downgrade: once cancelled, keep cancelled (historical sync may return wrong status)
+          const existingDbStatus = (existingDoc as { status?: string } | undefined)?.status
+          if (existingDbStatus === 'cancelled' && mergedNormalized.orderStatus === 'completed') {
+            mergedNormalized.orderStatus = 'cancelled'
+          }
 
           const result = await OrderModel.findOneAndUpdate(
             { source: mergedNormalized.source, externalOrderId: mergedNormalized.externalOrderId },
