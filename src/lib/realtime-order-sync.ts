@@ -4,6 +4,8 @@ import type { NormalizedOrder } from '@/types'
 
 export const RECENT_HISTORY_LOOKBACK_MS = 6 * 60 * 60 * 1000
 const RECENT_HISTORY_DAYS = 1
+const BE_HISTORY_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000
+const BE_HISTORY_DAYS = 30
 
 export function buildSessionStoreId(externalStoreId: string | undefined, session: SessionData) {
   return session.extraHeaders?.['x-grab-store-id']
@@ -55,10 +57,14 @@ export async function mergeSessionOrdersWithRecentHistory(
   if (!adapter.fetchHistoricalOrdersWithSession) return activeOrders
 
   try {
-    const historicalOrders = await adapter.fetchHistoricalOrdersWithSession(session, storeId, { days: RECENT_HISTORY_DAYS })
+    const historyDays = adapter.source === 'be' ? BE_HISTORY_DAYS : RECENT_HISTORY_DAYS
+    const historicalOrders = await adapter.fetchHistoricalOrdersWithSession(session, storeId, { days: historyDays })
     if (historicalOrders === null) return activeOrders
 
-    const recentHistory = filterRecentHistoricalOrders(historicalOrders, options)
+    const recentHistory = filterRecentHistoricalOrders(historicalOrders, {
+      ...options,
+      lookbackMs: adapter.source === 'be' ? BE_HISTORY_LOOKBACK_MS : options?.lookbackMs,
+    })
     if (!recentHistory.length) return activeOrders
 
     return mergeOrdersByExternalOrderId(activeOrders, recentHistory)
@@ -76,8 +82,12 @@ export async function mergeApiOrdersWithRecentHistory(
   if (!adapter.fetchHistoricalOrders) return activeOrders
 
   try {
-    const historicalOrders = await adapter.fetchHistoricalOrders(config, { days: RECENT_HISTORY_DAYS })
-    const recentHistory = filterRecentHistoricalOrders(historicalOrders, options)
+    const historyDays = adapter.source === 'be' ? BE_HISTORY_DAYS : RECENT_HISTORY_DAYS
+    const historicalOrders = await adapter.fetchHistoricalOrders(config, { days: historyDays })
+    const recentHistory = filterRecentHistoricalOrders(historicalOrders, {
+      ...options,
+      lookbackMs: adapter.source === 'be' ? BE_HISTORY_LOOKBACK_MS : options?.lookbackMs,
+    })
     if (!recentHistory.length) return activeOrders
 
     return mergeOrdersByExternalOrderId(activeOrders, recentHistory)

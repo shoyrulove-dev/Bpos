@@ -93,7 +93,16 @@ function parseDateValue(value: unknown) {
 }
 
 function extractCancellationReason(rawPayload: Record<string, unknown>) {
-  const reason = rawPayload.cancelReason ?? rawPayload.cancellationReason ?? rawPayload.cancelledReason ?? rawPayload.reason
+  const reason = rawPayload.cancelReason
+    ?? rawPayload.cancellationReason
+    ?? rawPayload.cancelledReason
+    ?? rawPayload.cancel_reason
+    ?? rawPayload.status_reason
+    ?? rawPayload.driver_cancel_reason
+    ?? rawPayload.restaurant_cancel_reason
+    ?? rawPayload.customer_cancel_reason
+    ?? rawPayload.cancel_note
+    ?? rawPayload.reason
   return reason ? String(reason) : undefined
 }
 
@@ -102,6 +111,9 @@ function extractCancellationDate(normalized: NormalizedOrder) {
   return (
     parseDateValue(rawPayload.cancelledAt) ??
     parseDateValue(rawPayload.canceledAt) ??
+    parseDateValue(rawPayload.cancelled_at) ??
+    parseDateValue(rawPayload.cancel_time) ??
+    parseDateValue(rawPayload.cancel_date) ??
     parseDateValue(rawPayload.updatedAt) ??
     parseDateValue(rawPayload.completedAt) ??
     parseDateValue(normalized.deliveredAt) ??

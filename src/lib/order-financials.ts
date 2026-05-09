@@ -1,4 +1,5 @@
 import type { Order } from '@/types'
+import { extractCompactPhone, normalizeCompactPhone } from '@/lib/phone'
 
 function parseAmount(value: unknown) {
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -9,6 +10,12 @@ function parseAmount(value: unknown) {
 
   const amount = Number(normalized)
   return Number.isFinite(amount) ? amount : undefined
+}
+
+function parseDeductionAmount(value: unknown) {
+  const amount = parseAmount(value)
+  if (typeof amount !== 'number') return undefined
+  return Math.abs(amount)
 }
 
 function getRecord(value: unknown) {
@@ -31,8 +38,7 @@ function getBreakdownAmount(raw: Record<string, unknown>, keys: string[]) {
 }
 
 export function extractPhone(value?: string) {
-  const match = String(value ?? '').match(/((?:\+?84|0)\d[\d .-]{7,13}\d)/)
-  return match?.[1]?.trim()
+  return extractCompactPhone(value)
 }
 
 function getGrabFareRecord(order: Order) {
@@ -62,23 +68,32 @@ function getGrabItemDiscountTotal(order: Order) {
 }
 
 export function getGrabMoneyBreakdown(order: Order) {
+  const raw = getRecord(order.rawPayload)
+  const financialBreakdown = getRecord(raw?.financialBreakdown)
   const fare = getGrabFareRecord(order)
-  if (!fare) return null
+  if (!fare && !financialBreakdown) return null
 
-  const originalSubtotal = parseAmount(fare.subTotalDisplay ?? fare.subtotalIncludeMerchantCharge ?? fare.originalPriceInMin) ?? order.subtotal
-  const itemDiscount = getGrabItemDiscountTotal(order)
-  const totalDiscount = parseAmount(fare.totalDiscountAmountDisplay) ?? order.discount ?? 0
-  const promotionDiscount = Math.max(0, totalDiscount - itemDiscount)
-  const revenueAfterPromotion = parseAmount(fare.totalDisplay ?? fare.revampedSubtotalDisplay) ?? order.total
-  const deliveryFee = parseAmount(fare.deliveryFeeDisplay) ?? 0
-  const smallOrderFee = parseAmount(fare.smallOrderFeeDisplay) ?? 0
-  const serviceFee = parseAmount(fare.serviceChargeFeeDisplay) ?? 0
-  const customerPaid = parseAmount(fare.passengerTotalDisplay) ?? (revenueAfterPromotion + deliveryFee + smallOrderFee + serviceFee)
-  const platformCommission = parseAmount(fare.mexCommissionDisplay ?? fare.platformCommissionDisplay) ?? (order.platformFee ?? 0)
-  const vatAmount = parseAmount(fare.mexVatAmountDisplay) ?? 0
-  const pitAmount = parseAmount(fare.mexPitAmountDisplay) ?? 0
-  const taxWithheld = parseAmount(fare.onBehalfWithholdTaxDisplay) ?? 0
-  const actualReceived = Math.max(0, revenueAfterPromotion - platformCommission - vatAmount - pitAmount - taxWithheld)
+  const originalSubtotal = parseAmount(financialBreakdown?.merchandiseAmount ?? fare?.subTotalDisplay ?? fare?.subtotalIncludeMerchantCharge ?? fare?.originalPriceInMin) ?? order.subtotal
+  const explicitItemDiscount = parseDeductionAmount(financialBreakdown?.productDiscount)
+  const explicitPromotionDiscount = parseDeductionAmount(financialBreakdown?.orderDiscount)
+  const itemDiscount = explicitItemDiscount ?? getGrabItemDiscountTotal(order)
+  const totalDiscount = (typeof explicitItemDiscount === 'number' || typeof explicitPromotionDiscount === 'number')
+    ? (explicitItemDiscount ?? 0) + (explicitPromotionDiscount ?? 0)
+    : (parseDeductionAmount(fare?.totalDiscountAmountDisplay) ?? order.discount ?? 0)
+  const promotionDiscount = typeof explicitPromotionDiscount === 'number'
+    ? explicitPromotionDiscount
+    : Math.max(0, totalDiscount - itemDiscount)
+  const revenueAfterPromotion = parseAmount(financialBreakdown?.revenueAfterPromotion ?? fare?.totalDisplay ?? fare?.revampedSubtotalDisplay) ?? order.total
+  const deliveryFee = parseAmount(fare?.deliveryFeeDisplay) ?? 0
+  const smallOrderFee = parseAmount(fare?.smallOrderFeeDisplay) ?? 0
+  const serviceFee = parseAmount(fare?.serviceChargeFeeDisplay) ?? 0
+  const customerPaid = parseAmount(fare?.passengerTotalDisplay) ?? (revenueAfterPromotion + deliveryFee + smallOrderFee + serviceFee)
+  const platformCommission = parseDeductionAmount(financialBreakdown?.platformCommission) ?? parseDeductionAmount(fare?.mexCommissionDisplay ?? fare?.platformCommissionDisplay) ?? Math.abs(order.platformFee ?? 0)
+  const vatAmount = parseDeductionAmount(fare?.mexVatAmountDisplay) ?? 0
+  const pitAmount = parseDeductionAmount(fare?.mexPitAmountDisplay) ?? 0
+  const taxWithheld = parseDeductionAmount(financialBreakdown?.taxWithheld) ?? parseDeductionAmount(fare?.onBehalfWithholdTaxDisplay) ?? 0
+  const actualReceived = parseAmount(financialBreakdown?.actualReceived ?? raw?.merchantReceivable ?? raw?.receivedAmount ?? raw?.merchantPayment ?? raw?.payToMerchant)
+    ?? Math.max(0, revenueAfterPromotion - platformCommission - vatAmount - pitAmount - taxWithheld)
 
   return {
     originalSubtotal,
@@ -230,7 +245,7 @@ export function getDisplayCustomerPhone(order: Order) {
   const consumer = getRecord(raw?.consumer)
   const eater = getRecord(raw?.eater)
 
-  return String(
+  return normalizeCompactPhone(String(
     order.customerPhone
     ?? raw?.customer_phone_no
     ?? raw?.receiver_phone_no
@@ -245,19 +260,19 @@ export function getDisplayCustomerPhone(order: Order) {
     ?? eater?.mobileNumber
     ?? extractPhone(String(eater?.comment ?? ''))
     ?? ''
-  ).trim()
+  )) ?? ''
 }
 
 export function getDisplayDriverPhone(order: Order) {
   const raw = getRecord(order.rawPayload)
   const driver = getRecord(raw?.driver)
 
-  return String(
+  return normalizeCompactPhone(String(
     order.driverInfo?.phone
     ?? raw?.driver_phone_no
     ?? driver?.phone
     ?? driver?.phoneNumber
     ?? driver?.mobileNumber
     ?? ''
-  ).trim()
+  )) ?? ''
 }

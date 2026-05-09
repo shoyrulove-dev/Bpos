@@ -1,4 +1,5 @@
 import type { NormalizedOrder, OrderItem, OrderStatus } from '@/types'
+import { normalizeCompactPhone } from '@/lib/phone'
 import type { PlatformAdapter, AdapterConfig, SessionData } from './types'
 
 // GrabFood Partner API (POS) v1.1.3
@@ -333,11 +334,7 @@ export class GrabAdapter implements PlatformAdapter {
   }
 
   private normalizeGrabPortalPhone(phone?: string) {
-    if (!phone) return undefined
-    // Strip all whitespace, dashes, dots to get compact number e.g. +84397891772
-    const compact = phone.replace(/[\s\-.()\u00A0]/g, '')
-    if (!compact) return undefined
-    return compact
+    return normalizeCompactPhone(phone)
   }
 
   private extractGrabPortalPhone(segment: string) {
@@ -905,14 +902,14 @@ export class GrabAdapter implements PlatformAdapter {
     const orderStatus = mapGrabStatus(rawStatus)
     const consumer  = raw.consumer ?? raw.customer ?? raw.receiver ?? raw.eater ?? {} as Record<string, unknown>
     const consumerObj = typeof consumer === 'object' ? consumer as Record<string, unknown> : {}
-    const consumerPhone = String(
+    const consumerPhone = normalizeCompactPhone(String(
       consumerObj.phones ??
       consumerObj.phone ??
       consumerObj.phoneNumber ??
       consumerObj.mobileNumber ??
       this.extractGrabPortalPhone(String(consumerObj.comment ?? '')) ??
       ''
-    )
+    ))
 
     const priceObj = (raw.price ?? raw.pricing ?? {}) as Record<string, unknown>
     const subtotal = Number(
@@ -959,7 +956,7 @@ export class GrabAdapter implements PlatformAdapter {
       deliveryInfo:    { address },
       driverInfo:      {
         name: String(driver.name ?? driver.displayName ?? ''),
-        phone: String(driver.phone ?? driver.phoneNumber ?? driver.mobileNumber ?? ''),
+        phone: normalizeCompactPhone(String(driver.phone ?? driver.phoneNumber ?? driver.mobileNumber ?? '')),
       },
       orderStatus,
       placedAt:        String(raw.orderTime ?? raw.createdAt ?? raw.createTime ?? new Date().toISOString()),
@@ -983,14 +980,14 @@ export class GrabAdapter implements PlatformAdapter {
 
     // receiver object contains customer name, phone, and delivery address
     const receiver = (raw.receiver ?? raw.eater) as Record<string, unknown> | undefined
-    const receiverPhone = String(
+    const receiverPhone = normalizeCompactPhone(String(
       receiver?.phones ??
       receiver?.phone ??
       receiver?.phoneNumber ??
       receiver?.mobileNumber ??
       this.extractGrabPortalPhone(String(receiver?.comment ?? '')) ??
       ''
-    )
+    ))
     const receiverAddress = receiver?.address as Record<string, unknown> | undefined
 
     // price is a nested object in POS API v1.1.3
@@ -1018,12 +1015,12 @@ export class GrabAdapter implements PlatformAdapter {
       },
       driverInfo: {
         name:  String((raw.driver as Record<string, unknown> | undefined)?.name ?? ''),
-        phone: String(
+        phone: normalizeCompactPhone(String(
           (raw.driver as Record<string, unknown> | undefined)?.phone ??
           (raw.driver as Record<string, unknown> | undefined)?.phoneNumber ??
           (raw.driver as Record<string, unknown> | undefined)?.mobileNumber ??
           ''
-        ),
+        )),
       },
       orderStatus: mapGrabStatus(rawStatus),
       placedAt:    String(raw.orderTime ?? new Date().toISOString()),

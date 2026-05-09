@@ -25,7 +25,7 @@ async function upsertOrders(intg: {
 
   const existingOrders = externalOrderIds.length
     ? await OrderModel.find({ source: intg.provider, externalOrderId: { $in: externalOrderIds } })
-        .select('externalOrderId customerName customerPhone items subtotal discount total platformFee paymentMethod deliveryInfo driverInfo rawPayload')
+        .select('externalOrderId status customerName customerPhone items subtotal discount total platformFee paymentMethod deliveryInfo driverInfo rawPayload')
         .lean()
     : []
 
@@ -41,6 +41,11 @@ async function upsertOrders(intg: {
         existingOrdersByExternalId.get(normalized.externalOrderId) as Partial<NormalizedOrder> | undefined,
         normalized
       )
+
+      const existingDbStatus = (existingOrdersByExternalId.get(normalized.externalOrderId) as { status?: string } | undefined)?.status
+      if (existingDbStatus === 'cancelled' && mergedNormalized.orderStatus === 'completed') {
+        mergedNormalized.orderStatus = 'cancelled'
+      }
 
       const result = await OrderModel.findOneAndUpdate(
         { source: mergedNormalized.source, externalOrderId: mergedNormalized.externalOrderId },

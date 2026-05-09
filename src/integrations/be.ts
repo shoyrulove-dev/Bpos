@@ -1,4 +1,5 @@
 import type { NormalizedOrder, OrderItem, OrderStatus } from '@/types'
+import { normalizeCompactPhone } from '@/lib/phone'
 import type { PlatformAdapter, AdapterConfig, SessionData } from './types'
 
 /**
@@ -440,7 +441,7 @@ export class BeAdapter implements PlatformAdapter {
       externalOrderId: String(raw.order_id ?? ''),
       externalStoreId: String(raw.restaurant_id ?? raw.store_id ?? ''),
       customerName:    String(raw.customer_name    ?? 'Khách hàng'),
-      customerPhone:   String(raw.customer_phone_no ?? raw.receiver_phone_no ?? ''),
+      customerPhone:   normalizeCompactPhone(String(raw.customer_phone_no ?? raw.receiver_phone_no ?? '')),
       items,
       subtotal:        original,
       discount,
@@ -454,7 +455,7 @@ export class BeAdapter implements PlatformAdapter {
       },
       driverInfo: {
         name:  String(raw.driver_name     ?? ''),
-        phone: String(raw.driver_phone_no ?? ''),
+        phone: normalizeCompactPhone(String(raw.driver_phone_no ?? '')),
       },
       orderStatus,
       placedAt:   String(raw.created_at ?? raw.ordered_at ?? new Date().toISOString()),
@@ -501,7 +502,7 @@ export class BeAdapter implements PlatformAdapter {
     }
   }
 
-  async fetchHistoricalOrdersWithSession(session: SessionData, restaurantId: string): Promise<NormalizedOrder[] | null> {
+  async fetchHistoricalOrdersWithSession(session: SessionData, restaurantId: string, _options?: { days?: number }): Promise<NormalizedOrder[] | null> {
     const accessToken = this.getSessionAccessToken(session)
     if (!accessToken) return null
 
