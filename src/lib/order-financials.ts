@@ -121,17 +121,17 @@ export function getGrabMoneyBreakdown(order: Order) {
     ['merchandiseAmount', 'subTotalDisplay', 'subtotalIncludeMerchantCharge', 'originalPriceInMin', 'subtotal', 'subTotal'],
   ) ?? order.subtotal
   const explicitItemDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['productDiscount', 'itemDiscount'])
-  const explicitPromotionDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['orderDiscount', 'basketPromo', 'discount', 'discountAmount'])
+  const explicitPromotionDiscount = getDeductionAmountFromSources([financialBreakdown, fare, price, raw], ['orderDiscount', 'promotionDisplay', 'totalDiscountAmountDisplay', 'basketPromo', 'discount', 'discountAmount'])
   const itemDiscount = explicitItemDiscount ?? getGrabItemDiscountTotal(order)
   const totalDiscount = (typeof explicitItemDiscount === 'number' || typeof explicitPromotionDiscount === 'number')
     ? (explicitItemDiscount ?? 0) + (explicitPromotionDiscount ?? 0)
-    : (getDeductionAmountFromSources([fare, price, raw], ['totalDiscountAmountDisplay', 'basketPromo', 'discount', 'discountAmount']) ?? order.discount ?? 0)
+    : (getDeductionAmountFromSources([fare, price, raw], ['promotionDisplay', 'totalDiscountAmountDisplay', 'basketPromo', 'discount', 'discountAmount']) ?? order.discount ?? 0)
   const promotionDiscount = typeof explicitPromotionDiscount === 'number'
     ? explicitPromotionDiscount
     : Math.max(0, totalDiscount - itemDiscount)
   const revenueAfterPromotion = getAmountFromSources(
     [financialBreakdown, fare, price, raw],
-    ['revenueAfterPromotion', 'totalDisplay', 'revampedSubtotalDisplay', 'eaterPayment', 'total', 'orderTotal'],
+    ['revenueAfterPromotion', 'reducedPriceDisplay', 'totalDisplay', 'revampedSubtotalDisplay', 'eaterPayment', 'total', 'orderTotal'],
   ) ?? order.total
   const deliveryFee = getAmountFromSources([fare, price, raw], ['deliveryFeeDisplay', 'deliveryFee']) ?? 0
   const smallOrderFee = getAmountFromSources([fare, price, raw], ['smallOrderFeeDisplay', 'smallOrderFee']) ?? 0
