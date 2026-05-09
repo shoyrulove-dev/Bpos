@@ -36,18 +36,34 @@ function escapeHtml(s: string) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+function textToReceiptHtml(content: string): string {
+  return content.split('\n').map(line => {
+    const t = line.trim()
+    if (t.match(/^={3,}/)) return `<div style="text-align:center;font-weight:bold;letter-spacing:1px">${escapeHtml(t)}</div>`
+    if (t.match(/^-{3,}$/) || t === '---') return `<hr style="border:none;border-top:1px dashed #999;margin:3px 0"/>`
+    // right-align lines that look like amount/label pairs (contain digit at end or start with spaces)
+    if (/\d/.test(t) && /^\s/.test(line)) return `<div style="text-align:right">${escapeHtml(t)}</div>`
+    return `<div>${escapeHtml(t) || '\u00a0'}</div>`
+  }).join('')
+}
+
 function openTestPrint(content: string, size: string) {
   const widthMap: Record<string, string> = { A4: '210mm', A5: '148mm', '80mm': '80mm', '58mm': '58mm' }
   const w = widthMap[size] ?? '80mm'
-  const pw = window.open('', '_blank', 'width=420,height=640')
+  const filled = fillSampleData(content)
+  const pw = window.open('', '_blank', 'width=480,height=700')
   if (!pw) return
   pw.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{margin:0;padding:8px;width:${w};font-family:monospace;font-size:11px;line-height:1.5}
-    pre{white-space:pre-wrap;word-break:break-word;margin:0}
-    @media print{@page{size:${w};margin:4mm}}
-  </style></head><body><pre>${escapeHtml(fillSampleData(content))}</pre></body></html>`)
+    *{box-sizing:border-box}body{margin:0;background:#e5e5e5;display:flex;flex-direction:column;align-items:center;padding:20px;min-height:100vh}
+    .paper{background:#fff;width:${w};max-width:100%;padding:10px;font-family:'Courier New',monospace;font-size:11px;line-height:1.6;box-shadow:0 2px 12px rgba(0,0,0,.18);border-radius:2px;word-break:break-word}
+    .toolbar{display:flex;gap:8px;margin-bottom:14px}.toolbar button{padding:6px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}
+    .btn-print{background:#f97316;color:#fff}.btn-close{background:#e5e7eb;color:#374151}
+    @media print{body{background:#fff;padding:0}.toolbar{display:none}.paper{box-shadow:none;padding:4mm}@page{size:${w};margin:4mm}}
+  </style></head><body>
+    <div class="toolbar"><button class="btn-print" onclick="window.print()">&#128424; In</button><button class="btn-close" onclick="window.close()">&#x2715; Đóng</button></div>
+    <div class="paper">${textToReceiptHtml(filled)}</div>
+  </body></html>`)
   pw.document.close()
-  pw.onload = () => { pw.print(); pw.close() }
 }
 
 export default function BillTemplatesPage() {
@@ -224,9 +240,13 @@ export default function BillTemplatesPage() {
               <button onClick={() => setPreview(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
             <div className="p-6">
-              <pre className="text-xs font-mono bg-gray-50 rounded-lg p-4 whitespace-pre-wrap overflow-x-auto max-h-80 overflow-y-auto">
-                {fillSampleData(preview.templateContent)}
-              </pre>
+              <div className="bg-gray-100 rounded-lg p-4 flex justify-center">
+                <div
+                  className="bg-white shadow-md rounded font-mono text-xs leading-relaxed max-h-80 overflow-y-auto p-3"
+                  style={{ width: preview.size === '58mm' ? '58mm' : '80mm', minWidth: '200px', wordBreak: 'break-word' }}
+                  dangerouslySetInnerHTML={{ __html: textToReceiptHtml(fillSampleData(preview.templateContent)) }}
+                />
+              </div>
             </div>
             <div className="px-6 pb-5 flex justify-end gap-2">
               <button onClick={() => openTestPrint(preview.templateContent, preview.size)} className="btn-outline gap-1.5">

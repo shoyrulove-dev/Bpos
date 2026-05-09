@@ -16,32 +16,37 @@ const PROVIDERS = [
   { value: 'other', label: 'Khác', color: 'bg-gray-100 text-gray-700' },
 ]
 
+function escapeHtml(s: string) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function textToReceiptHtml(content: string): string {
+  return content.split('\n').map(line => {
+    const t = line.trim()
+    if (t.match(/^={3,}/)) return `<div style="text-align:center;font-weight:bold;letter-spacing:1px">${escapeHtml(t)}</div>`
+    if (t.match(/^-{3,}$/) || t === '---') return `<hr style="border:none;border-top:1px dashed #999;margin:3px 0"/>`
+    if (/\d/.test(t) && /^\s/.test(line)) return `<div style="text-align:right">${escapeHtml(t)}</div>`
+    return `<div>${escapeHtml(t) || '\u00a0'}</div>`
+  }).join('')
+}
+
 function openTestPrint(printerSize: string) {
   const w = ({ A4: '210mm', A5: '148mm', '80mm': '80mm', '58mm': '58mm' } as Record<string, string>)[printerSize] ?? '80mm'
-  const pw = window.open('', '_blank', 'width=420,height=640')
+  const pw = window.open('', '_blank', 'width=480,height=700')
   if (!pw) return
   const now = new Date().toLocaleString('vi-VN')
+  const content = `=== IN THỬ HÓA ĐƠN ĐIỆN TỬ ===\nCửa hàng Demo\nMST: 0123456789\n---\nSố HĐ: DEMO-2026-001\nNgày: ${now}\n---\nKhách hàng: Nguyễn Văn A\nMặt hàng: Sản phẩm demo x1  100,000đ\n---\n   Tổng cộng: 100,000đ\n   VAT 10%: 10,000đ\n   Thực thu: 110,000đ\n=== CẢM ƠN QUÝ KHÁCH ===`
   pw.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{margin:0;padding:8px;width:${w};font-family:monospace;font-size:11px;line-height:1.5}
-    @media print{@page{size:${w};margin:4mm}}
-  </style></head><body><pre>
-=== IN THỬ HÓA ĐƠN ĐIỆN TỬ ===
-Cửa hàng Demo
-MST: 0123456789
----
-Số HĐ: DEMO-2026-001
-Ngày: ${now}
----
-Khách hàng: Nguyễn Văn A
-Mặt hàng: Sản phẩm demo x1  100,000đ
----
-Tổng cộng: 100,000đ
-VAT 10%: 10,000đ
-Thực thu: 110,000đ
-=== CẢM ƠN QUÝ KHÁCH ===
-  </pre></body></html>`)
+    *{box-sizing:border-box}body{margin:0;background:#e5e5e5;display:flex;flex-direction:column;align-items:center;padding:20px;min-height:100vh}
+    .paper{background:#fff;width:${w};max-width:100%;padding:10px;font-family:'Courier New',monospace;font-size:11px;line-height:1.6;box-shadow:0 2px 12px rgba(0,0,0,.18);border-radius:2px;word-break:break-word}
+    .toolbar{display:flex;gap:8px;margin-bottom:14px}.toolbar button{padding:6px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}
+    .btn-print{background:#f97316;color:#fff}.btn-close{background:#e5e7eb;color:#374151}
+    @media print{body{background:#fff;padding:0}.toolbar{display:none}.paper{box-shadow:none;padding:4mm}@page{size:${w};margin:4mm}}
+  </style></head><body>
+    <div class="toolbar"><button class="btn-print" onclick="window.print()">&#128424; In</button><button class="btn-close" onclick="window.close()">&#x2715; Đóng</button></div>
+    <div class="paper">${textToReceiptHtml(content)}</div>
+  </body></html>`)
   pw.document.close()
-  pw.onload = () => { pw.print(); pw.close() }
 }
 
 export default function EInvoicesPage() {

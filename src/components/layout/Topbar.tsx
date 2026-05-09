@@ -1,10 +1,11 @@
 'use client'
 
 import { signOut, useSession } from 'next-auth/react'
-import { Menu, Bell, ChevronDown, ChevronLeft, ChevronRight, LogOut, User } from 'lucide-react'
+import { Menu, Bell, ChevronDown, ChevronLeft, ChevronRight, LogOut, User, ExternalLink } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { useNotifications } from '@/components/providers/NotificationProvider'
 
 interface TopbarProps {
   onMenuClick: () => void
@@ -14,12 +15,19 @@ interface TopbarProps {
 export default function Topbar({ onMenuClick, desktopSidebarVisible }: TopbarProps) {
   const { data: session } = useSession()
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [bellOpen, setBellOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const bellRef = useRef<HTMLDivElement>(null)
+  const { notifications, dismiss, dismissAll } = useNotifications()
+  const unreadCount = notifications.filter(n => !n.dismissed).length
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false)
+      }
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) {
+        setBellOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -51,10 +59,60 @@ export default function Topbar({ onMenuClick, desktopSidebarVisible }: TopbarPro
       {/* Right */}
       <div className="flex items-center gap-2">
         {/* Notification bell */}
-        <button className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100">
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-        </button>
+        <div className="relative" ref={bellRef}>
+          <button
+            onClick={() => setBellOpen(!bellOpen)}
+            className="relative p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+            aria-label="Thông báo đơn hàng"
+          >
+            <Bell className="w-5 h-5" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 min-w-[16px] h-4 px-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+            {unreadCount === 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full opacity-30" />
+            )}
+          </button>
+
+          {bellOpen && (
+            <div className="absolute right-0 top-full mt-1 w-80 bg-white rounded-xl shadow-lg border border-gray-100 z-50">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <p className="text-sm font-semibold text-gray-900">Thông báo đơn hàng</p>
+                {notifications.length > 0 && (
+                  <button onClick={() => { dismissAll(); setBellOpen(false) }} className="text-xs text-gray-400 hover:text-gray-600">
+                    Xóa tất cả
+                  </button>
+                )}
+              </div>
+              <div className="max-h-72 overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-sm text-gray-400">Chưa có thông báo</div>
+                ) : (
+                  notifications.slice(0, 10).map(notif => (
+                    <div key={notif.id} className={cn('px-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50', notif.dismissed && 'opacity-50')}>
+                      <div className="flex items-start gap-2">
+                        <div className="w-2 h-2 mt-1.5 rounded-full bg-orange-400 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-800 leading-snug">{notif.message}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{notif.timestamp.toLocaleTimeString('vi-VN')}</p>
+                        </div>
+                        <Link
+                          href={notif.href}
+                          onClick={() => { dismiss(notif.id); setBellOpen(false) }}
+                          className="text-xs text-primary-600 hover:text-primary-700 flex-shrink-0 flex items-center gap-0.5"
+                        >
+                          Xem <ExternalLink className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Role badge */}
         <span className={cn(
@@ -109,3 +167,4 @@ export default function Topbar({ onMenuClick, desktopSidebarVisible }: TopbarPro
     </header>
   )
 }
+

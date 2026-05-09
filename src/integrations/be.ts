@@ -37,6 +37,28 @@ const tokenCache = new Map<string, { token: string; expiresAt: number }>()
 export class BeAdapter implements PlatformAdapter {
   source = 'be' as const
 
+  private hasCancelSignal(raw: Record<string, unknown>): boolean {
+    if (
+      Boolean(raw.cancel_reason) ||
+      Boolean(raw.cancel_time) ||
+      Boolean(raw.cancelled_at) ||
+      Boolean(raw.cancel_date) ||
+      Boolean(raw.cancel_code) ||
+      Boolean(raw.cancel_status) ||
+      Boolean(raw.cancel_by) ||
+      Boolean(raw.cancel_note) ||
+      Boolean(raw.order_cancel_reason_id) ||
+      Boolean(raw.driver_cancel_reason) ||
+      Boolean(raw.restaurant_cancel_reason) ||
+      Boolean(raw.customer_cancel_reason) ||
+      raw.is_cancelled === true ||
+      raw.is_cancel === true ||
+      raw.cancelled === true
+    ) return true
+    if (typeof raw.status_reason === 'string' && raw.status_reason.toLowerCase().includes('cancel')) return true
+    return false
+  }
+
   private async fetchOrderDetailWithSession(
     accessToken: string,
     merchantContext: { merchantId: number; userId: number },
@@ -105,7 +127,19 @@ export class BeAdapter implements PlatformAdapter {
 
     return rawOrders.map((order) => {
       const orderId = String(order.order_id ?? '')
-      return this.normalizeOrder(detailMap.get(orderId) ?? order, fetchType)
+      const rawDetail = detailMap.get(orderId) ?? order
+      const normalized = this.normalizeOrder(rawDetail, fetchType)
+
+      // For previous bucket: if raw order OR detail has any cancel signal that normalizeOrder
+      // might have missed (e.g. unknown status int), force cancelled
+      if (fetchType === 'previous' && normalized.orderStatus !== 'cancelled') {
+        if (this.hasCancelSignal(order) || (detailMap.has(orderId) && this.hasCancelSignal(detailMap.get(orderId)!))) {
+          console.log(`[BE] previous order ${orderId} forced cancelled by cancel signal fields`)
+          return { ...normalized, orderStatus: 'cancelled' as const }
+        }
+      }
+
+      return normalized
     })
   }
 
@@ -383,11 +417,8 @@ export class BeAdapter implements PlatformAdapter {
       note:     String(i.customize_object ?? i.note ?? '').trim() || undefined,
     }))
 
-    // Be API uses integer status codes — map via fetch_type context when available
-    // Known: in_progress = waiting_confirm, pending = waiting_pickup
-    // status integers observed: 2 = in-process, 21 = completed
-    // Cancellation codes observed: 99, 100 (partner API); 3–10 may indicate various cancel reasons
-    const statusInt = Number(raw.status ?? -1)
+    // Be API uses integer status codes — check multiple possible field names (merchant portal may use order_status / current_status)
+    const statusInt = Number(raw.status ?? raw.order_status ?? raw.current_status ?? raw.state ?? raw.order_state ?? -1)
     let orderStatus: OrderStatus = (fetchType ? STATUS_BY_FETCH[fetchType] : undefined) ?? 'waiting_confirm'
     // Don't let a completed status integer override an explicitly cancelled fetch bucket
     if ((statusInt === 21 || statusInt === 20) && fetchType !== 'cancelled') orderStatus = 'completed'
@@ -395,13 +426,7 @@ export class BeAdapter implements PlatformAdapter {
     const CANCELLED_INTS = new Set([3, 4, 5, 6, 7, 8, 9, 10, 99, 100])
     if (CANCELLED_INTS.has(statusInt)) orderStatus = 'cancelled'
     // Check explicit cancellation fields in raw payload (merchant API may include these)
-    const hasCancelField =
-      Boolean(raw.cancel_reason) ||
-      Boolean(raw.cancel_time) ||
-      Boolean(raw.cancelled_at) ||
-      raw.is_cancelled === true ||
-      raw.cancelled === true ||
-      (typeof raw.status_reason === 'string' && raw.status_reason.toLowerCase().includes('cancel'))
+    const hasCancelField = this.hasCancelSignal(raw)
     if (hasCancelField) orderStatus = 'cancelled'
 
     const total    = Number(raw.order_amount ?? raw.originial_amount ?? raw.original_amount ?? raw.sub_total ?? raw.subtotal ?? raw.total_amount ?? raw.final_amount ?? 0)
@@ -577,6 +602,11 @@ export class BeAdapter implements PlatformAdapter {
     }
     if (fetchType === 'cancelled') {
       console.log(`[BE] cancelled bucket code=${data.code} msg=${data.message ?? ''} orders=${(data.restaurant_orders ?? data.orders ?? []).length}`)
+    }
+    if (fetchType === 'previous') {
+      const orders = data.restaurant_orders ?? data.orders ?? []
+      const statusLog = orders.slice(0, 20).map((o) => `${o.order_id}:s=${o.status ?? o.order_status ?? '?'},c=${o.cancel_reason ?? o.cancel_time ?? o.is_cancelled ?? o.is_cancel ?? '-'}`).join(' | ')
+      console.log(`[BE] previous bucket: ${orders.length} orders | ${statusLog}`)
     }
     // Support alternate response shapes the merchant API might use
     return data.restaurant_orders ?? data.orders ?? data.data?.restaurant_orders ?? []

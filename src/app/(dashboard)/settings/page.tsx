@@ -155,12 +155,20 @@ export default function SettingsPage() {
             <Volume2 className="h-4 w-4" /> Test âm thanh
           </button>
           <button type="button" onClick={() => {
+            const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            const toHtml = (txt: string) => txt.split('\n').map(line => {
+              const t = line.trim()
+              if (t.match(/^={3,}/)) return `<div style="text-align:center;font-weight:bold">${esc(t)}</div>`
+              if (t.match(/^-{3,}$/)) return `<hr style="border:none;border-top:1px dashed #999;margin:3px 0"/>`
+              if (/\d/.test(t) && /^\s/.test(line)) return `<div style="text-align:right">${esc(t)}</div>`
+              return `<div>${esc(t) || '\u00a0'}</div>`
+            }).join('')
             const w = ({ A4: '210mm', A5: '148mm', '80mm': '80mm', '58mm': '58mm' } as Record<string, string>)[orderSettings.printerPaperSize] ?? '80mm'
-            const pw = window.open('', '_blank', 'width=420,height=640')
+            const content = `=== IN THỬ BIÊN LAI ===\nMáy in: ${orderSettings.printerName || '(chưa đặt)'}\nKhổ giấy: ${orderSettings.printerPaperSize}\n---\nCửa hàng Demo\nNgày: ${new Date().toLocaleString('vi-VN')}\n---\n   Sản phẩm demo x1    100,000đ\n---\n   Tổng: 100,000đ\n=== CẢM ƠN QUÝ KHÁCH ===`
+            const pw = window.open('', '_blank', 'width=480,height=700')
             if (!pw) return
-            pw.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:8px;width:${w};font-family:monospace;font-size:11px;line-height:1.5}@media print{@page{size:${w};margin:4mm}}</style></head><body><pre>\n=== IN THỬ BIÊN LAI ===\nMáy in: ${orderSettings.printerName || '(chưa đặt)'}\nKhổ giấy: ${orderSettings.printerPaperSize}\n---\nCửa hàng Demo\nNgày: ${new Date().toLocaleString('vi-VN')}\n---\nSản phẩm demo x1    100,000đ\n---\nTổng: 100,000đ\n=== CẢM ƠN QUÝ KHÁCH ===\n    </pre></body></html>`)
+            pw.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;background:#e5e5e5;display:flex;flex-direction:column;align-items:center;padding:20px}.paper{background:#fff;width:${w};max-width:100%;padding:10px;font-family:'Courier New',monospace;font-size:11px;line-height:1.6;box-shadow:0 2px 12px rgba(0,0,0,.18);word-break:break-word}.toolbar{display:flex;gap:8px;margin-bottom:14px}.toolbar button{padding:6px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}.bp{background:#f97316;color:#fff}.bc{background:#e5e7eb;color:#374151}@media print{body{background:#fff;padding:0}.toolbar{display:none}@page{size:${w};margin:4mm}}</style></head><body><div class="toolbar"><button class="bp" onclick="window.print()">&#128424; In</button><button class="bc" onclick="window.close()">&#x2715; Đóng</button></div><div class="paper">${toHtml(content)}</div></body></html>`)
             pw.document.close()
-            pw.onload = () => { pw.print(); pw.close() }
           }} className="btn-outline">
             <Printer className="h-4 w-4" /> In thử biên lai
           </button>

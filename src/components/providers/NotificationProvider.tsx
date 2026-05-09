@@ -101,7 +101,7 @@ export default function NotificationProvider({ children }: { children: React.Rea
       dismissed: false,
       href,
     }
-    setNotifications(prev => [notif, ...prev].slice(0, 5))
+    setNotifications(prev => [notif, ...prev].slice(0, 10))
     if (settings.soundEnabled) {
       playOrderAlert(settings.soundRepeatCount ?? 3, settings.voiceMessage)
     }
@@ -113,7 +113,7 @@ export default function NotificationProvider({ children }: { children: React.Rea
         revealLatestOrder(href)
       }
     }
-  }, [settings.soundEnabled, settings.voiceMessage])
+  }, [settings.soundEnabled, settings.soundRepeatCount, settings.voiceMessage])
 
   useEffect(() => {
     const nextSettings = loadOrderAlertSettings()

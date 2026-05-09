@@ -333,7 +333,11 @@ export class GrabAdapter implements PlatformAdapter {
   }
 
   private normalizeGrabPortalPhone(phone?: string) {
-    return phone?.replace(/\s+/g, '')
+    if (!phone) return undefined
+    // Strip all whitespace, dashes, dots to get compact number e.g. +84397891772
+    const compact = phone.replace(/[\s\-.()\u00A0]/g, '')
+    if (!compact) return undefined
+    return compact
   }
 
   private extractGrabPortalPhone(segment: string) {
