@@ -11,9 +11,10 @@ import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/aut
 import { requestAutomationLogin } from '@/lib/automation-login'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
 import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { getDisplayDriverName, getDisplayDriverPhone } from '@/lib/order-financials'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeOrdersByExternalOrderId, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
 import { buildSessionFailureUpdate, buildSessionSuccessUpdate } from '@/lib/session-health'
-import type { NormalizedOrder } from '@/types'
+import type { NormalizedOrder, Order } from '@/types'
 import type { SessionData } from '@/integrations/types'
 
 const AUTOMATION_URL = process.env.AUTOMATION_SERVICE_URL ?? ''
@@ -257,8 +258,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           customersToSave.push({ name: cName, phone: cPhone, brandId: String(intg.brandId), total: mergedNormalized.total ?? 0, isNew: isNewOrder })
         }
 
-        const dName = mergedNormalized.driverInfo?.name?.trim()
-        const dPhone = mergedNormalized.driverInfo?.phone?.trim()
+        // Collect driver info for auto-save.
+        // Use display helpers so we also scan rawPayload fields that the adapter
+        // may not have mapped into driverInfo (same strategy buildOrderUpsert uses).
+        const dName = getDisplayDriverName(mergedNormalized as unknown as Order) ?? mergedNormalized.driverInfo?.name?.trim()
+        const dPhone = getDisplayDriverPhone(mergedNormalized as unknown as Order) || mergedNormalized.driverInfo?.phone?.trim()
         if (dName && dPhone && hasMeaningfulDriverName(dName) && hasMeaningfulPhone(dPhone)) {
           driversToSave.push({ name: dName, phone: dPhone, platform: intg.provider, isNew: isNewOrder })
         }

@@ -939,7 +939,7 @@ export class GrabAdapter implements PlatformAdapter {
     const delivery = (raw.delivery ?? {}) as Record<string, unknown>
     const dropoff  = (delivery.dropoff ?? {}) as Record<string, unknown>
     const address  = String(dropoff.address ?? dropoff.formattedAddress ?? delivery.address ?? raw.deliveryAddress ?? '')
-    const driver   = (delivery.driver ?? raw.driver ?? raw.rider ?? {}) as Record<string, unknown>
+    const driver   = (delivery.driver ?? raw.driver ?? raw.rider ?? raw.driverDetails ?? raw.driverInfo ?? raw.courier ?? raw.deliveryPerson ?? raw.deliveryAgent ?? {}) as Record<string, unknown>
 
     return {
       source:          'grab',
@@ -955,8 +955,8 @@ export class GrabAdapter implements PlatformAdapter {
       paymentMethod:   String(raw.paymentType ?? raw.paymentMethod ?? (raw.isTakeawayOrder ? 'pickup' : 'delivery')),
       deliveryInfo:    { address },
       driverInfo:      {
-        name: String(driver.name ?? driver.displayName ?? ''),
-        phone: normalizeCompactPhone(String(driver.phone ?? driver.phoneNumber ?? driver.mobileNumber ?? '')),
+        name: String(driver.name ?? driver.displayName ?? '') || undefined,
+        phone: normalizeCompactPhone(String(driver.phone ?? driver.phoneNumber ?? driver.mobileNumber ?? driver.contact ?? '')),
       },
       orderStatus,
       placedAt:        String(raw.orderTime ?? raw.createdAt ?? raw.createTime ?? new Date().toISOString()),

@@ -8,11 +8,12 @@ import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/aut
 import { requestAutomationLogin } from '@/lib/automation-login'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
 import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { getDisplayDriverName, getDisplayDriverPhone } from '@/lib/order-financials'
 import CustomerModel from '@/models/Customer'
 import DriverModel from '@/models/Driver'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeOrdersByExternalOrderId, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
 import { buildSessionFailureUpdate, buildSessionSuccessUpdate } from '@/lib/session-health'
-import type { NormalizedOrder } from '@/types'
+import type { NormalizedOrder, Order } from '@/types'
 import type { SessionData } from '@/integrations/types'
 
 function calcCustomerTier(totalSpend: number): 'bronze' | 'silver' | 'gold' | 'platinum' {
@@ -261,9 +262,11 @@ export async function GET(req: NextRequest) {
             customersToSave.push({ name: cName, phone: cPhone, brandId: String(intg.brandId), total: mergedNormalized.total ?? 0, isNew: isNewOrder })
           }
 
-          // Collect driver info for auto-save
-          const dName = mergedNormalized.driverInfo?.name?.trim()
-          const dPhone = mergedNormalized.driverInfo?.phone?.trim()
+          // Collect driver info for auto-save.
+          // Use display helpers so we also scan rawPayload fields that the adapter
+          // may not have mapped into driverInfo (same strategy buildOrderUpsert uses).
+          const dName = getDisplayDriverName(mergedNormalized as unknown as Order) ?? mergedNormalized.driverInfo?.name?.trim()
+          const dPhone = getDisplayDriverPhone(mergedNormalized as unknown as Order) || mergedNormalized.driverInfo?.phone?.trim()
           if (dName && dPhone && hasMeaningfulDriverName(dName) && hasMeaningfulPhone(dPhone)) {
             driversToSave.push({ name: dName, phone: dPhone, platform: intg.provider, isNew: isNewOrder })
           }

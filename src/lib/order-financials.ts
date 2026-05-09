@@ -383,6 +383,11 @@ export function getDisplayDriverPhone(order: Order) {
   const deliveryDriver = getRecord(delivery?.driver)
   const driver = getRecord(raw?.driver)
   const rider = getRecord(raw?.rider)
+  // Additional nested sources Grab/Be may use
+  const driverDetails = getRecord(raw?.driverDetails)
+  const driverInfo = getRecord(raw?.driverInfo)
+  const courier = getRecord(raw?.courier)
+  const deliveryPerson = getRecord(raw?.deliveryPerson ?? raw?.deliveryAgent)
 
   return normalizeCompactPhone(String(
     order.driverInfo?.phone
@@ -390,12 +395,23 @@ export function getDisplayDriverPhone(order: Order) {
     ?? deliveryDriver?.phone
     ?? deliveryDriver?.phoneNumber
     ?? deliveryDriver?.mobileNumber
+    ?? deliveryDriver?.contact
     ?? driver?.phone
     ?? driver?.phoneNumber
     ?? driver?.mobileNumber
+    ?? driver?.contact
     ?? rider?.phone
     ?? rider?.phoneNumber
     ?? rider?.mobileNumber
+    ?? driverDetails?.phone
+    ?? driverDetails?.phoneNumber
+    ?? driverDetails?.mobileNumber
+    ?? driverInfo?.phone
+    ?? driverInfo?.phoneNumber
+    ?? courier?.phone
+    ?? courier?.phoneNumber
+    ?? deliveryPerson?.phone
+    ?? deliveryPerson?.phoneNumber
     ?? ''
   )) ?? ''
 }
@@ -406,6 +422,10 @@ export function getDisplayDriverName(order: Order) {
   const deliveryDriver = getRecord(delivery?.driver)
   const driver = getRecord(raw?.driver)
   const rider = getRecord(raw?.rider)
+  const driverDetails = getRecord(raw?.driverDetails)
+  const driverInfo = getRecord(raw?.driverInfo)
+  const courier = getRecord(raw?.courier)
+  const deliveryPerson = getRecord(raw?.deliveryPerson ?? raw?.deliveryAgent)
 
   const candidates = [
     deliveryDriver?.name,
@@ -414,6 +434,14 @@ export function getDisplayDriverName(order: Order) {
     driver?.displayName,
     rider?.name,
     rider?.displayName,
+    driverDetails?.name,
+    driverDetails?.displayName,
+    driverInfo?.name,
+    driverInfo?.displayName,
+    courier?.name,
+    courier?.displayName,
+    deliveryPerson?.name,
+    deliveryPerson?.displayName,
     raw?.driver_name,
     order.driverInfo?.name,
   ]
