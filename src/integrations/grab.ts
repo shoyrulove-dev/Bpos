@@ -60,6 +60,61 @@ function mapGrabStatus(rawStatus: string): OrderStatus {
   return statusMap[rawStatus] ?? 'waiting_confirm'
 }
 
+function hasGrabDateValue(value: unknown) {
+  if (!value) return false
+  const date = new Date(String(value))
+  return !Number.isNaN(date.getTime())
+}
+
+function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): OrderStatus {
+  const mappedStatus = mapGrabStatus(rawStatus)
+  if (mappedStatus === 'completed' || mappedStatus === 'cancelled') return mappedStatus
+
+  const times = raw.times && typeof raw.times === 'object' && !Array.isArray(raw.times)
+    ? raw.times as Record<string, unknown>
+    : undefined
+
+  const secondarySignals = [
+    raw.deliveryStatus,
+    raw.orderState,
+    raw.status,
+    raw.orderStatus,
+    raw.state,
+    raw.deliveryTaskpoolStatus,
+    raw.preparationTaskpoolStatus,
+    raw.fulfillmentStatus,
+    raw.displayStatus,
+    raw.pageType,
+  ]
+    .map((value) => String(value ?? '').trim().toLowerCase())
+    .filter(Boolean)
+
+  if (secondarySignals.some((value) => value.includes('cancel') || value.includes('fail') || value.includes('refund'))) {
+    return 'cancelled'
+  }
+
+  if (secondarySignals.some((value) => value.includes('complete') || value.includes('deliver') || value.includes('history') || value.includes('past') || value.includes('terminate'))) {
+    return 'completed'
+  }
+
+  if (raw.cancelCode || hasGrabDateValue(raw.cancelledAt) || hasGrabDateValue(raw.canceledAt) || hasGrabDateValue(times?.cancelledAt)) {
+    return 'cancelled'
+  }
+
+  if (
+    hasGrabDateValue(raw.completedAt)
+    || hasGrabDateValue(raw.deliveredAt)
+    || hasGrabDateValue(raw.deliveryCompletedAt)
+    || hasGrabDateValue(raw.delivered_time)
+    || hasGrabDateValue(times?.completedAt)
+    || hasGrabDateValue(times?.deliveredAt)
+  ) {
+    return 'completed'
+  }
+
+  return mappedStatus
+}
+
 export class GrabAdapter implements PlatformAdapter {
   source = 'grab' as const
 
@@ -899,7 +954,7 @@ export class GrabAdapter implements PlatformAdapter {
     }))
 
     const rawStatus = String(raw.deliveryStatus ?? raw.orderState ?? raw.status ?? raw.orderStatus ?? raw.state ?? '')
-    const orderStatus = mapGrabStatus(rawStatus)
+    const orderStatus = resolveGrabStatus(rawStatus, raw)
     const consumer  = raw.consumer ?? raw.customer ?? raw.receiver ?? raw.eater ?? {} as Record<string, unknown>
     const consumerObj = typeof consumer === 'object' ? consumer as Record<string, unknown> : {}
     const consumerPhone = normalizeCompactPhone(String(
@@ -965,7 +1020,7 @@ export class GrabAdapter implements PlatformAdapter {
       },
       orderStatus,
       placedAt:        String(raw.orderTime ?? raw.createdAt ?? raw.createTime ?? new Date().toISOString()),
-      deliveredAt:     orderStatus === 'completed' ? String(raw.updatedAt ?? raw.completedAt ?? raw.createdAt ?? '') : undefined,
+      deliveredAt:     orderStatus === 'completed' ? String(raw.deliveredAt ?? raw.completedAt ?? raw.updatedAt ?? raw.createdAt ?? '') : undefined,
       rawPayload:      raw,
     }
   }
@@ -981,7 +1036,8 @@ export class GrabAdapter implements PlatformAdapter {
     }))
 
     // orderState field (not 'state')
-    const rawStatus = String(raw.orderState ?? '')
+    const rawStatus = String(raw.orderState ?? raw.deliveryStatus ?? raw.status ?? raw.orderStatus ?? raw.state ?? '')
+    const orderStatus = resolveGrabStatus(rawStatus, raw)
 
     // receiver object contains customer name, phone, and delivery address
     const receiver = (raw.receiver ?? raw.eater) as Record<string, unknown> | undefined
@@ -1027,9 +1083,9 @@ export class GrabAdapter implements PlatformAdapter {
           ''
         )),
       },
-      orderStatus: mapGrabStatus(rawStatus),
+      orderStatus,
       placedAt:    String(raw.orderTime ?? new Date().toISOString()),
-      deliveredAt: mapGrabStatus(rawStatus) === 'completed' ? String(raw.completedAt ?? raw.updatedAt ?? raw.orderTime ?? '') : undefined,
+      deliveredAt: orderStatus === 'completed' ? String(raw.deliveredAt ?? raw.completedAt ?? raw.updatedAt ?? raw.orderTime ?? '') : undefined,
       rawPayload:  raw,
     }
   }

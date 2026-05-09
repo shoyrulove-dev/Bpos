@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { ArrowLeft, Loader2, MapPin, Phone, Printer, RefreshCw, TicketPercent, Truck, UtensilsCrossed } from 'lucide-react'
 import { useOrder } from '@/hooks/use-orders-channels'
-import { getActualReceived as getSettlementActualReceived, getDisplayCustomerPhone, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown, getGrabMoneyBreakdown as getSettlementGrabMoneyBreakdown } from '@/lib/order-financials'
+import { getActualReceived as getSettlementActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown, getGrabMoneyBreakdown as getSettlementGrabMoneyBreakdown } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
 import { CHANNEL_SOURCE_COLOR, CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, PAYMENT_METHOD_LABEL } from '@/lib/utils'
 import type { Order } from '@/types'
@@ -80,97 +80,6 @@ function getGrabItemDiscountTotal(order: Order) {
   }
 
   return totalDiscount
-}
-
-function getGrabMoneyBreakdown(order: Order) {
-  const fare = getGrabFareRecord(order)
-  if (!fare) return null
-
-  const originalSubtotal = parseAmount(fare.subTotalDisplay ?? fare.subtotalIncludeMerchantCharge ?? fare.originalPriceInMin) ?? order.subtotal
-  const itemDiscount = getGrabItemDiscountTotal(order)
-  const totalDiscount = parseAmount(fare.totalDiscountAmountDisplay) ?? order.discount ?? 0
-  const promotionDiscount = Math.max(0, totalDiscount - itemDiscount)
-  const revenueAfterPromotion = parseAmount(fare.totalDisplay ?? fare.revampedSubtotalDisplay) ?? order.total
-  const deliveryFee = parseAmount(fare.deliveryFeeDisplay) ?? 0
-  const smallOrderFee = parseAmount(fare.smallOrderFeeDisplay) ?? 0
-  const serviceFee = parseAmount(fare.serviceChargeFeeDisplay) ?? 0
-  const customerPaid = parseAmount(fare.passengerTotalDisplay) ?? (revenueAfterPromotion + deliveryFee + smallOrderFee + serviceFee)
-  const platformCommission = parseAmount(fare.mexCommissionDisplay ?? fare.platformCommissionDisplay) ?? (order.platformFee ?? 0)
-  const vatAmount = parseAmount(fare.mexVatAmountDisplay) ?? 0
-  const pitAmount = parseAmount(fare.mexPitAmountDisplay) ?? 0
-  const taxWithheld = parseAmount(fare.onBehalfWithholdTaxDisplay) ?? 0
-  const actualReceived = Math.max(0, revenueAfterPromotion - platformCommission - vatAmount - pitAmount - taxWithheld)
-
-  return {
-    originalSubtotal,
-    itemDiscount,
-    promotionDiscount,
-    deliveryFee,
-    smallOrderFee,
-    serviceFee,
-    customerPaid,
-    revenueAfterPromotion,
-    platformCommission,
-    vatAmount,
-    pitAmount,
-    taxWithheld,
-    actualReceived,
-  }
-}
-
-function getActualReceived(order: Order) {
-  if (order.source === 'grab') {
-    const grabMoneyBreakdown = getGrabMoneyBreakdown(order)
-    if (grabMoneyBreakdown) return grabMoneyBreakdown.actualReceived
-  }
-
-  const raw = order.rawPayload ?? {}
-  const candidateValues = [
-    raw.escrow_amount,
-    raw.received_amount,
-    raw.actual_received_amount,
-    raw.net_order_amount,
-    raw.amount_receive,
-    raw.merchant_receivable,
-    raw.merchantReceivable,
-    raw.merchantPayment,
-    raw.payToMerchant,
-    raw.orderEarningsInMinorUnit,
-  ]
-
-  for (const value of candidateValues) {
-    const amount = Number(value)
-    if (Number.isFinite(amount) && amount > 0) return amount
-  }
-
-  return Math.max(0, order.total - (order.platformFee ?? 0))
-}
-
-function getFinancialBreakdown(order: Order) {
-  if (order.source === 'grab') {
-    const grabMoneyBreakdown = getGrabMoneyBreakdown(order)
-    if (grabMoneyBreakdown) {
-      return {
-        subtotal: grabMoneyBreakdown.originalSubtotal,
-        productDiscount: grabMoneyBreakdown.itemDiscount,
-        orderDiscount: grabMoneyBreakdown.promotionDiscount,
-        platformFee: grabMoneyBreakdown.platformCommission,
-        revenueAfterPromotion: grabMoneyBreakdown.revenueAfterPromotion,
-        taxWithheld: grabMoneyBreakdown.taxWithheld + grabMoneyBreakdown.vatAmount + grabMoneyBreakdown.pitAmount,
-      }
-    }
-  }
-
-  const raw = order.rawPayload ?? {}
-
-  return {
-    subtotal: getBreakdownAmount(raw, ['merchandiseAmount', 'grossFoodSales', 'itemSubtotal', 'subTotal']) ?? order.subtotal,
-    productDiscount: getBreakdownAmount(raw, ['productDiscount', 'productDiscountAmount', 'itemDiscount', 'itemDiscountAmount', 'lineItemDiscount']) ?? 0,
-    orderDiscount: getBreakdownAmount(raw, ['orderDiscount', 'orderDiscountAmount', 'basketDiscount', 'campaignDiscount', 'discountAmount']) ?? order.discount,
-    platformFee: getBreakdownAmount(raw, ['platformCommission', 'platformFee', 'commissionFee', 'merchantCommission', 'serviceFee']) ?? (order.platformFee ?? 0),
-    revenueAfterPromotion: getBreakdownAmount(raw, ['revenueAfterPromotion', 'afterPromotionRevenue', 'netSales', 'salesAfterDiscount']) ?? order.total,
-    taxWithheld: getBreakdownAmount(raw, ['taxWithheld', 'taxDeduction', 'withholdingTax', 'withheldTax', 'deductedTax', 'taxAmount']) ?? 0,
-  }
 }
 
 function getGrabTimeline(order: Order) {
@@ -271,9 +180,7 @@ function getGrabDetailItems(order: Order) {
 }
 
 function getGrabCustomerName(order: Order) {
-  const raw = getRecord(order.rawPayload)
-  const eater = getRecord(raw?.eater)
-  return String(eater?.name ?? order.customerName ?? 'Khách hàng')
+  return getDisplayCustomerName(order) ?? 'Khách hàng'
 }
 
 function getGrabCustomerNote(order: Order) {
@@ -523,8 +430,8 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
   order: Order
   displayOrderCode: string
   actualReceived: number
-  financialBreakdown: ReturnType<typeof getFinancialBreakdown>
-  grabMoneyBreakdown: ReturnType<typeof getGrabMoneyBreakdown>
+  financialBreakdown: ReturnType<typeof getSettlementFinancialBreakdown>
+  grabMoneyBreakdown: ReturnType<typeof getSettlementGrabMoneyBreakdown>
   onRefresh: () => void
   isRefreshing: boolean
 }) {
@@ -534,7 +441,7 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
   const timeline = getGrabTimeline(order)
   const customerName = getGrabCustomerName(order)
   const customerNote = getGrabCustomerNote(order)
-  const driverName = String(order.driverInfo?.name ?? getRecord(raw?.driver)?.name ?? '-')
+  const driverName = getDisplayDriverName(order) ?? '-'
   const driverPhone = getDisplayDriverPhone(order) || '-'
   const customerPhone = getDisplayCustomerPhone(order) || '-'
   const longOrderCode = String(order.externalOrderId ?? '-')
@@ -664,18 +571,12 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
 
         <div className="rounded-[28px] border border-gray-200 bg-white p-4">
           <div className="space-y-2 text-sm text-gray-500">
-            <div className="flex items-center justify-between gap-3"><span>Tiền gốc</span><span className="font-medium text-gray-900">{formatCurrency(financialBreakdown.subtotal)}</span></div>
-            {financialBreakdown.productDiscount > 0 && <div className="flex items-center justify-between gap-3"><span>Chiết khấu món</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.productDiscount)}</span></div>}
-            {financialBreakdown.orderDiscount > 0 && <div className="flex items-center justify-between gap-3"><span>Khuyến mãi trên đơn</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.orderDiscount)}</span></div>}
-            {grabMoneyBreakdown?.deliveryFee ? <div className="flex items-center justify-between gap-3"><span>Phí giao hàng khách trả</span><span className="font-medium text-gray-900">{formatCurrency(grabMoneyBreakdown.deliveryFee)}</span></div> : null}
-            {grabMoneyBreakdown?.smallOrderFee ? <div className="flex items-center justify-between gap-3"><span>Phí đơn nhỏ</span><span className="font-medium text-gray-900">{formatCurrency(grabMoneyBreakdown.smallOrderFee)}</span></div> : null}
-            {grabMoneyBreakdown?.serviceFee ? <div className="flex items-center justify-between gap-3"><span>Phí dịch vụ</span><span className="font-medium text-gray-900">{formatCurrency(grabMoneyBreakdown.serviceFee)}</span></div> : null}
-            {grabMoneyBreakdown?.customerPaid ? <div className="flex items-center justify-between gap-3"><span>Khách thanh toán</span><span className="font-medium text-gray-900">{formatCurrency(grabMoneyBreakdown.customerPaid)}</span></div> : null}
+            <div className="flex items-center justify-between gap-3"><span>Tiền hàng</span><span className="font-medium text-gray-900">{formatCurrency(financialBreakdown.subtotal)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Giảm giá sản phẩm</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.productDiscount)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Giảm giá tổng đơn (ĐH + VC)</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.orderDiscount)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Chiết khấu (CK) sàn</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.platformFee)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>Doanh thu sau KM</span><span className="font-medium text-gray-900">{formatCurrency(financialBreakdown.revenueAfterPromotion || order.total)}</span></div>
-            {grabMoneyBreakdown?.platformCommission ? <div className="flex items-center justify-between gap-3"><span>Chiết khấu Grab</span><span className="font-medium text-gray-900">-{formatCurrency(grabMoneyBreakdown.platformCommission)}</span></div> : null}
-            {grabMoneyBreakdown?.vatAmount ? <div className="flex items-center justify-between gap-3"><span>Thuế GTGT</span><span className="font-medium text-gray-900">-{formatCurrency(grabMoneyBreakdown.vatAmount)}</span></div> : null}
-            {grabMoneyBreakdown?.pitAmount ? <div className="flex items-center justify-between gap-3"><span>Thuế TNCN</span><span className="font-medium text-gray-900">-{formatCurrency(grabMoneyBreakdown.pitAmount)}</span></div> : null}
-            {grabMoneyBreakdown?.taxWithheld ? <div className="flex items-center justify-between gap-3"><span>Khấu trừ khác</span><span className="font-medium text-gray-900">-{formatCurrency(grabMoneyBreakdown.taxWithheld)}</span></div> : null}
+            <div className="flex items-center justify-between gap-3"><span>Khấu trừ thuế</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.taxWithheld)}</span></div>
           </div>
 
           <div className="mt-3 border-t border-gray-200 pt-3">
@@ -684,6 +585,18 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
               <span>{formatCurrency(actualReceived)}</span>
             </div>
           </div>
+
+          {(grabMoneyBreakdown?.customerPaid || grabMoneyBreakdown?.deliveryFee || grabMoneyBreakdown?.smallOrderFee || grabMoneyBreakdown?.serviceFee) && (
+            <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
+              <p className="font-medium text-gray-900">Thông tin khách thanh toán</p>
+              <div className="mt-2 space-y-1.5">
+                {grabMoneyBreakdown?.customerPaid ? <div className="flex items-center justify-between gap-3"><span>Khách thanh toán</span><span className="font-medium text-gray-900">{formatCurrency(grabMoneyBreakdown.customerPaid)}</span></div> : null}
+                {grabMoneyBreakdown?.deliveryFee ? <div className="flex items-center justify-between gap-3"><span>Phí giao hàng</span><span className="font-medium text-gray-900">{formatCurrency(grabMoneyBreakdown.deliveryFee)}</span></div> : null}
+                {grabMoneyBreakdown?.smallOrderFee ? <div className="flex items-center justify-between gap-3"><span>Phí đơn nhỏ</span><span className="font-medium text-gray-900">{formatCurrency(grabMoneyBreakdown.smallOrderFee)}</span></div> : null}
+                {grabMoneyBreakdown?.serviceFee ? <div className="flex items-center justify-between gap-3"><span>Phí dịch vụ</span><span className="font-medium text-gray-900">{formatCurrency(grabMoneyBreakdown.serviceFee)}</span></div> : null}
+              </div>
+            </div>
+          )}
 
           <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
             <p className="font-medium text-gray-900">Phương thức thanh toán</p>
@@ -704,7 +617,7 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
   order: Order
   displayOrderCode: string
   actualReceived: number
-  financialBreakdown: ReturnType<typeof getFinancialBreakdown>
+  financialBreakdown: ReturnType<typeof getSettlementFinancialBreakdown>
   onRefresh: () => void
   isRefreshing: boolean
 }) {

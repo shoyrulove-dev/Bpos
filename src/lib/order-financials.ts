@@ -356,6 +356,7 @@ export function getDisplayCustomerName(order: Order) {
   const eater = getRecord(raw?.eater)
 
   const candidates = [
+    order.customerName,
     customer?.name,
     customer?.displayName,
     receiver?.name,
@@ -366,7 +367,6 @@ export function getDisplayCustomerName(order: Order) {
     eater?.displayName,
     raw?.customer_name,
     raw?.receiver_name,
-    order.customerName,
   ]
 
   for (const candidate of candidates) {
@@ -434,6 +434,7 @@ export function getDisplayDriverName(order: Order) {
 
   const DRIVER_PLACEHOLDERS = ['tài xế', 'tai xe', 'driver', 'shipper']
   const candidates = [
+    order.driverInfo?.name,
     deliveryDriver?.name,
     deliveryDriver?.displayName,
     deliveryDriver?.fullName,
@@ -459,7 +460,6 @@ export function getDisplayDriverName(order: Order) {
     raw?.driver_name,
     raw?.driverName,
     raw?.driverDisplayName,
-    order.driverInfo?.name,
   ]
 
   for (const candidate of candidates) {
