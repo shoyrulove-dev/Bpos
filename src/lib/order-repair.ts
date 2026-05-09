@@ -376,11 +376,21 @@ async function repairDrivers() {
   return { scanned: docs.length, updated, removed }
 }
 
-export async function runOrderRepair(options?: { days?: number; providers?: string[] }) {
+export async function runOrderRepair(options?: { days?: number; providers?: string[]; includeHistorical?: boolean }) {
   const providers = (options?.providers?.length ? options.providers : ['be', 'grab']).map((value) => value.trim()).filter(Boolean)
   const days = Math.max(1, Math.min(90, Number(options?.days ?? 30) || 30))
+  const includeHistorical = options?.includeHistorical !== false
 
-  const historical = await upsertHistoricalOrders(days, providers)
+  const historical = includeHistorical
+    ? await upsertHistoricalOrders(days, providers)
+    : {
+        integrations: 0,
+        fetched: 0,
+        updated: 0,
+        upserted: 0,
+        failed: 0,
+        skipped: true,
+      }
   const orders = await repairStoredOrders(providers)
   const customers = await repairCustomers()
   const drivers = await repairDrivers()
@@ -389,6 +399,7 @@ export async function runOrderRepair(options?: { days?: number; providers?: stri
     ok: true,
     providers,
     days,
+    includeHistorical,
     historical,
     orders,
     customers,

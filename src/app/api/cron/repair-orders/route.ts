@@ -17,8 +17,9 @@ export async function GET(req: NextRequest) {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean)
+  const includeHistorical = req.nextUrl.searchParams.get('historical') !== 'false'
 
   await connectDB()
-  const result = await runOrderRepair({ days, providers })
+  const result = await runOrderRepair({ days, providers, includeHistorical })
   return NextResponse.json(result)
 }
