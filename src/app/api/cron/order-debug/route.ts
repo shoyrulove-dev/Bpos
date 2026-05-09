@@ -16,8 +16,10 @@ export async function GET(req: NextRequest) {
 
   const shortId = (req.nextUrl.searchParams.get('shortId') ?? '').trim()
   const externalOrderId = (req.nextUrl.searchParams.get('externalOrderId') ?? '').trim()
+  const displayId = (req.nextUrl.searchParams.get('displayId') ?? '').trim()
+  const bookingCode = (req.nextUrl.searchParams.get('bookingCode') ?? '').trim()
   const source = (req.nextUrl.searchParams.get('source') ?? '').trim()
-  const phone = (req.nextUrl.searchParams.get('phone') ?? '').trim()
+  const phone = (req.nextUrl.searchParams.get('phone') ?? req.nextUrl.searchParams.get('driverPhone') ?? '').trim()
 
   await connectDB()
 
@@ -25,6 +27,8 @@ export async function GET(req: NextRequest) {
   if (shortId) filter.shortId = shortId
   if (externalOrderId) filter.externalOrderId = externalOrderId
   if (source) filter.source = source
+  if (displayId) filter['rawPayload.displayID'] = displayId
+  if (bookingCode) filter['rawPayload.bookingCode'] = bookingCode
 
   const order = Object.keys(filter).length
     ? await OrderModel.findOne(filter)
@@ -48,7 +52,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    query: { shortId, externalOrderId, source, phone },
+    query: { shortId, externalOrderId, displayId, bookingCode, source, phone },
     foundOrder: Boolean(order),
     order,
     driver,
