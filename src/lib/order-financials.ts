@@ -26,6 +26,52 @@ function hasText(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+function getPhoneCandidateValue(value: unknown): string | undefined {
+  if (typeof value === 'string' || typeof value === 'number') {
+    const text = String(value).trim()
+    return text || undefined
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = getPhoneCandidateValue(item)
+      if (candidate) return candidate
+    }
+    return undefined
+  }
+
+  const record = getRecord(value)
+  if (!record) return undefined
+
+  const nestedCandidates = [
+    record.phone,
+    record.phoneNumber,
+    record.mobileNumber,
+    record.contact,
+    record.value,
+    record.number,
+  ]
+
+  for (const candidate of nestedCandidates) {
+    const resolved = getPhoneCandidateValue(candidate)
+    if (resolved) return resolved
+  }
+
+  return undefined
+}
+
+function getNormalizedPhoneFromCandidates(candidates: unknown[]) {
+  for (const candidate of candidates) {
+    const value = getPhoneCandidateValue(candidate)
+    if (!value) continue
+
+    const normalized = normalizeCompactPhone(value) ?? extractCompactPhone(value)
+    if (normalized) return normalized
+  }
+
+  return ''
+}
+
 function normalizeDisplayName(value: unknown, placeholders: string[]) {
   if (!hasText(value)) return undefined
 
@@ -138,18 +184,12 @@ export function getGrabMoneyBreakdown(order: Order) {
     ['merchandiseAmount', 'subTotalDisplay', 'subtotalIncludeMerchantCharge', 'originalPriceInMin', 'subtotal', 'subTotal'],
   ) ?? order.subtotal
   const explicitItemDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['productDiscount', 'itemDiscount'])
-  const explicitPromotionDiscount = getDeductionAmountFromSources([financialBreakdown, fare, price, raw], ['orderDiscount', 'promotionDisplay', 'totalDiscountAmountDisplay', 'basketPromo', 'discount', 'discountAmount'])
+  const explicitPromotionDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['orderDiscount', 'merchantDiscount', 'merchantPromotionDiscount'])
   const itemDiscount = explicitItemDiscount ?? getGrabItemDiscountTotal(order)
-  const totalDiscount = (typeof explicitItemDiscount === 'number' || typeof explicitPromotionDiscount === 'number')
-    ? (explicitItemDiscount ?? 0) + (explicitPromotionDiscount ?? 0)
-    : (getDeductionAmountFromSources([fare, price, raw], ['promotionDisplay', 'totalDiscountAmountDisplay', 'basketPromo', 'discount', 'discountAmount']) ?? order.discount ?? 0)
   const promotionDiscount = typeof explicitPromotionDiscount === 'number'
     ? explicitPromotionDiscount
-    : Math.max(0, totalDiscount - itemDiscount)
-  const revenueAfterPromotion = getAmountFromSources(
-    [financialBreakdown, fare, price, raw],
-    ['revenueAfterPromotion', 'reducedPriceDisplay', 'totalDisplay', 'revampedSubtotalDisplay', 'eaterPayment', 'total', 'orderTotal'],
-  ) ?? order.total
+    : 0
+  const revenueAfterPromotion = Math.max(0, originalSubtotal - itemDiscount - promotionDiscount)
   const deliveryFee = getAmountFromSources([fare, price, raw], ['deliveryFeeDisplay', 'deliveryFee']) ?? 0
   const smallOrderFee = getAmountFromSources([fare, price, raw], ['smallOrderFeeDisplay', 'smallOrderFee']) ?? 0
   const serviceFee = getAmountFromSources([fare, price, raw], ['serviceChargeFeeDisplay', 'serviceFee']) ?? 0
@@ -325,27 +365,30 @@ export function getDisplayCustomerPhone(order: Order) {
   const consumer = getRecord(raw?.consumer)
   const eater = getRecord(raw?.eater)
 
-  return normalizeCompactPhone(String(
-    order.customerPhone
-    ?? raw?.customer_phone_no
-    ?? raw?.receiver_phone_no
-    ?? customer?.phone
-    ?? customer?.phoneNumber
-    ?? customer?.mobileNumber
-    ?? receiver?.phone
-    ?? receiver?.phoneNumber
-    ?? receiver?.mobileNumber
-    ?? consumer?.phone
-    ?? consumer?.phoneNumber
-    ?? consumer?.mobileNumber
-    ?? eater?.phone
-    ?? eater?.phoneNumber
-    ?? eater?.mobileNumber
-    ?? extractPhone(String(receiver?.comment ?? ''))
-    ?? extractPhone(String(consumer?.comment ?? ''))
-    ?? extractPhone(String(eater?.comment ?? ''))
-    ?? ''
-  )) ?? ''
+  return getNormalizedPhoneFromCandidates([
+    order.customerPhone,
+    raw?.customer_phone_no,
+    raw?.receiver_phone_no,
+    customer?.phones,
+    customer?.phone,
+    customer?.phoneNumber,
+    customer?.mobileNumber,
+    receiver?.phones,
+    receiver?.phone,
+    receiver?.phoneNumber,
+    receiver?.mobileNumber,
+    consumer?.phones,
+    consumer?.phone,
+    consumer?.phoneNumber,
+    consumer?.mobileNumber,
+    eater?.phones,
+    eater?.phone,
+    eater?.phoneNumber,
+    eater?.mobileNumber,
+    extractPhone(String(receiver?.comment ?? '')),
+    extractPhone(String(consumer?.comment ?? '')),
+    extractPhone(String(eater?.comment ?? '')),
+  ])
 }
 
 export function getDisplayCustomerName(order: Order) {
@@ -389,36 +432,42 @@ export function getDisplayDriverPhone(order: Order) {
   const courier = getRecord(raw?.courier)
   const deliveryPerson = getRecord(raw?.deliveryPerson ?? raw?.deliveryAgent)
 
-  return normalizeCompactPhone(String(
-    order.driverInfo?.phone
-    ?? raw?.driver_phone_no
-    ?? raw?.driver_contact
-    ?? raw?.driver_phone
-    ?? raw?.driverPhone
-    ?? raw?.driverContactNo
-    ?? raw?.driverPhoneNumber
-    ?? deliveryDriver?.phone
-    ?? deliveryDriver?.phoneNumber
-    ?? deliveryDriver?.mobileNumber
-    ?? deliveryDriver?.contact
-    ?? driver?.phone
-    ?? driver?.phoneNumber
-    ?? driver?.mobileNumber
-    ?? driver?.contact
-    ?? rider?.phone
-    ?? rider?.phoneNumber
-    ?? rider?.mobileNumber
-    ?? driverDetails?.phone
-    ?? driverDetails?.phoneNumber
-    ?? driverDetails?.mobileNumber
-    ?? driverInfo?.phone
-    ?? driverInfo?.phoneNumber
-    ?? courier?.phone
-    ?? courier?.phoneNumber
-    ?? deliveryPerson?.phone
-    ?? deliveryPerson?.phoneNumber
-    ?? ''
-  )) ?? ''
+  return getNormalizedPhoneFromCandidates([
+    order.driverInfo?.phone,
+    raw?.driver_phone_no,
+    raw?.driver_contact,
+    raw?.driver_phone,
+    raw?.driverPhone,
+    raw?.driverContactNo,
+    raw?.driverPhoneNumber,
+    deliveryDriver?.phones,
+    deliveryDriver?.phone,
+    deliveryDriver?.phoneNumber,
+    deliveryDriver?.mobileNumber,
+    deliveryDriver?.contact,
+    driver?.phones,
+    driver?.phone,
+    driver?.phoneNumber,
+    driver?.mobileNumber,
+    driver?.contact,
+    rider?.phones,
+    rider?.phone,
+    rider?.phoneNumber,
+    rider?.mobileNumber,
+    driverDetails?.phones,
+    driverDetails?.phone,
+    driverDetails?.phoneNumber,
+    driverDetails?.mobileNumber,
+    driverInfo?.phones,
+    driverInfo?.phone,
+    driverInfo?.phoneNumber,
+    courier?.phones,
+    courier?.phone,
+    courier?.phoneNumber,
+    deliveryPerson?.phones,
+    deliveryPerson?.phone,
+    deliveryPerson?.phoneNumber,
+  ])
 }
 
 export function getDisplayDriverName(order: Order) {

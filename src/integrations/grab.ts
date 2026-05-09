@@ -392,6 +392,32 @@ export class GrabAdapter implements PlatformAdapter {
     return normalizeCompactPhone(phone)
   }
 
+  private getGrabPhoneCandidate(value: unknown): string | undefined {
+    if (typeof value === 'string' || typeof value === 'number') {
+      const text = String(value).trim()
+      return text || undefined
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const candidate = this.getGrabPhoneCandidate(item)
+        if (candidate) return candidate
+      }
+      return undefined
+    }
+
+    if (!value || typeof value !== 'object') return undefined
+
+    const record = value as Record<string, unknown>
+    const candidates = [record.phone, record.phoneNumber, record.mobileNumber, record.contact, record.value, record.number]
+    for (const candidate of candidates) {
+      const resolved = this.getGrabPhoneCandidate(candidate)
+      if (resolved) return resolved
+    }
+
+    return undefined
+  }
+
   private extractGrabPortalPhone(segment: string) {
     const match = segment.match(/((?:\+?84|0)\d[\d .-]{7,13}\d)/)
     return match?.[1]?.trim()
@@ -957,14 +983,15 @@ export class GrabAdapter implements PlatformAdapter {
     const orderStatus = resolveGrabStatus(rawStatus, raw)
     const consumer  = raw.consumer ?? raw.customer ?? raw.receiver ?? raw.eater ?? {} as Record<string, unknown>
     const consumerObj = typeof consumer === 'object' ? consumer as Record<string, unknown> : {}
-    const consumerPhone = normalizeCompactPhone(String(
-      consumerObj.phones ??
-      consumerObj.phone ??
-      consumerObj.phoneNumber ??
-      consumerObj.mobileNumber ??
-      this.extractGrabPortalPhone(String(consumerObj.comment ?? '')) ??
-      ''
-    ))
+    const consumerPhone = normalizeCompactPhone(
+      this.getGrabPhoneCandidate([
+        consumerObj.phones,
+        consumerObj.phone,
+        consumerObj.phoneNumber,
+        consumerObj.mobileNumber,
+        this.extractGrabPortalPhone(String(consumerObj.comment ?? '')),
+      ])
+    )
 
     const priceObj = (raw.price ?? raw.pricing ?? {}) as Record<string, unknown>
     const subtotal = Number(
@@ -1011,12 +1038,19 @@ export class GrabAdapter implements PlatformAdapter {
       deliveryInfo:    { address },
       driverInfo:      {
         name: String(driver.name ?? driver.displayName ?? '') || undefined,
-        phone: normalizeCompactPhone(String(
-          driver.phone ?? driver.phoneNumber ?? driver.mobileNumber ?? driver.contact ??
-          raw.driverPhone ?? raw.driverContactNo ?? raw.driverPhoneNumber ??
-          raw.driver_phone_no ?? raw.driver_contact ?? raw.driver_phone ??
-          ''
-        )),
+        phone: normalizeCompactPhone(this.getGrabPhoneCandidate([
+          driver.phones,
+          driver.phone,
+          driver.phoneNumber,
+          driver.mobileNumber,
+          driver.contact,
+          raw.driverPhone,
+          raw.driverContactNo,
+          raw.driverPhoneNumber,
+          raw.driver_phone_no,
+          raw.driver_contact,
+          raw.driver_phone,
+        ])),
       },
       orderStatus,
       placedAt:        String(raw.orderTime ?? raw.createdAt ?? raw.createTime ?? new Date().toISOString()),
@@ -1041,14 +1075,13 @@ export class GrabAdapter implements PlatformAdapter {
 
     // receiver object contains customer name, phone, and delivery address
     const receiver = (raw.receiver ?? raw.eater) as Record<string, unknown> | undefined
-    const receiverPhone = normalizeCompactPhone(String(
-      receiver?.phones ??
-      receiver?.phone ??
-      receiver?.phoneNumber ??
-      receiver?.mobileNumber ??
-      this.extractGrabPortalPhone(String(receiver?.comment ?? '')) ??
-      ''
-    ))
+    const receiverPhone = normalizeCompactPhone(this.getGrabPhoneCandidate([
+      receiver?.phones,
+      receiver?.phone,
+      receiver?.phoneNumber,
+      receiver?.mobileNumber,
+      this.extractGrabPortalPhone(String(receiver?.comment ?? '')),
+    ]))
     const receiverAddress = receiver?.address as Record<string, unknown> | undefined
 
     // price is a nested object in POS API v1.1.3
