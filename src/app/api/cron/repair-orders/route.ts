@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean)
+  const driverPhone = (req.nextUrl.searchParams.get('driverPhone') ?? '').trim()
   const forceCancelledOrderIds = (req.nextUrl.searchParams.get('forceCancelledOrderIds') ?? '')
     .split(',')
     .map((value) => value.trim())
@@ -36,6 +37,6 @@ export async function GET(req: NextRequest) {
     .filter(Boolean)
 
   await connectDB()
-  const result = await runOrderRepair({ days, providers, includeHistorical, externalOrderIds, shortIds, forceCancelledOrderIds, forceCompletedShortIds })
+  const result = await runOrderRepair({ days, providers, includeHistorical, externalOrderIds, shortIds, driverPhone, forceCancelledOrderIds, forceCompletedShortIds })
   return NextResponse.json(result)
 }

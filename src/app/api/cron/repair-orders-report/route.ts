@@ -25,8 +25,9 @@ export async function GET(req: NextRequest) {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean)
+  const driverPhone = (req.nextUrl.searchParams.get('driverPhone') ?? '').trim()
 
   await connectDB()
-  const result = await getOrderRepairReport({ providers, limit, externalOrderIds, shortIds })
+  const result = await getOrderRepairReport({ providers, limit, externalOrderIds, shortIds, driverPhone })
   return NextResponse.json(result)
 }
