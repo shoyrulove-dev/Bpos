@@ -432,15 +432,24 @@ export function getDisplayDriverName(order: Order) {
   const courier = getRecord(raw?.courier)
   const deliveryPerson = getRecord(raw?.deliveryPerson ?? raw?.deliveryAgent)
 
+  const DRIVER_PLACEHOLDERS = ['tài xế', 'tai xe', 'driver', 'shipper']
   const candidates = [
     deliveryDriver?.name,
     deliveryDriver?.displayName,
+    deliveryDriver?.fullName,
+    // firstName + lastName combination
+    (deliveryDriver?.firstName && deliveryDriver?.lastName) ? `${deliveryDriver.firstName} ${deliveryDriver.lastName}` : undefined,
     driver?.name,
     driver?.displayName,
+    driver?.fullName,
+    (driver?.firstName && driver?.lastName) ? `${driver.firstName} ${driver.lastName}` : undefined,
     rider?.name,
     rider?.displayName,
+    rider?.fullName,
+    (rider?.firstName && rider?.lastName) ? `${rider.firstName} ${rider.lastName}` : undefined,
     driverDetails?.name,
     driverDetails?.displayName,
+    driverDetails?.fullName,
     driverInfo?.name,
     driverInfo?.displayName,
     courier?.name,
@@ -448,11 +457,13 @@ export function getDisplayDriverName(order: Order) {
     deliveryPerson?.name,
     deliveryPerson?.displayName,
     raw?.driver_name,
+    raw?.driverName,
+    raw?.driverDisplayName,
     order.driverInfo?.name,
   ]
 
   for (const candidate of candidates) {
-    const name = normalizeDisplayName(candidate, ['tài xế', 'tai xe', 'driver', 'shipper'])
+    const name = normalizeDisplayName(candidate, DRIVER_PLACEHOLDERS)
     if (name) return name
   }
 

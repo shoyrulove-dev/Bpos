@@ -7,7 +7,7 @@ import { getAdapter } from '@/integrations/registry'
 import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/automation-session'
 import { requestAutomationLogin } from '@/lib/automation-login'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import { getDisplayDriverName, getDisplayDriverPhone } from '@/lib/order-financials'
 import CustomerModel from '@/models/Customer'
 import DriverModel from '@/models/Driver'
@@ -265,9 +265,12 @@ export async function GET(req: NextRequest) {
           // Collect driver info for auto-save.
           // Use display helpers so we also scan rawPayload fields that the adapter
           // may not have mapped into driverInfo (same strategy buildOrderUpsert uses).
-          const dName = getDisplayDriverName(mergedNormalized as unknown as Order) ?? mergedNormalized.driverInfo?.name?.trim()
+          const dNameRaw = getDisplayDriverName(mergedNormalized as unknown as Order) ?? mergedNormalized.driverInfo?.name?.trim()
           const dPhone = getDisplayDriverPhone(mergedNormalized as unknown as Order) || mergedNormalized.driverInfo?.phone?.trim()
-          if (dName && dPhone && hasMeaningfulDriverName(dName) && hasMeaningfulPhone(dPhone)) {
+          // If phone is meaningful but name isn't available yet, use a platform placeholder
+          // so the phone gets saved to DriverModel. repairDrivers() will fill name later.
+          const dName = (dNameRaw && hasMeaningfulDriverName(dNameRaw)) ? dNameRaw : (dPhone && hasMeaningfulPhone(dPhone) ? `(Tài xế ${intg.provider})` : undefined)
+          if (dName && dPhone && hasMeaningfulPhone(dPhone)) {
             driversToSave.push({ name: dName, phone: dPhone, platform: intg.provider, isNew: isNewOrder })
           }
         } catch { /* skip individual order errors */ }
@@ -305,7 +308,7 @@ export async function GET(req: NextRequest) {
       for (const d of driversToSave) {
         try {
           const existingDriver = await DriverModel.findOne({ phone: d.phone, platform: d.platform }).select('name').lean() as { name?: string } | null
-          const shouldUpdateName = !existingDriver || !hasMeaningfulDriverName(existingDriver.name)
+          const shouldUpdateName = !existingDriver || !hasMeaningfulDriverName(existingDriver.name) || isDriverNamePlaceholder(existingDriver.name)
           await DriverModel.findOneAndUpdate(
             { phone: d.phone, platform: d.platform },
             d.isNew

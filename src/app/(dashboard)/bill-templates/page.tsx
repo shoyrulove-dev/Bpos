@@ -321,16 +321,16 @@ export default function BillTemplatesPage() {
       )}
 
       {previewTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-black/50 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-auto">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white rounded-t-2xl z-10">
               <div>
                 <h2 className="font-semibold text-gray-900">Xem nhanh: {previewTemplate.name}</h2>
                 <p className="text-xs text-gray-500 mt-1">{getTemplateGuide(previewTemplate.type, previewTemplate.size)}</p>
               </div>
-              <button onClick={() => setPreviewTemplate(null)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+              <button onClick={() => setPreviewTemplate(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
             </div>
-            <div className="p-6 bg-[#f6f1e8]">
+            <div className="p-6 bg-[#f6f1e8] overflow-y-auto max-h-[65vh]">
               <div className="bg-white rounded-2xl shadow-sm p-4">
                 <div className="mx-auto font-mono text-xs leading-5" style={{ width: previewTemplate.size === '58mm' ? '58mm' : previewTemplate.size === 'A4' ? '210mm' : previewTemplate.size === 'A5' ? '148mm' : '80mm', maxWidth: '100%' }} dangerouslySetInnerHTML={{ __html: renderPrintTemplateHtml(previewTemplate.templateContent, buildDemoPrintTemplateContext(previewTemplate.type === 'label' ? 'label' : previewTemplate.type === 'delivery' ? 'delivery' : 'receipt'), [
                   { name: 'Trà sữa trân châu', quantity: 2, price: 35000, total: 70000, note: 'Ít đá' },
@@ -338,7 +338,7 @@ export default function BillTemplatesPage() {
                 ]) }} />
               </div>
             </div>
-            <div className="px-6 pb-5 flex justify-end gap-2">
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2 sticky bottom-0 bg-white rounded-b-2xl">
               <button onClick={() => openTemplatePrintWindow(previewTemplate.templateContent, previewTemplate.type, previewTemplate.size)} className="btn-outline gap-1.5">
                 <Printer className="h-4 w-4" /> In thử
               </button>

@@ -53,6 +53,12 @@ export function hasMeaningfulDriverName(value: unknown) {
   return hasMeaningfulName(value, DRIVER_NAME_PLACEHOLDERS)
 }
 
+/** Returns true when a name is an auto-generated phone-only placeholder (e.g. "(Tài xế grab)"). */
+export function isDriverNamePlaceholder(value: unknown) {
+  const trimmed = toTrimmedText(value)
+  return Boolean(trimmed && trimmed.startsWith('(') && trimmed.endsWith(')'))
+}
+
 function pickPreferredName(
   incoming: unknown,
   existing: unknown,

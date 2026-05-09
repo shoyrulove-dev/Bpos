@@ -1,7 +1,7 @@
 import { decryptJSON } from '@/lib/crypto'
 import { hasBeCancelSignal } from '@/lib/be-order-status'
 import { getAdapter } from '@/integrations/registry'
-import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
 import { buildSessionStoreId } from '@/lib/realtime-order-sync'
 import { normalizeCompactPhone } from '@/lib/phone'
@@ -253,6 +253,42 @@ async function repairStoredOrders(providers: string[], options?: { externalOrder
       unset.deliveredAt = ''
     }
 
+    // Grab: if rawPayload shows DELIVERED/COMPLETED/BILL_PAID but DB status is still
+    // waiting_confirm/waiting_pickup/delivering, repair the status.
+    if (order.source === 'grab' && order.rawPayload && ['waiting_confirm', 'waiting_pickup', 'delivering'].includes(order.status)) {
+      const rawGrabStatus = String(
+        order.rawPayload.deliveryStatus
+        ?? order.rawPayload.orderState
+        ?? order.rawPayload.status
+        ?? order.rawPayload.orderStatus
+        ?? order.rawPayload.state
+        ?? ''
+      ).toUpperCase()
+      const GRAB_COMPLETED = new Set(['DELIVERED', 'COMPLETED', 'BILL_PAID'])
+      const GRAB_CANCELLED = new Set(['CANCELLED', 'CANCELLED_MAX', 'CANCELLED_BY_MERCHANT', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_DRIVER', 'FAILED', 'REFUNDED'])
+      if (GRAB_COMPLETED.has(rawGrabStatus)) {
+        set.status = 'completed'
+        set.deliveredAt = parseDateValue(
+          order.rawPayload.deliveredAt
+          ?? order.rawPayload.completedAt
+          ?? order.rawPayload.updatedAt
+          ?? order.deliveredAt
+        ) ?? new Date()
+        unset.cancelledAt = ''
+        unset.cancelReason = ''
+      } else if (GRAB_CANCELLED.has(rawGrabStatus) && order.status !== 'cancelled') {
+        set.status = 'cancelled'
+        set.cancelReason = String(order.rawPayload.cancelReason ?? order.rawPayload.cancel_reason ?? order.cancelReason ?? 'Đơn đã hủy')
+        set.cancelledAt = parseDateValue(
+          order.rawPayload.cancelledAt
+          ?? order.rawPayload.cancel_time
+          ?? order.rawPayload.updatedAt
+          ?? order.cancelledAt
+        ) ?? new Date()
+        unset.deliveredAt = ''
+      }
+    }
+
     if (forceCancelledOrderIdSet?.has(String(order.externalOrderId ?? '')) && order.status !== 'cancelled') {
       set.status = 'cancelled'
       set.cancelReason = String(order.cancelReason ?? order.rawPayload?.cancel_reason ?? order.rawPayload?.status_reason ?? 'BE xác nhận đơn đã hủy')
@@ -356,7 +392,13 @@ async function repairDrivers() {
 
   for (const doc of docs) {
     const normalizedPhone = normalizeCompactPhone(doc.phone)
-    if (!normalizedPhone || !hasMeaningfulPhone(normalizedPhone) || !hasMeaningfulDriverName(doc.name)) {
+    if (!normalizedPhone || !hasMeaningfulPhone(normalizedPhone)) {
+      invalidIds.push(String(doc._id))
+      continue
+    }
+    // Keep placeholder-named drivers in the grouped map — they'll be merged below
+    // (real name wins over placeholder when both exist for same phone)
+    if (!hasMeaningfulDriverName(doc.name) && !isDriverNamePlaceholder(doc.name)) {
       invalidIds.push(String(doc._id))
       continue
     }
@@ -376,8 +418,9 @@ async function repairDrivers() {
 
   for (const [key, group] of Array.from(grouped.entries())) {
     const [platform, normalizedPhone] = key.split(':')
-    const primary = group.find((item: StoredDriver) => item.phone === normalizedPhone && hasMeaningfulDriverName(item.name))
-      ?? group.find((item: StoredDriver) => hasMeaningfulDriverName(item.name))
+    const primary = group.find((item: StoredDriver) => item.phone === normalizedPhone && hasMeaningfulDriverName(item.name) && !isDriverNamePlaceholder(item.name))
+      ?? group.find((item: StoredDriver) => hasMeaningfulDriverName(item.name) && !isDriverNamePlaceholder(item.name))
+      ?? group.find((item: StoredDriver) => isDriverNamePlaceholder(item.name))
       ?? group[0]
     const duplicates = group.filter((item: StoredDriver) => String(item._id) !== String(primary._id))
     const visitCount = group.reduce((sum: number, item: StoredDriver) => sum + Number(item.visitCount ?? 0), 0)
