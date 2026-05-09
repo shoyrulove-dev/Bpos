@@ -3,7 +3,7 @@ import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { encryptJSON } from '@/lib/crypto'
 import { buildSessionSuccessUpdate } from '@/lib/session-health'
-import type { SessionData } from '@/integrations/types'
+import type { PlaywrightCookie, SessionData } from '@/integrations/types'
 
 const CRON_SECRET = process.env.CRON_SECRET
 
@@ -19,6 +19,8 @@ export async function POST(req: NextRequest) {
     integrationId?: string
     provider?: string
     manualJwt?: string
+    cookies?: PlaywrightCookie[]
+    localStorage?: Record<string, string>
     storeId?: string
     username?: string
     ttlSeconds?: number
@@ -27,12 +29,14 @@ export async function POST(req: NextRequest) {
   const integrationId = String(body.integrationId ?? '').trim()
   const provider = String(body.provider ?? 'grab').trim()
   const jwt = String(body.manualJwt ?? '').replace(/^Bearer\s+/i, '').trim()
+  const cookies = Array.isArray(body.cookies) ? body.cookies : []
+  const localStorage = body.localStorage && typeof body.localStorage === 'object' ? body.localStorage : undefined
   const storeId = String(body.storeId ?? '').trim() || undefined
   const username = String(body.username ?? '').trim() || undefined
   const ttlSeconds = Math.max(300, Number(body.ttlSeconds ?? 8 * 3600) || 8 * 3600)
 
-  if (!jwt) {
-    return NextResponse.json({ error: 'Missing manualJwt' }, { status: 400 })
+  if (!jwt && !cookies.length) {
+    return NextResponse.json({ error: 'Missing manualJwt or cookies' }, { status: 400 })
   }
 
   await connectDB()
@@ -41,16 +45,22 @@ export async function POST(req: NextRequest) {
     ? await IntegrationModel.findById(integrationId)
     : storeId
     ? await IntegrationModel.findOne({ provider, externalStoreId: storeId, isActive: true })
+    : username
+    ? await IntegrationModel.findOne({ provider, loginUsername: username, isActive: true }).select('+loginPassword')
     : null
-  if (!integration) {
+  const resolvedIntegration = integration ?? (username
+    ? await IntegrationModel.findOne({ provider, loginUsername: username, isActive: true })
+    : null)
+  if (!resolvedIntegration) {
     return NextResponse.json({ error: 'Integration not found', provider, storeId }, { status: 404 })
   }
 
   const session: SessionData = {
-    cookies: [],
-    extraHeaders: { Authorization: `Bearer ${jwt}` },
+    cookies,
+    ...(jwt ? { extraHeaders: { Authorization: `Bearer ${jwt}` } } : {}),
     capturedAt: new Date().toISOString(),
     sessionTtlSeconds: ttlSeconds,
+    ...(localStorage ? { localStorage } : {}),
   }
 
   if (storeId) {
@@ -65,7 +75,7 @@ export async function POST(req: NextRequest) {
   const expiresAt = new Date(capturedAt.getTime() + ttlSeconds * 1000)
 
   await IntegrationModel.updateOne(
-    { _id: integrationId },
+    { _id: resolvedIntegration._id },
     buildSessionSuccessUpdate({
       loginMode: 'auto',
       ...(username ? { loginUsername: username } : {}),
@@ -80,10 +90,10 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    integrationId: String(integration._id),
-    provider: integration.provider,
-    loginUsername: username ?? integration.loginUsername,
-    externalStoreId: storeId ?? integration.externalStoreId,
+    integrationId: String(resolvedIntegration._id),
+    provider: resolvedIntegration.provider,
+    loginUsername: username ?? resolvedIntegration.loginUsername,
+    externalStoreId: storeId ?? resolvedIntegration.externalStoreId,
     sessionExpiresAt: expiresAt,
   })
 }
