@@ -500,7 +500,6 @@ async function repairDrivers() {
             ...(lastSeenAt ? { lastSeenAt } : {}),
           },
           $inc: { visitCount },
-          $setOnInsert: { visitCount },
         },
         { upsert: true }
       )
