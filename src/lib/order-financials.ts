@@ -46,6 +46,37 @@ function getGrabFareRecord(order: Order) {
   return getRecord(raw?.fare)
 }
 
+function getGrabPriceRecord(order: Order) {
+  const raw = getRecord(order.rawPayload)
+  return getRecord(raw?.price ?? raw?.pricing)
+}
+
+function getAmountFromSources(sources: Array<Record<string, unknown> | undefined>, keys: string[]) {
+  for (const source of sources) {
+    if (!source) continue
+
+    for (const key of keys) {
+      const amount = parseAmount(source[key])
+      if (typeof amount === 'number') return amount
+    }
+  }
+
+  return undefined
+}
+
+function getDeductionAmountFromSources(sources: Array<Record<string, unknown> | undefined>, keys: string[]) {
+  for (const source of sources) {
+    if (!source) continue
+
+    for (const key of keys) {
+      const amount = parseDeductionAmount(source[key])
+      if (typeof amount === 'number') return amount
+    }
+  }
+
+  return undefined
+}
+
 function getGrabItemDiscountTotal(order: Order) {
   const raw = getRecord(order.rawPayload)
   const itemInfo = getRecord(raw?.itemInfo)
@@ -71,29 +102,60 @@ export function getGrabMoneyBreakdown(order: Order) {
   const raw = getRecord(order.rawPayload)
   const financialBreakdown = getRecord(raw?.financialBreakdown)
   const fare = getGrabFareRecord(order)
-  if (!fare && !financialBreakdown) return null
+  const price = getGrabPriceRecord(order)
+  const amountSources = [financialBreakdown, fare, price, raw]
 
-  const originalSubtotal = parseAmount(financialBreakdown?.merchandiseAmount ?? fare?.subTotalDisplay ?? fare?.subtotalIncludeMerchantCharge ?? fare?.originalPriceInMin) ?? order.subtotal
-  const explicitItemDiscount = parseDeductionAmount(financialBreakdown?.productDiscount)
-  const explicitPromotionDiscount = parseDeductionAmount(financialBreakdown?.orderDiscount)
+  const hasMoneySignals = [
+    getAmountFromSources(amountSources, ['merchandiseAmount', 'subtotal', 'subTotal', 'originalPriceInMin']),
+    getAmountFromSources(amountSources, ['productDiscount', 'orderDiscount', 'discount', 'discountAmount', 'basketPromo']),
+    getAmountFromSources(amountSources, ['revenueAfterPromotion', 'totalDisplay', 'revampedSubtotalDisplay', 'eaterPayment', 'total', 'orderTotal']),
+    getAmountFromSources(amountSources, ['platformCommission', 'mexCommissionDisplay', 'platformFee', 'commissionFee', 'merchantCommission', 'merchantFee', 'serviceFee']),
+    getAmountFromSources(amountSources, ['taxWithheld', 'onBehalfWithholdTaxDisplay', 'withholdingTax', 'withheldTax', 'vatAmount', 'mexVatAmountDisplay', 'pitAmount', 'mexPitAmountDisplay']),
+    getAmountFromSources(amountSources, ['actualReceived', 'merchantReceivable', 'merchantPayment', 'payToMerchant', 'receivedAmount']),
+  ].some((value) => typeof value === 'number')
+
+  if (!fare && !financialBreakdown && !price && !hasMoneySignals) return null
+
+  const originalSubtotal = getAmountFromSources(
+    [financialBreakdown, fare, price, raw],
+    ['merchandiseAmount', 'subTotalDisplay', 'subtotalIncludeMerchantCharge', 'originalPriceInMin', 'subtotal', 'subTotal'],
+  ) ?? order.subtotal
+  const explicitItemDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['productDiscount', 'itemDiscount'])
+  const explicitPromotionDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['orderDiscount', 'basketPromo', 'discount', 'discountAmount'])
   const itemDiscount = explicitItemDiscount ?? getGrabItemDiscountTotal(order)
   const totalDiscount = (typeof explicitItemDiscount === 'number' || typeof explicitPromotionDiscount === 'number')
     ? (explicitItemDiscount ?? 0) + (explicitPromotionDiscount ?? 0)
-    : (parseDeductionAmount(fare?.totalDiscountAmountDisplay) ?? order.discount ?? 0)
+    : (getDeductionAmountFromSources([fare, price, raw], ['totalDiscountAmountDisplay', 'basketPromo', 'discount', 'discountAmount']) ?? order.discount ?? 0)
   const promotionDiscount = typeof explicitPromotionDiscount === 'number'
     ? explicitPromotionDiscount
     : Math.max(0, totalDiscount - itemDiscount)
-  const revenueAfterPromotion = parseAmount(financialBreakdown?.revenueAfterPromotion ?? fare?.totalDisplay ?? fare?.revampedSubtotalDisplay) ?? order.total
-  const deliveryFee = parseAmount(fare?.deliveryFeeDisplay) ?? 0
-  const smallOrderFee = parseAmount(fare?.smallOrderFeeDisplay) ?? 0
-  const serviceFee = parseAmount(fare?.serviceChargeFeeDisplay) ?? 0
-  const customerPaid = parseAmount(fare?.passengerTotalDisplay) ?? (revenueAfterPromotion + deliveryFee + smallOrderFee + serviceFee)
-  const platformCommission = parseDeductionAmount(financialBreakdown?.platformCommission) ?? parseDeductionAmount(fare?.mexCommissionDisplay ?? fare?.platformCommissionDisplay) ?? Math.abs(order.platformFee ?? 0)
-  const vatAmount = parseDeductionAmount(fare?.mexVatAmountDisplay) ?? 0
-  const pitAmount = parseDeductionAmount(fare?.mexPitAmountDisplay) ?? 0
-  const taxWithheld = parseDeductionAmount(financialBreakdown?.taxWithheld) ?? parseDeductionAmount(fare?.onBehalfWithholdTaxDisplay) ?? 0
-  const actualReceived = parseAmount(financialBreakdown?.actualReceived ?? raw?.merchantReceivable ?? raw?.receivedAmount ?? raw?.merchantPayment ?? raw?.payToMerchant)
-    ?? Math.max(0, revenueAfterPromotion - platformCommission - vatAmount - pitAmount - taxWithheld)
+  const revenueAfterPromotion = getAmountFromSources(
+    [financialBreakdown, fare, price, raw],
+    ['revenueAfterPromotion', 'totalDisplay', 'revampedSubtotalDisplay', 'eaterPayment', 'total', 'orderTotal'],
+  ) ?? order.total
+  const deliveryFee = getAmountFromSources([fare, price, raw], ['deliveryFeeDisplay', 'deliveryFee']) ?? 0
+  const smallOrderFee = getAmountFromSources([fare, price, raw], ['smallOrderFeeDisplay', 'smallOrderFee']) ?? 0
+  const serviceFee = getAmountFromSources([fare, price, raw], ['serviceChargeFeeDisplay', 'serviceFee']) ?? 0
+  const customerPaid = getAmountFromSources([fare, price, raw], ['passengerTotalDisplay', 'eaterPayment', 'total', 'orderTotal']) ?? (revenueAfterPromotion + deliveryFee + smallOrderFee + serviceFee)
+  const platformCommission = getDeductionAmountFromSources(
+    [financialBreakdown, fare, price, raw],
+    ['platformCommission', 'mexCommissionDisplay', 'platformFee', 'commissionFee', 'merchantCommission', 'merchantFee', 'serviceFee'],
+  ) ?? Math.abs(order.platformFee ?? 0)
+  const vatAmount = getDeductionAmountFromSources([fare, price, raw], ['mexVatAmountDisplay', 'vatAmount', 'vat', 'commissionVat']) ?? 0
+  const pitAmount = getDeductionAmountFromSources([fare, price, raw], ['mexPitAmountDisplay', 'pitAmount', 'pit', 'personalIncomeTax']) ?? 0
+  const taxWithheld = getDeductionAmountFromSources(
+    [financialBreakdown, fare, price, raw],
+    ['taxWithheld', 'onBehalfWithholdTaxDisplay', 'withholdingTax', 'withheldTax', 'onBehalfWithholdTax', 'deductedTax'],
+  ) ?? 0
+  const explicitActualReceived = getAmountFromSources(
+    [financialBreakdown, price, raw],
+    ['actualReceived', 'merchantReceivable', 'receivedAmount', 'merchantPayment', 'payToMerchant'],
+  )
+  const shouldRecomputeActualReceived = platformCommission > 0 || vatAmount > 0 || pitAmount > 0 || taxWithheld > 0
+  const computedActualReceived = Math.max(0, revenueAfterPromotion - platformCommission - vatAmount - pitAmount - taxWithheld)
+  const actualReceived = shouldRecomputeActualReceived
+    ? computedActualReceived
+    : (explicitActualReceived ?? computedActualReceived)
 
   return {
     originalSubtotal,
