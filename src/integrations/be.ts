@@ -325,8 +325,22 @@ export class BeAdapter implements PlatformAdapter {
 
     const base  = this.getBase(config)
     const token = await this.getToken(clientId, clientSecret, base)
-    const previous = await this.fetchByType(token, base, restaurantId, 'previous').catch(() => [] as Record<string, unknown>[])
-    return this.enrichOrdersWithDetails(previous, config, 'previous')
+    const [previous, cancelled] = await Promise.all([
+      this.fetchByType(token, base, restaurantId, 'previous').catch(() => [] as Record<string, unknown>[]),
+      this.fetchByType(token, base, restaurantId, 'cancelled').catch(() => [] as Record<string, unknown>[]),
+    ])
+    const seen = new Set<string>()
+    const all: NormalizedOrder[] = []
+    for (const [orders, fetchType] of [[previous, 'previous'], [cancelled, 'cancelled']] as [Record<string, unknown>[], string][]) {
+      const enriched = await this.enrichOrdersWithDetails(orders, config, fetchType)
+      for (const order of enriched) {
+        const id = String(order.externalOrderId ?? '')
+        if (!id || seen.has(id)) continue
+        seen.add(id)
+        all.push(order)
+      }
+    }
+    return all
   }
 
   async fetchOrderDetail(orderId: string, config: AdapterConfig): Promise<NormalizedOrder | null> {
@@ -363,7 +377,8 @@ export class BeAdapter implements PlatformAdapter {
     // status integers observed: 2 = in-process, 21 = completed
     const statusInt = Number(raw.status ?? -1)
     let orderStatus: OrderStatus = (fetchType ? STATUS_BY_FETCH[fetchType] : undefined) ?? 'waiting_confirm'
-    if (statusInt === 21 || statusInt === 20) orderStatus = 'completed'
+    // Don't let a completed status integer override an explicitly cancelled fetch bucket
+    if ((statusInt === 21 || statusInt === 20) && fetchType !== 'cancelled') orderStatus = 'completed'
     if (statusInt === 99 || statusInt === 100) orderStatus = 'cancelled'
 
     const total    = Number(raw.order_amount ?? raw.originial_amount ?? raw.original_amount ?? raw.sub_total ?? raw.subtotal ?? raw.total_amount ?? raw.final_amount ?? 0)

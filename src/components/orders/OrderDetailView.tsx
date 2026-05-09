@@ -565,32 +565,36 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
         </div>
       </div>
 
-      <div className="rounded-[28px] border border-gray-200 bg-white p-4">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="rounded-[28px] border border-gray-200 bg-white px-4 py-3">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3 lg:grid-cols-4">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">Tài xế</p>
-            <p className="mt-1 text-base font-semibold text-gray-950">{driverName || '-'}</p>
-            <p className="text-sm text-gray-500">{driverPhone || '-'}</p>
-            <p className="mt-1 text-xs text-emerald-600">{timeline.label} · {formatMaybeDate(timeline.at)}</p>
-            <p className="mt-1 text-xs text-gray-400">Mã đặt: <span className="font-mono text-gray-600 break-all">{bookingCode}</span></p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Tài xế</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{driverName || '-'}</p>
+            <p className="text-xs text-gray-500">{driverPhone || '-'}</p>
+            <p className="mt-0.5 text-[11px] text-emerald-600">{timeline.label} · {formatMaybeDate(timeline.at)}</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">Mã đặt: <span className="font-mono text-gray-500 break-all">{bookingCode}</span></p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>
-            <p className="mt-1 text-base font-semibold text-gray-950">{customerName}</p>
-            <p className="text-sm text-gray-500">{customerPhone}</p>
-            {customerNote && <p className="mt-1 text-xs text-gray-500 whitespace-pre-line">{customerNote}</p>}
-            <p className="mt-1 text-xs text-gray-400">Dụng cụ: <span className="text-gray-700">{utensilRequest}</span></p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{customerName}</p>
+            <p className="text-xs text-gray-500">{customerPhone}</p>
+            {customerNote && <p className="mt-0.5 text-[11px] text-gray-500 whitespace-pre-line">{customerNote}</p>}
+            <p className="mt-0.5 text-[11px] text-gray-400">Dụng cụ: <span className="text-gray-700">{utensilRequest}</span></p>
           </div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:col-span-2">
-            <div><p className="text-xs text-gray-400">Thương hiệu</p><p className="mt-0.5 text-sm font-semibold text-gray-950">{order.brandName || '-'}</p></div>
-            <div><p className="text-xs text-gray-400">Hub</p><p className="mt-0.5 text-sm font-semibold text-gray-950">{order.hubName || '-'}</p></div>
-            <div><p className="text-xs text-gray-400">Khách đặt lúc</p><p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(String(times?.createdAt ?? order.placedAt ?? ''))}</p></div>
-            <div><p className="text-xs text-gray-400">Số món</p><p className="mt-0.5 text-sm font-semibold text-gray-950">{itemCount}</p></div>
+          <div>
+            <p className="text-[10px] text-gray-400">Thương hiệu & Hub</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.brandName || '-'}</p>
+            <p className="text-xs text-gray-500">{order.hubName || '-'}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-gray-400">Đặt lúc · Số món</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(String(times?.createdAt ?? order.placedAt ?? ''))}</p>
+            <p className="text-xs text-gray-500">{itemCount} món</p>
           </div>
         </div>
       </div>
 
-<div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_300px]">
+<div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_260px]">
         <div className="rounded-[28px] border border-gray-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-gray-950">Tóm tắt đơn hàng</h2>
@@ -745,40 +749,38 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
         </div>
       </div>
 
-      <div className="grid gap-2 rounded-[28px] border border-gray-200 bg-white p-4 sm:grid-cols-3 xl:grid-cols-5">
-        <div><p className="text-xs text-gray-400">Site bán hàng</p><p className="mt-1 text-sm font-semibold text-gray-950">{order.brandName || '-'}</p><p className="text-xs text-gray-500">{order.channelName || CHANNEL_SOURCE_LABEL[order.source]}</p></div>
-        <div><p className="text-xs text-gray-400">Hub bán hàng</p><p className="mt-1 text-sm font-semibold text-gray-950">{order.hubName || '-'}</p></div>
-        <div><p className="text-xs text-gray-400">Khách đặt lúc</p><p className="mt-1 text-sm font-semibold text-gray-950">{formatMaybeDate(order.placedAt)}</p></div>
-        <div><p className="text-xs text-gray-400">Thời gian lấy hàng</p><p className="mt-1 text-sm font-semibold text-gray-950">{formatMaybeDate(order.deliveryInfo?.estimatedTime || order.deliveredAt)}</p></div>
-        <div><p className="text-xs text-gray-400">Thực nhận từ sàn</p><p className="mt-1 text-sm font-semibold text-emerald-600">{formatCurrency(actualReceived)}</p></div>
-      </div>
-
-      <div className="rounded-[28px] border border-gray-200 bg-white p-4">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="rounded-[28px] border border-gray-200 bg-white px-4 py-3">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3 lg:grid-cols-4">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>
-            <p className="mt-1 text-base font-semibold text-gray-950">{order.customerName}</p>
-            <p className="text-sm text-gray-500">{customerPhone}</p>
+            <p className="text-[10px] text-gray-400">Site & Hub</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.brandName || '-'}</p>
+            <p className="text-xs text-gray-500">{order.channelName || CHANNEL_SOURCE_LABEL[order.source]} · {order.hubName || '-'}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">Địa chỉ giao</p>
-            <p className="mt-1 text-sm text-gray-700 whitespace-pre-line break-words">{order.deliveryInfo?.address || '-'}</p>
+            <p className="text-[10px] text-gray-400">Thời gian</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(order.placedAt)}</p>
+            <p className="text-xs text-gray-500">Lấy: {formatMaybeDate(order.deliveryInfo?.estimatedTime || order.deliveredAt)}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">Tài xế</p>
-            <p className="mt-1 text-base font-semibold text-gray-950">{driverName}</p>
-            <p className="text-sm text-gray-500">{driverPhone}</p>
-            {order.driverInfo?.vehiclePlate && <p className="mt-0.5 text-xs text-gray-400">Biển số: <span className="text-gray-700">{order.driverInfo.vehiclePlate}</span></p>}
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.customerName}</p>
+            <p className="text-xs text-gray-500">{customerPhone}</p>
+            {order.deliveryInfo?.address && <p className="mt-0.5 text-[11px] text-gray-500 line-clamp-1">{order.deliveryInfo.address}</p>}
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">Ghi chú & Dụng cụ</p>
-            <p className="mt-1 text-sm text-gray-700 whitespace-pre-line">{order.deliveryInfo?.note || order.note || '-'}</p>
-            <p className="mt-1 text-xs text-gray-400">Dụng cụ: <span className="text-gray-700">{utensilRequest}</span></p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Tài xế</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{driverName}</p>
+            <p className="text-xs text-gray-500">{driverPhone}</p>
+            {order.driverInfo?.vehiclePlate && <p className="mt-0.5 text-[11px] text-gray-400">Biển số: <span className="text-gray-700">{order.driverInfo.vehiclePlate}</span></p>}
+            <p className="mt-0.5 text-[11px] text-gray-400">Dụng cụ: <span className="text-gray-700">{utensilRequest}</span></p>
           </div>
         </div>
+        {(order.deliveryInfo?.note || order.note) && (
+          <p className="mt-2.5 border-t border-gray-100 pt-2.5 text-xs text-gray-500">Ghi chú: {order.deliveryInfo?.note || order.note}</p>
+        )}
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_300px]">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_260px]">
         <div className="rounded-[28px] border border-gray-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3"><h2 className="text-base font-semibold text-gray-950">Thông tin đơn hàng</h2><span className="text-sm text-gray-500">{totalItems} món</span></div>
           <div className="mt-3 overflow-hidden rounded-2xl border border-gray-200">
@@ -905,39 +907,38 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
         </div>
       </div>
 
-      <div className="grid gap-2 rounded-[28px] border border-gray-200 bg-white p-4 sm:grid-cols-3 xl:grid-cols-5">
-        <div><p className="text-xs text-gray-400">Site bán hàng</p><p className="mt-1 text-sm font-semibold text-gray-950">{order.brandName || '-'}</p><p className="text-xs text-gray-500">{order.channelName || CHANNEL_SOURCE_LABEL[order.source]}</p></div>
-        <div><p className="text-xs text-gray-400">Hub bán hàng</p><p className="mt-1 text-sm font-semibold text-gray-950">{order.hubName || '-'}</p></div>
-        <div><p className="text-xs text-gray-400">Khách đặt lúc</p><p className="mt-1 text-sm font-semibold text-gray-950">{formatMaybeDate(order.placedAt)}</p></div>
-        <div><p className="text-xs text-gray-400">Thời gian lấy hàng</p><p className="mt-1 text-sm font-semibold text-gray-950">{formatMaybeDate(order.deliveredAt)}</p></div>
-        <div><p className="text-xs text-gray-400">Thực nhận</p><p className="mt-1 text-sm font-semibold text-emerald-600">{formatCurrency(actualReceived)}</p></div>
-      </div>
-
-      <div className="rounded-[28px] border border-gray-200 bg-white p-4">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="rounded-[28px] border border-gray-200 bg-white px-4 py-3">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3 lg:grid-cols-4">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>
-            <p className="mt-1 text-base font-semibold text-gray-950">{order.customerName || '-'}</p>
-            <p className="text-sm text-gray-500">{getDisplayCustomerPhone(order) || '-'}</p>
+            <p className="text-[10px] text-gray-400">Site & Hub</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.brandName || '-'}</p>
+            <p className="text-xs text-gray-500">{order.channelName || CHANNEL_SOURCE_LABEL[order.source]} · {order.hubName || '-'}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">Địa chỉ giao</p>
-            <p className="mt-1 text-sm text-gray-700 whitespace-pre-line break-words">{order.deliveryInfo?.address || '-'}</p>
+            <p className="text-[10px] text-gray-400">Thời gian</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(order.placedAt)}</p>
+            <p className="text-xs text-gray-500">Lấy: {formatMaybeDate(order.deliveredAt)}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">Tài xế</p>
-            <p className="mt-1 text-base font-semibold text-gray-950">{order.driverInfo?.name || '-'}</p>
-            <p className="text-sm text-gray-500">{getDisplayDriverPhone(order) || '-'}</p>
-            {order.driverInfo?.vehiclePlate && <p className="mt-0.5 text-xs text-gray-400">Biển số: <span className="text-gray-700">{order.driverInfo.vehiclePlate}</span></p>}
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.customerName || '-'}</p>
+            <p className="text-xs text-gray-500">{getDisplayCustomerPhone(order) || '-'}</p>
+            {order.deliveryInfo?.address && <p className="mt-0.5 text-[11px] text-gray-500 line-clamp-1">{order.deliveryInfo.address}</p>}
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">Ghi chú giao hàng</p>
-            <p className="mt-1 text-sm text-gray-700 whitespace-pre-line">{order.deliveryInfo?.note || order.note || '-'}</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Tài xế</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.driverInfo?.name || '-'}</p>
+            <p className="text-xs text-gray-500">{getDisplayDriverPhone(order) || '-'}</p>
+            {order.driverInfo?.vehiclePlate && <p className="mt-0.5 text-[11px] text-gray-400">Biển số: <span className="text-gray-700">{order.driverInfo.vehiclePlate}</span></p>}
+            <p className="mt-0.5 text-[11px] text-emerald-600">Thực nhận: {formatCurrency(actualReceived)}</p>
           </div>
         </div>
+        {(order.deliveryInfo?.note || order.note) && (
+          <p className="mt-2.5 border-t border-gray-100 pt-2.5 text-xs text-gray-500">Ghi chú: {order.deliveryInfo?.note || order.note}</p>
+        )}
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_300px]">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_260px]">
         <div className="rounded-[28px] border border-gray-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3"><h2 className="text-base font-semibold text-gray-950">Thông tin đơn hàng</h2><span className="text-sm text-gray-500">{totalItems} món</span></div>
           <div className="mt-3 overflow-hidden rounded-2xl border border-gray-200">
