@@ -1,16 +1,17 @@
 'use client'
 
 import { signOut, useSession } from 'next-auth/react'
-import { Menu, Bell, ChevronDown, LogOut, User, Settings } from 'lucide-react'
+import { Menu, Bell, ChevronDown, ChevronLeft, ChevronRight, LogOut, User } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
 interface TopbarProps {
   onMenuClick: () => void
+  desktopSidebarVisible: boolean
 }
 
-export default function Topbar({ onMenuClick }: TopbarProps) {
+export default function Topbar({ onMenuClick, desktopSidebarVisible }: TopbarProps) {
   const { data: session } = useSession()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -33,9 +34,12 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
-          className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+          className="p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+          aria-label={desktopSidebarVisible ? 'Ẩn menu' : 'Hiện menu'}
+          title={desktopSidebarVisible ? 'Ẩn menu' : 'Hiện menu'}
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="w-5 h-5 lg:hidden" />
+          {desktopSidebarVisible ? <ChevronLeft className="hidden w-5 h-5 lg:block" /> : <ChevronRight className="hidden w-5 h-5 lg:block" />}
         </button>
         <div className="hidden sm:block">
           <p className="text-sm text-gray-500">

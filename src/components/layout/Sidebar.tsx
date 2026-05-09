@@ -20,6 +20,7 @@ import {
   User,
   Receipt,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ShoppingBag,
   Link as LinkIcon,
@@ -157,9 +158,11 @@ function SidebarGroup({ item, isAdmin }: SidebarGroupProps) {
 interface SidebarProps {
   isOpen: boolean
   onClose: () => void
+  isDesktopVisible: boolean
+  onDesktopToggle: () => void
 }
 
-export default function Sidebar({ isOpen, onClose }: SidebarProps) {
+export default function Sidebar({ isOpen, onClose, isDesktopVisible, onDesktopToggle }: SidebarProps) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const isAdmin = session?.user?.role === 'admin'
@@ -178,7 +181,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       <aside
         className={cn(
           'fixed top-0 left-0 h-full w-64 bg-[#1C1C1E] flex flex-col z-30 transition-transform duration-300',
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          isOpen ? 'translate-x-0' : '-translate-x-full',
+          isDesktopVisible ? 'lg:translate-x-0' : 'lg:-translate-x-full'
         )}
       >
         {/* Logo */}
@@ -186,10 +190,19 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           <div className="w-9 h-9 bg-primary-500 rounded-xl flex items-center justify-center shadow-lg">
             <ShoppingBag className="w-5 h-5 text-white" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <span className="text-white font-bold text-lg leading-none">BPOS</span>
             <span className="text-gray-400 text-xs block">Portal</span>
           </div>
+          <button
+            type="button"
+            onClick={onDesktopToggle}
+            className="hidden lg:inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 text-gray-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+            aria-label="Ẩn menu"
+            title="Ẩn menu"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Navigation */}

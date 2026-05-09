@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     await IntegrationModel.findByIdAndUpdate(params.id, {
       syncStatus: 'success',
       lastSyncAt: new Date(),
-      $unset: { syncError: '' },
+      $unset: { syncError: 1 },
     })
 
     return ok({

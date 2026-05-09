@@ -1,0 +1,48 @@
+Retrieving project…
+Deploying shoyrulove-devs-projects/bpos
+Uploading [--------------------] (0.0B/140.3KB)
+Uploading [=====---------------] (41.1KB/140.3KB)
+Uploading [===========---------] (77.9KB/140.3KB)
+Uploading [===============-----] (109.9KB/140.3KB)
+Uploading [====================] (140.3KB/140.3KB)
+Inspect: https://vercel.com/shoyrulove-devs-projects/bpos/6LWVB23VtRD92TLfNyEFEJ4ij3Tb [3s]
+Production: https://bpos-rks2yccxd-shoyrulove-devs-projects.vercel.app [3s]
+Building...
+Building...
+Building: Running build in Washington, D.C., USA (East) – iad1
+Building: Build machine configuration: 2 cores, 8 GB
+Building: Retrieving list of deployment files...
+Building: Downloading 185 deployment files...
+Building: Restored build cache from previous deployment (GfMjdWLDgQEt7Mr2JuD4YzbjQbLr)
+Building: Running "vercel build"
+Building: Vercel CLI 53.2.0
+Building: Running "install" command: `npm install`...
+Building: up to date, audited 578 packages in 12s
+Building: 170 packages are looking for funding
+Building: run `npm fund` for details
+Building: 6 vulnerabilities (1 moderate, 5 high)
+Building: To address all issues possible (including breaking changes), run:
+Building: npm audit fix --force
+Building: Some issues need review, and may require choosing
+Building: a different dependency.
+Building: Run `npm audit` for details.
+Building: Detected Next.js version: 14.2.29
+Building: Running "next build"
+Building: ▲ Next.js 14.2.29
+Building: Creating an optimized production build ...
+Building: ✓ Compiled successfully
+Building: Linting and checking validity of types ...
+Building: Failed to compile.
+Building: ./src/app/api/cron/sync-orders/route.ts:72:5
+Building: Type error: Type 'unknown[]' is not assignable to type 'NormalizedOrder[]'.
+Building: Type 'unknown' is not assignable to type 'NormalizedOrder'.
+Building: 70 |   return {
+Building: 71 |     session,
+Building: > 72 |     orders: Array.isArray(data.orders) ? data.orders : [],
+Building: |     ^
+Building: 73 |   }
+Building: 74 | }
+Building: 75 |
+Building: Next.js build worker exited with code: 1 and signal: null
+Building: Error: Command "next build" exited with 1
+Error: Command "next build" exited with 1

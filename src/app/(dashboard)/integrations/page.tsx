@@ -69,13 +69,27 @@ type SyncResult   = { loading: boolean; ok?: boolean; upserted?: number; updated
 type QtResult     = { loading: boolean; ok?: boolean; message?: string; count?: number; sample?: unknown[] }
 type AutoLoginForm = { username: string; password: string; otp: string }
 type ActionStatus = { tone: 'success' | 'error' | 'info'; message: string } | null
+type JsonReadResult<T> = { data: T | null; parseError?: string }
+type AutoLoginApiPayload = {
+  data?: {
+    success?: boolean
+    requiresOtp?: boolean
+    otpTarget?: string
+    sessionKey?: string
+  }
+  error?: string
+  message?: string
+  count?: number
+  sample?: unknown[]
+}
 
 const AUTO_PROVIDERS = ['grab', 'be']
 const SESSION_LOGIN_PROVIDERS = ['shopee', 'grab', 'xanh_sm', 'be']
 const SHOPEE_SMS_LOGIN_URL = 'https://gsso.shopeefood.vn/sms_login?app_id=nowotpapp_MCQzBi2SyApYgKGCYWsmVD4t0954cr&app_type=1001&api_version=1&client_type=1&client_version=3.0.0&client_id=1.0&client_language=vi'
+const SHOPEE_MERCHANT_LOGIN_URL = 'https://merchant.shopeefood.vn/account/login'
 const SHOPEE_PARTNER_OTP_URL = 'https://partner.business.accounts.shopee.vn/authenticate/login/otp?client_id=5&next=https%3A%2F%2Fpartner.shopee.vn%2Faccount%2Flogin%2Fauth&state=https%3A%2F%2Fpartner.shopee.vn%2F%3Fbusiness_next%3Dhttps%253A%252F%252Fpartner.shopee.vn%252Flogin%252Fauth%26business_state%3Dhttps%253A%252F%252Fpartner.shopee.vn%26business_client_id%3D1'
 const LOGIN_PORTAL_LINKS: Record<string, string> = {
-  shopee: SHOPEE_SMS_LOGIN_URL,
+  shopee: SHOPEE_MERCHANT_LOGIN_URL,
   grab: 'https://portal.grab.com',
   xanh_sm: 'https://merchant.xanhsm.com/login',
   be: 'https://merchant.be.com.vn',
@@ -88,8 +102,35 @@ const TARGET_PROVIDER_COUNTS: Partial<Record<string, number>> = {
 const PROVIDER_NOTES: Partial<Record<string, string>> = {
   grab: 'Các account Grab đang dùng auto-login merchant portal để lấy đơn và sync lịch sử gần đây.',
   be: 'Các account Be đang dùng auto-login merchant portal. Có thể login lại từng account ngay trong cột này.',
-  shopee: 'Hôm nay chỉ chuẩn bị khu vực Shopee để quản lý theo sàn. OTP và session Shopee sẽ nhập ở bước sau.',
+  shopee: 'Shopee dùng flow số điện thoại + SMS OTP. Không lưu mật khẩu cho nhánh session này nữa.',
   xanh_sm: 'Giữ riêng một cột cho Xanh SM để sau này thêm account không bị trộn với Grab hoặc Be.',
+}
+
+function providerUsesSmsOtp(provider?: string | null) {
+  return provider === 'shopee' || provider === 'xanh_sm'
+}
+
+async function readJsonSafely<T>(res: Response): Promise<JsonReadResult<T>> {
+  const raw = await res.text()
+  const trimmed = raw.trim()
+
+  if (!trimmed) {
+    return {
+      data: null,
+      parseError: `Response rỗng (${res.status})`,
+    }
+  }
+
+  try {
+    return {
+      data: JSON.parse(trimmed) as T,
+    }
+  } catch {
+    return {
+      data: null,
+      parseError: `Response không phải JSON (${res.status})`,
+    }
+  }
 }
 
 const emptyForm = {
@@ -190,7 +231,7 @@ export default function IntegrationsPage() {
   const [actionStatus, setActionStatus] = useState<ActionStatus>(null)
   const [activeProviderTab, setActiveProviderTab] = useState(PROVIDERS[0].value)
   const autoLoginInteg = autoLoginId ? integrations.find(i => i._id === autoLoginId) ?? null : null
-  const autoLoginUsesSmsOtp = autoLoginInteg?.provider === 'shopee' || autoLoginInteg?.provider === 'xanh_sm'
+  const autoLoginUsesSmsOtp = providerUsesSmsOtp(autoLoginInteg?.provider)
 
   // Live "time ago" ticker — re-renders every 30s so lastSyncAt label refreshes
   const [, setTick] = useState(0)
@@ -441,6 +482,7 @@ export default function IntegrationsPage() {
   const handleSaveSettings = async () => {
     if (!settingsId || !settingsInteg) return
     const { __externalStoreId, __loginMode, __loginUsername, __loginPassword, ...credFields } = creds
+    const usesSmsOtp = providerUsesSmsOtp(settingsInteg.provider)
     const body: Record<string, unknown> = {}
     if (__loginMode) body.loginMode = __loginMode
     if (__externalStoreId?.trim()) body.externalStoreId = __externalStoreId.trim()
@@ -450,7 +492,7 @@ export default function IntegrationsPage() {
       if (Object.keys(credUpdate).length) body.credentials = credUpdate
     }
     if (__loginUsername?.trim()) body.loginUsername = __loginUsername.trim()
-    if (__loginPassword?.trim()) body.loginPassword = __loginPassword.trim()
+    if (!usesSmsOtp && __loginPassword?.trim()) body.loginPassword = __loginPassword.trim()
     try {
       setActionStatus({ tone: 'info', message: 'Đang lưu cài đặt…' })
       await updateMutation.mutateAsync({ id: settingsId, ...body })
@@ -465,8 +507,8 @@ export default function IntegrationsPage() {
     setSyncResults(prev => ({ ...prev, [id]: { loading: true } }))
     try {
       const res  = await fetch(`/api/integrations/${id}/sync`, { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Lỗi đồng bộ')
+      const { data, parseError } = await readJsonSafely<{ error?: string; upserted?: number; updated?: number }>(res)
+      if (!res.ok || !data) throw new Error(data?.error ?? parseError ?? 'Lỗi đồng bộ')
       setSyncResults(prev => ({ ...prev, [id]: { loading: false, ok: true, upserted: data.upserted, updated: data.updated } }))
       qc.invalidateQueries({ queryKey: ['integrations'] })
     } catch (e) {
@@ -491,8 +533,8 @@ export default function IntegrationsPage() {
     setTestResults(prev => ({ ...prev, [id]: { loading: true } }))
     try {
       const res  = await fetch(`/api/integrations/${id}/test`, { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Lỗi kết nối')
+      const { data, parseError } = await readJsonSafely<{ error?: string; message?: string; count?: number }>(res)
+      if (!res.ok || !data) throw new Error(data?.error ?? parseError ?? 'Lỗi kết nối')
       setTestResults(prev => ({ ...prev, [id]: { loading: false, ok: true, message: data.message, count: data.count } }))
     } catch (e) {
       setTestResults(prev => ({ ...prev, [id]: { loading: false, ok: false, message: e instanceof Error ? e.message : 'Lỗi không xác định' } }))
@@ -501,11 +543,11 @@ export default function IntegrationsPage() {
 
   const openAutoLogin = (integ: Integ) => {
     setAutoLoginId(integ._id)
-    setAutoLoginMode(integ.provider === 'shopee' || integ.provider === 'xanh_sm' ? 'otp' : 'auto')
+    setAutoLoginMode(providerUsesSmsOtp(integ.provider) ? 'otp' : 'auto')
     setAutoLoginForm({ username: integ.loginUsername ?? '', password: '', otp: '' })
     setManualJwt('')
     setManualCookieString('')
-    setManualStoreId(integ.provider === 'shopee' || integ.provider === 'xanh_sm' ? '' : integ.externalStoreId ?? '')
+    setManualStoreId(providerUsesSmsOtp(integ.provider) ? '' : integ.externalStoreId ?? '')
     setAutoLoginWaiting(null)
     setAutoLoginResult(null)
   }
@@ -515,25 +557,71 @@ export default function IntegrationsPage() {
     setAutoLoginLoading(true)
     setAutoLoginResult(null)
     try {
-      const body: Record<string, string | undefined> = {
-        username:   autoLoginForm.username,
-        password:   autoLoginForm.password || undefined,
-        otp:        (withOtp && autoLoginForm.otp) ? autoLoginForm.otp : undefined,
+      const isShopeeOtpLogin = autoLoginInteg?.provider === 'shopee'
+      const shopeeBody: Record<string, string | undefined> = {
+        step: withOtp ? 'otp' : 'login',
+        phone: autoLoginForm.username,
+        otp: (withOtp && autoLoginForm.otp) ? autoLoginForm.otp : undefined,
         sessionKey: autoLoginWaiting?.sessionKey,
       }
-      const res  = await fetch(`/api/integrations/${autoLoginId}/auto-login`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json()
-      if (data.data?.requiresOtp) {
+      const autoLoginBody: Record<string, string | undefined> = {
+        username: autoLoginForm.username,
+        password: autoLoginForm.password || undefined,
+        otp: (withOtp && autoLoginForm.otp) ? autoLoginForm.otp : undefined,
+        sessionKey: autoLoginWaiting?.sessionKey,
+      }
+      const body: Record<string, string | undefined> = isShopeeOtpLogin
+        ? {
+            ...shopeeBody,
+          }
+        : {
+            ...autoLoginBody,
+          }
+      const endpoint = isShopeeOtpLogin
+        ? `/api/integrations/${autoLoginId}/shopee-otp-login`
+        : `/api/integrations/${autoLoginId}/auto-login`
+
+      const attempts: Array<{ endpoint: string; status: number; ok: boolean; parseError?: string; payload: AutoLoginApiPayload | null }> = []
+
+      const requestLogin = async (targetEndpoint: string, targetBody: Record<string, string | undefined>) => {
+        const res = await fetch(targetEndpoint, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(targetBody),
+        })
+        const parsed = await readJsonSafely<AutoLoginApiPayload>(res)
+        attempts.push({
+          endpoint: targetEndpoint,
+          status: res.status,
+          ok: res.ok,
+          parseError: parsed.parseError,
+          payload: parsed.data,
+        })
+
+        return {
+          res,
+          data: parsed.data,
+          parseError: parsed.parseError,
+        }
+      }
+
+      let { res, data, parseError } = await requestLogin(endpoint, body)
+
+      if (isShopeeOtpLogin && !data?.data?.requiresOtp && !data?.data?.success) {
+        ;({ res, data, parseError } = await requestLogin(`/api/integrations/${autoLoginId}/auto-login`, autoLoginBody))
+      }
+
+      if (data?.data?.requiresOtp) {
         setAutoLoginWaiting({ requiresOtp: true, otpTarget: data.data.otpTarget, sessionKey: data.data.sessionKey })
-      } else if (data.data?.success) {
+      } else if (data?.data?.success) {
         setAutoLoginResult({ ok: true, message: 'Đăng nhập thành công! Session đã được lưu.' })
         setAutoLoginWaiting(null)
         qc.invalidateQueries({ queryKey: ['integrations'] })
       } else {
-        setAutoLoginResult({ ok: false, message: data.error ?? 'Đăng nhập thất bại' })
+        setAutoLoginResult({
+          ok: false,
+          message: data?.error ?? parseError ?? `Đăng nhập thất bại (${res.status})`,
+          debug: attempts,
+        })
       }
     } catch (e) {
       setAutoLoginResult({ ok: false, message: e instanceof Error ? e.message : 'Lỗi mạng' })
@@ -572,8 +660,8 @@ export default function IntegrationsPage() {
             extraHeaders: Object.keys(extraHeaders).length ? extraHeaders : undefined,
           }),
         })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Lỗi lưu session')
+        const { data, parseError } = await readJsonSafely<AutoLoginApiPayload>(res)
+        if (!res.ok) throw new Error(data?.error ?? parseError ?? 'Lỗi lưu session')
 
         await updateMutation.mutateAsync({
           id: autoLoginId,
@@ -595,12 +683,12 @@ export default function IntegrationsPage() {
             username:   autoLoginForm.username || undefined,
           }),
         })
-        const data = await res.json()
-        if (data.data?.success) {
+        const { data, parseError } = await readJsonSafely<AutoLoginApiPayload>(res)
+        if (data?.data?.success) {
           setAutoLoginResult({ ok: true, message: 'Session đã được lưu! Cron sẽ tự pull đơn mỗi phút.' })
           qc.invalidateQueries({ queryKey: ['integrations'] })
         } else {
-          setAutoLoginResult({ ok: false, message: data.error ?? 'Lỗi lưu session' })
+          setAutoLoginResult({ ok: false, message: data?.error ?? parseError ?? `Lỗi lưu session (${res.status})` })
         }
       }
     } catch (e) {
@@ -611,15 +699,6 @@ export default function IntegrationsPage() {
   }
 
   const handleShopeeOtpLogin = async () => {
-    if (autoLoginInteg?.provider === 'shopee' && !autoLoginWaiting?.requiresOtp) {
-      window.open(SHOPEE_SMS_LOGIN_URL, '_blank', 'noopener,noreferrer,width=480,height=860')
-      setAutoLoginResult({
-        ok: true,
-        message: 'Đã mở trang SMS OTP chính thức của Shopee. Nhập số điện thoại và OTP trên trang Shopee, sau đó vào tab Manual để lưu cookie/session nếu VPS automation chưa bắt được phiên.',
-      })
-      return
-    }
-
     await handleAutoLogin(Boolean(autoLoginWaiting?.requiresOtp))
   }
 
@@ -630,8 +709,8 @@ export default function IntegrationsPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider: qtProvider, credentials: qtCreds }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Lỗi kết nối')
+      const { data, parseError } = await readJsonSafely<AutoLoginApiPayload>(res)
+      if (!res.ok || !data) throw new Error(data?.error ?? parseError ?? 'Lỗi kết nối')
       setQtResult({ loading: false, ok: true, message: data.message, count: data.count, sample: data.sample })
     } catch (e) {
       setQtResult({ loading: false, ok: false, message: e instanceof Error ? e.message : 'Lỗi không xác định' })
@@ -742,8 +821,8 @@ export default function IntegrationsPage() {
             )}>
               <p>
                 {activeProviderSection.value === 'shopee'
-                  ? 'Shopee đang ở trạng thái chờ OTP. Hiện mới lưu account placeholder để sau đó anh tự đăng nhập và nhập OTP.'
-                  : 'Xanh SM cũng đang ở trạng thái chờ OTP giống Shopee. Tôi đã tách riêng tab này để lưu account trước, sau đó anh đăng nhập và nhập OTP ở bước tiếp theo.'}
+                  ? 'Shopee đăng nhập bằng số điện thoại và OTP SMS. Dùng nút Login trên card để chạy flow OTP, hoặc vào manual nếu cần tự dán cookie/session.'
+                  : 'Xanh SM cũng dùng flow OTP SMS, không cần mật khẩu ở màn hình login session.'}
               </p>
               <a
                 href={activeProviderSection.value === 'shopee' ? LOGIN_PORTAL_LINKS.shopee : LOGIN_PORTAL_LINKS.xanh_sm}
@@ -751,7 +830,7 @@ export default function IntegrationsPage() {
                 rel="noopener noreferrer"
                 className="mt-2 inline-flex text-sm font-medium underline underline-offset-2"
               >
-                {activeProviderSection.value === 'shopee' ? 'Mở trang Shopee để lấy OTP / account' : 'Mở trang đăng nhập Xanh SM'}
+                {activeProviderSection.value === 'shopee' ? 'Mở trang Shopee Merchant' : 'Mở trang đăng nhập Xanh SM'}
               </a>
             </div>
           )}
@@ -1065,7 +1144,7 @@ export default function IntegrationsPage() {
                       ? 'border-violet-400 bg-violet-50 text-violet-700'
                       : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
                   <div className="font-semibold">🤖 Auto Login</div>
-                  <div className="text-xs mt-0.5 opacity-75">Tự động đăng nhập portal</div>
+                  <div className="text-xs mt-0.5 opacity-75">{providerUsesSmsOtp(settingsInteg.provider) ? 'SĐT + SMS OTP' : 'Tự động đăng nhập portal'}</div>
                 </button>
               </div>
             </div>
@@ -1091,22 +1170,26 @@ export default function IntegrationsPage() {
 
               {creds.__loginMode === 'auto' && (
                 <div className="bg-violet-50 border border-violet-100 rounded-xl p-4 space-y-3">
-                  <p className="text-xs text-violet-700 font-medium">Lưu thông tin đăng nhập để auto-refresh session</p>
+                  <p className="text-xs text-violet-700 font-medium">{providerUsesSmsOtp(settingsInteg.provider) ? 'Lưu số điện thoại để chạy flow SMS OTP' : 'Lưu thông tin đăng nhập để auto-refresh session'}</p>
                   <div>
-                    <label className="label">Tài khoản (tên đăng nhập / Email)</label>
-                    <input className="input w-full" type="text" placeholder="ooo.cashier.ds3"
+                    <label className="label">{providerUsesSmsOtp(settingsInteg.provider) ? 'Số điện thoại đăng nhập' : 'Tài khoản (tên đăng nhập / Email)'}</label>
+                    <input className="input w-full" type="text" placeholder={providerUsesSmsOtp(settingsInteg.provider) ? 'VD: 0901234567' : 'ooo.cashier.ds3'}
                       value={creds.__loginUsername ?? ''}
                       onChange={e => setCreds(p => ({ ...p, __loginUsername: e.target.value }))} />
                   </div>
-                  <div>
-                    <label className="label">Mật khẩu</label>
-                    <input className="input w-full" type="password" autoComplete="new-password"
-                      placeholder="••••••••"
-                      value={creds.__loginPassword ?? ''}
-                      onChange={e => setCreds(p => ({ ...p, __loginPassword: e.target.value }))} />
-                  </div>
+                  {!providerUsesSmsOtp(settingsInteg.provider) && (
+                    <div>
+                      <label className="label">Mật khẩu</label>
+                      <input className="input w-full" type="password" autoComplete="new-password"
+                        placeholder="••••••••"
+                        value={creds.__loginPassword ?? ''}
+                        onChange={e => setCreds(p => ({ ...p, __loginPassword: e.target.value }))} />
+                    </div>
+                  )}
                   <p className="text-xs text-violet-500">
-                    Sau khi lưu → nhấn nút <strong>Login</strong> trên card để chạy automation.
+                    {providerUsesSmsOtp(settingsInteg.provider)
+                      ? 'Sau khi lưu số điện thoại → nhấn Login trên card để gửi OTP rồi xác nhận OTP.'
+                      : 'Sau khi lưu → nhấn nút Login trên card để chạy automation.'}
                   </p>
                 </div>
               )}
@@ -1142,14 +1225,16 @@ export default function IntegrationsPage() {
             {/* Mode tabs */}
             {!autoLoginResult && (
               <div className="px-6 pt-4">
-                <div className={cn('grid gap-2', autoLoginUsesSmsOtp ? 'grid-cols-3' : 'grid-cols-2')}>
-                  <button onClick={() => { setAutoLoginMode('auto'); setAutoLoginResult(null) }}
-                    className={cn('py-2 rounded-xl border-2 text-xs font-medium transition-all',
-                      autoLoginMode === 'auto'
-                        ? 'border-violet-400 bg-violet-50 text-violet-700'
-                        : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
-                    🤖 Auto
-                  </button>
+                <div className="grid grid-cols-2 gap-2">
+                  {!autoLoginUsesSmsOtp && (
+                    <button onClick={() => { setAutoLoginMode('auto'); setAutoLoginResult(null) }}
+                      className={cn('py-2 rounded-xl border-2 text-xs font-medium transition-all',
+                        autoLoginMode === 'auto'
+                          ? 'border-violet-400 bg-violet-50 text-violet-700'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
+                      🤖 Auto
+                    </button>
+                  )}
                   {autoLoginUsesSmsOtp && (
                     <button onClick={() => { setAutoLoginMode('otp'); setAutoLoginWaiting(null); setAutoLoginResult(null) }}
                       className={cn('py-2 rounded-xl border-2 text-xs font-medium transition-all',
@@ -1182,8 +1267,9 @@ export default function IntegrationsPage() {
                     <p>3. Điền mã SMS nhận được → nhấn <strong>Xác nhận OTP</strong></p>
                     {autoLoginInteg?.provider === 'shopee' && (
                       <>
-                        <p>Với Shopee, nút này sẽ ưu tiên mở trang OTP chính thức của Shopee nếu VPS chưa bắt được luồng login.</p>
+                        <p>Nếu VPS chưa lấy được phiên, chuyển sang tab Manual và đăng nhập trực tiếp trên Shopee Merchant để dán cookie/session.</p>
                         <div className="flex flex-wrap gap-2 pt-1">
+                          <a href={SHOPEE_MERCHANT_LOGIN_URL} target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2">Mở Shopee Merchant</a>
                           <a href={SHOPEE_SMS_LOGIN_URL} target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2">Mở Shopee SMS Login</a>
                           <a href={SHOPEE_PARTNER_OTP_URL} target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2">Mở Shopee Partner OTP</a>
                         </div>
@@ -1275,7 +1361,7 @@ export default function IntegrationsPage() {
               {/* ── MANUAL mode ── */}
               {autoLoginMode === 'manual' && !autoLoginResult && (
                 <div className="space-y-3">
-                  {(autoLoginInteg?.provider === 'shopee' || autoLoginInteg?.provider === 'xanh_sm') ? (
+                  {providerUsesSmsOtp(autoLoginInteg?.provider) ? (
                     <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 space-y-2">
                       <p className="font-medium">Flow login tay cho {autoLoginInteg?.provider === 'shopee' ? 'Shopee' : 'Xanh SM'}:</p>
                       <p>1. Mở trang đăng nhập chính thức và đăng nhập tay bằng tài khoản của anh.</p>
@@ -1294,7 +1380,7 @@ export default function IntegrationsPage() {
                       <p>4. Hoặc tab <strong>Network</strong> → tìm request → copy header <code className="bg-white rounded px-1">Authorization: Bearer …</code></p>
                     </div>
                   )}
-                  {(autoLoginInteg?.provider === 'shopee' || autoLoginInteg?.provider === 'xanh_sm') && (
+                  {providerUsesSmsOtp(autoLoginInteg?.provider) && (
                     <div>
                       <label className="label">Cookie string <span className="text-gray-400 font-normal">(copy từ DevTools)</span></label>
                       <textarea className="input w-full font-mono text-xs resize-none" rows={4}
@@ -1309,7 +1395,7 @@ export default function IntegrationsPage() {
                   <div>
                     <label className="label">
                       {autoLoginInteg?.provider === 'shopee' ? 'CSRF token / SPC_F' : autoLoginInteg?.provider === 'xanh_sm' ? 'JWT token / access token' : 'JWT Token (Bearer token)'}
-                      {(autoLoginInteg?.provider === 'shopee' || autoLoginInteg?.provider === 'xanh_sm') && (
+                      {providerUsesSmsOtp(autoLoginInteg?.provider) && (
                         <span className="text-gray-400 font-normal"> {autoLoginInteg?.provider === 'shopee' ? '(tuỳ chọn)' : '(khuyến nghị)'}</span>
                       )}
                     </label>
@@ -1399,7 +1485,7 @@ export default function IntegrationsPage() {
               {!autoLoginResult && autoLoginMode === 'manual' && (
                 <button
                   onClick={handleManualSession}
-                  disabled={autoLoginLoading || ((autoLoginInteg?.provider === 'shopee' || autoLoginInteg?.provider === 'xanh_sm') ? (!manualCookieString.trim() && !manualJwt.trim()) : !manualJwt.trim())}
+                  disabled={autoLoginLoading || (providerUsesSmsOtp(autoLoginInteg?.provider) ? (!manualCookieString.trim() && !manualJwt.trim()) : !manualJwt.trim())}
                   className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50">
                   {autoLoginLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                   Lưu Session

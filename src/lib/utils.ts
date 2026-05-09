@@ -23,6 +23,24 @@ export function formatNumber(n: number) {
   return new Intl.NumberFormat('vi-VN').format(n)
 }
 
+type OrderCodeLike = {
+  source?: string
+  shortId?: string
+  externalOrderId?: string
+  rawPayload?: Record<string, unknown>
+}
+
+export function getOrderDisplayCode(order: OrderCodeLike) {
+  const raw = order.rawPayload ?? {}
+
+  if (order.source === 'grab') {
+    const grabCode = raw.displayID ?? raw.shortOrderID ?? raw.shortOrderId
+    if (grabCode) return String(grabCode)
+  }
+
+  return String(order.externalOrderId ?? order.shortId ?? '')
+}
+
 export function generateId() {
   return Math.random().toString(36).substring(2, 10).toUpperCase()
 }

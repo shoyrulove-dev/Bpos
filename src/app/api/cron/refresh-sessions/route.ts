@@ -6,51 +6,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
+import { requestAutomationLogin } from '@/lib/automation-login'
 import { decrypt, encryptJSON } from '@/lib/crypto'
 import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/automation-session'
+import { buildSessionFailureUpdate, buildSessionSuccessUpdate } from '@/lib/session-health'
 import type { SessionData } from '@/integrations/types'
 
 const AUTOMATION_URL    = process.env.AUTOMATION_SERVICE_URL ?? ''
 const AUTOMATION_SECRET = process.env.AUTOMATION_SECRET ?? ''
 const SESSION_REFRESH_BATCH_SIZE = Math.max(1, Number(process.env.SESSION_REFRESH_BATCH_SIZE ?? 2))
-
-type AutomationLoginResponse = {
-  success?: boolean
-  session?: SessionData
-  requiresOtp?: boolean
-  error?: string
-  token?: string
-  expiresAt?: string | number
-  extraHeaders?: Record<string, string>
-  storeId?: string | number
-  storeName?: string
-}
-
-async function parseAutomationLoginResponse(serviceRes: Response): Promise<{
-  data: AutomationLoginResponse | null
-  error?: string
-}> {
-  const raw = await serviceRes.text()
-  const trimmed = raw.trim()
-
-  if (!trimmed) {
-    return {
-      data: null,
-      error: `Automation service trả về rỗng (${serviceRes.status})`,
-    }
-  }
-
-  try {
-    return {
-      data: JSON.parse(trimmed) as AutomationLoginResponse,
-    }
-  } catch {
-    return {
-      data: null,
-      error: `Automation service trả về JSON không hợp lệ (${serviceRes.status})`,
-    }
-  }
-}
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
@@ -106,42 +70,41 @@ export async function GET(req: NextRequest) {
     })
 
     try {
-      const serviceRes = await fetch(`${AUTOMATION_URL}/api/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${AUTOMATION_SECRET}`,
-        },
-        body: JSON.stringify({
+      const { serviceRes, data, parseError } = await requestAutomationLogin({
+        automationUrl: AUTOMATION_URL,
+        automationSecret: AUTOMATION_SECRET,
+        provider: integ.provider,
+        body: {
           provider: integ.provider,
           username,
           password,
           preferredStoreId: integ.externalStoreId ?? undefined,
           preferredStoreName: integ.externalStoreName ?? undefined,
-        }),
-        signal: AbortSignal.timeout(120_000),
+        },
       })
-
-      const { data, error: parseError } = await parseAutomationLoginResponse(serviceRes)
 
       if (!data) {
         const errorMessage = parseError ?? `Automation service lỗi (${serviceRes.status})`
-        await IntegrationModel.updateOne({ _id: integ._id }, {
-          sessionStatus:     'error',
-          sessionError:      errorMessage,
-          automationRunning: false,
-        })
+        await IntegrationModel.updateOne({ _id: integ._id }, buildSessionFailureUpdate({
+          provider: integ.provider,
+          currentFailureCount: integ.sessionFailureCount,
+          errorMessage,
+          fallbackStatus: 'error',
+          extraSet: { automationRunning: false },
+        }))
         results.push({ id: String(integ._id), provider: integ.provider, success: false, error: errorMessage })
         continue
       }
 
       if (!serviceRes.ok && !data.success && !data.requiresOtp) {
         const errorMessage = data.error ?? `Automation service lỗi (${serviceRes.status})`
-        await IntegrationModel.updateOne({ _id: integ._id }, {
-          sessionStatus:     'error',
-          sessionError:      errorMessage,
-          automationRunning: false,
-        })
+        await IntegrationModel.updateOne({ _id: integ._id }, buildSessionFailureUpdate({
+          provider: integ.provider,
+          currentFailureCount: integ.sessionFailureCount,
+          errorMessage,
+          fallbackStatus: 'error',
+          extraSet: { automationRunning: false },
+        }))
         results.push({ id: String(integ._id), provider: integ.provider, success: false, error: errorMessage })
         continue
       }
@@ -159,36 +122,42 @@ export async function GET(req: NextRequest) {
         const capturedAt = new Date()
         const ttl        = session.sessionTtlSeconds ?? 86400
         const expiresAt  = new Date(capturedAt.getTime() + ttl * 1000)
-        await IntegrationModel.updateOne({ _id: integ._id }, {
+        await IntegrationModel.updateOne({ _id: integ._id }, buildSessionSuccessUpdate({
           sessionData:       encryptJSON(session),
           sessionStatus:     'active',
           sessionCapturedAt: capturedAt,
           sessionExpiresAt:  expiresAt,
-          sessionError:      undefined,
           automationRunning: false,
-        })
+        }))
         results.push({ id: String(integ._id), provider: integ.provider, success: true })
       } else if (data.requiresOtp) {
         // Can't auto-refresh OTP-protected sessions (needs manual OTP input)
-        await IntegrationModel.updateOne({ _id: integ._id }, {
-          sessionStatus:     'error',
-          sessionError:      'Cần nhập OTP thủ công để refresh session',
-          automationRunning: false,
-        })
+        await IntegrationModel.updateOne({ _id: integ._id }, buildSessionFailureUpdate({
+          provider: integ.provider,
+          currentFailureCount: integ.sessionFailureCount,
+          errorMessage: 'Cần nhập OTP thủ công để refresh session',
+          fallbackStatus: 'error',
+          extraSet: { automationRunning: false },
+        }))
         results.push({ id: String(integ._id), provider: integ.provider, success: false, error: 'OTP required' })
       } else {
-        await IntegrationModel.updateOne({ _id: integ._id }, {
-          sessionStatus:     'error',
-          sessionError:      data.error ?? 'Auto-refresh thất bại',
-          automationRunning: false,
-        })
+        await IntegrationModel.updateOne({ _id: integ._id }, buildSessionFailureUpdate({
+          provider: integ.provider,
+          currentFailureCount: integ.sessionFailureCount,
+          errorMessage: data.error ?? 'Auto-refresh thất bại',
+          fallbackStatus: 'error',
+          extraSet: { automationRunning: false },
+        }))
         results.push({ id: String(integ._id), provider: integ.provider, success: false, error: data.error })
       }
     } catch (e) {
-      await IntegrationModel.updateOne({ _id: integ._id }, {
-        automationRunning: false,
-        sessionError: e instanceof Error ? e.message : 'Network error',
-      })
+      await IntegrationModel.updateOne({ _id: integ._id }, buildSessionFailureUpdate({
+        provider: integ.provider,
+        currentFailureCount: integ.sessionFailureCount,
+        errorMessage: e instanceof Error ? e.message : 'Network error',
+        fallbackStatus: 'error',
+        extraSet: { automationRunning: false },
+      }))
       results.push({ id: String(integ._id), provider: integ.provider, success: false, error: String(e) })
     }
   }

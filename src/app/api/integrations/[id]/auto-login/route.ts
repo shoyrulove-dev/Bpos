@@ -14,8 +14,10 @@ import { NextRequest } from 'next/server'
 import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
+import { requestAutomationLogin } from '@/lib/automation-login'
 import { encryptJSON, encrypt, decrypt } from '@/lib/crypto'
 import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/automation-session'
+import { buildSessionClearUpdate, buildSessionSuccessUpdate } from '@/lib/session-health'
 import { isSessionValid } from '@/services/automation/runner'
 import type { SessionData } from '@/integrations/types'
 
@@ -94,13 +96,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       sessionStatus: 'active',
       sessionCapturedAt: capturedAt,
       sessionExpiresAt: expiresAt,
-      sessionError: undefined,
       automationRunning: false,
     }
     if (body.username) { updates.loginUsername = body.username }
     if (body.storeId)  { updates.externalStoreId = body.storeId }
 
-    await IntegrationModel.updateOne({ _id: params.id }, updates)
+    await IntegrationModel.updateOne({ _id: params.id }, buildSessionSuccessUpdate(updates))
     return ok({ success: true, sessionExpiresAt: expiresAt, manual: true })
   }
   // ────────────────────────────────────────────────────────────────────────
@@ -123,13 +124,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   await IntegrationModel.updateOne({ _id: params.id }, credUpdates)
 
   try {
-    const serviceRes = await fetch(`${AUTOMATION_URL}/api/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${AUTOMATION_SECRET}`,
-      },
-      body: JSON.stringify({
+    const { data } = await requestAutomationLogin({
+      automationUrl: AUTOMATION_URL,
+      automationSecret: AUTOMATION_SECRET,
+      provider: integ.provider,
+      body: {
         provider: integ.provider,
         username,
         password: servicePassword,
@@ -137,29 +136,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         sessionKey,
         preferredStoreId: integ.externalStoreId ?? body.storeId ?? undefined,
         preferredStoreName: integ.externalStoreName ?? undefined,
-      }),
-      signal: AbortSignal.timeout(120_000),  // 2 minute timeout
+      },
     })
 
-    const data = await serviceRes.json() as {
-      success?: boolean
-      requiresOtp?: boolean
-      otpTarget?: string
-      sessionKey?: string
-      session?: SessionData
-      token?: string
-      expiresAt?: string | number
-      extraHeaders?: Record<string, string>
-      storeId?: string | number
-      storeName?: string
-      error?: string
+    if (!data) {
+      throw new Error('Automation service trả về dữ liệu rỗng hoặc không hợp lệ')
     }
 
     if (data.requiresOtp) {
       // OTP required – browser is paused at OTP input screen in the microservice
       await IntegrationModel.updateOne({ _id: params.id }, {
-        automationRunning: false,
-        sessionStatus: 'none',
+        $set: {
+          automationRunning: false,
+          sessionStatus: 'none',
+        },
       })
       return ok({ requiresOtp: true, otpTarget: data.otpTarget, sessionKey: data.sessionKey })
     }
@@ -179,14 +169,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const ttl              = session.sessionTtlSeconds ?? 86400
       const expiresAt        = new Date(capturedAt.getTime() + ttl * 1000)
 
-      await IntegrationModel.updateOne({ _id: params.id }, {
+      await IntegrationModel.updateOne({ _id: params.id }, buildSessionSuccessUpdate({
         sessionData:       encryptedSession,
         sessionStatus:     'active',
         sessionCapturedAt: capturedAt,
         sessionExpiresAt:  expiresAt,
-        sessionError:      undefined,
         automationRunning: false,
-      })
+      }))
       return ok({ success: true, sessionExpiresAt: expiresAt })
     }
 

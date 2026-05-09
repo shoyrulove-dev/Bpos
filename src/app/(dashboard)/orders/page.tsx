@@ -1,14 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, MapPin, Phone, Plus, Printer, RefreshCw, Search, Settings2, Truck } from 'lucide-react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, Plus, Printer, RefreshCw, Search } from 'lucide-react'
 import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
+import { getActualReceived, getDisplayCustomerPhone, getDisplayDriverPhone } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
 import { formatDateInput } from '@/lib/date-range'
-import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '@/lib/utils'
+import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '@/lib/utils'
 import type { Order } from '@/types'
 
 const PAGE_SIZE_OPTIONS = [10, 30, 50, 100, 200, 500] as const
@@ -20,6 +21,7 @@ type OrdersResponse = {
   limit: number
   totalPages: number
   statusCounts?: Record<string, number>
+  todayStatusCounts?: Record<string, number>
 }
 
 const STATUS_ITEMS = [
@@ -34,7 +36,7 @@ const STATUS_ITEMS = [
 ] as const
 
 const SOURCES = [
-  { value: '', label: 'Tất cả nguồn' },
+  { value: '', label: 'Nguồn' },
   { value: 'shopee', label: 'Shopee' },
   { value: 'grab', label: 'GrabFood' },
   { value: 'xanh_sm', label: 'Xanh SM' },
@@ -46,27 +48,26 @@ function openWindow(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer,width=430,height=900')
 }
 
-function getActualReceived(order: Order) {
-  const raw = order.rawPayload ?? {}
-  const candidateValues = [
-    raw.escrow_amount,
-    raw.received_amount,
-    raw.actual_received_amount,
-    raw.net_order_amount,
-    raw.amount_receive,
-    raw.merchant_receivable,
-  ]
-
-  for (const value of candidateValues) {
-    const amount = Number(value)
-    if (Number.isFinite(amount) && amount > 0) return amount
-  }
-
-  return Math.max(0, order.total - (order.platformFee ?? 0))
-}
-
 function getTotalItems(order: Order) {
   return order.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+}
+
+function InfoRow({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
+  return (
+    <div className="grid grid-cols-[78px_minmax(0,1fr)] items-start gap-2 text-sm leading-5">
+      <span className="pt-0.5 font-medium text-gray-600">{label}</span>
+      <span className={cn('min-w-0 whitespace-normal break-words text-[15px] font-semibold text-gray-900', valueClassName)}>{value}</span>
+    </div>
+  )
+}
+
+function InfoGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0 flex-1 rounded-2xl border border-rose-200 bg-[linear-gradient(180deg,#fffafa_0%,#fff4f1_100%)] px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+      <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-rose-500">{title}</p>
+      <div className="space-y-1.5">{children}</div>
+    </div>
+  )
 }
 
 function isOrderNew(order: Order) {
@@ -159,18 +160,13 @@ export default function OrdersPage() {
     if (page > nextTotalPages) setPage(nextTotalPages)
   }, [ordersData?.totalPages, page])
 
-  const countByStatus = useMemo(() => {
-    const counts = { ...(ordersData?.statusCounts ?? {}) }
-    if (statusFilter && typeof counts[statusFilter] !== 'number') {
-      counts[statusFilter] = ordersData?.total ?? 0
+  const todayCountByStatus = useMemo(() => {
+    const counts = { ...(ordersData?.todayStatusCounts ?? {}) }
+    if (statusFilter && statusFilter !== '' && typeof counts[statusFilter] !== 'number') {
+      counts[statusFilter] = 0
     }
     return counts
-  }, [ordersData?.statusCounts, ordersData?.total, statusFilter])
-
-  const totalOrders = useMemo(() => {
-    const sum = Object.values(countByStatus).reduce((acc, value) => acc + Number(value || 0), 0)
-    return sum || ordersData?.total || 0
-  }, [countByStatus, ordersData?.total])
+  }, [ordersData?.todayStatusCounts, statusFilter])
 
   const totalPages = Math.max(1, ordersData?.totalPages ?? 1)
   const currentFrom = ordersData?.total ? (page - 1) * pageSize + 1 : 0
@@ -187,31 +183,16 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Đơn hàng đa kênh</h1>
-          <p className="page-subtitle">Clone cách trình bày Nexpos cho luồng xử lý đơn, nhưng dữ liệu vẫn lấy từ các sàn đang đồng bộ trong BPOS.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/settings" className="btn-outline">
-            <Settings2 className="h-4 w-4" /> Cài đặt in / âm thanh
-          </Link>
-          <button type="button" onClick={() => refetch()} className="btn-outline" disabled={isRefetching}>
-            <RefreshCw className={cn('h-4 w-4', isRefetching && 'animate-spin')} /> Làm mới
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="card p-3 lg:sticky lg:top-24 lg:self-start">
+          <button type="button" onClick={() => setShowCreateModal(true)} className="mb-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-full bg-[#20232A] px-3 text-sm font-semibold text-white transition hover:bg-black">
+            <Plus className="h-4 w-4" /> Tạo đơn mới
           </button>
-        </div>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[250px_minmax(0,1fr)]">
-        <aside className="card p-4 xl:sticky xl:top-24 xl:self-start">
-          <button type="button" onClick={() => setShowCreateModal(true)} className="flex w-full items-center justify-center gap-2 rounded-full bg-[#20232A] px-4 py-3 text-sm font-semibold text-white transition hover:bg-black">
-            <Plus className="h-4 w-4" /> Tạo đơn hàng
-          </button>
-          <div className="mt-5 space-y-2">
-            <h2 className="text-[28px] font-semibold leading-none text-gray-900">Trạng thái đơn hàng</h2>
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">Trạng thái hôm nay</div>
+          <div className="space-y-2">
             {STATUS_ITEMS.map((status) => {
-              const count = status.value ? Number(countByStatus[status.value] || 0) : totalOrders
+              const count = status.value ? Number(todayCountByStatus[status.value] || 0) : null
               const active = statusFilter === status.value
               return (
                 <button
@@ -219,15 +200,17 @@ export default function OrdersPage() {
                   type="button"
                   onClick={() => setStatusFilter(status.value)}
                   className={cn(
-                    'flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left text-sm font-medium transition-all',
-                    active ? 'bg-amber-50 text-gray-950 ring-1 ring-amber-200' : 'text-gray-700 hover:bg-gray-50',
+                    'flex w-full items-center justify-between gap-2 rounded-2xl border px-3 py-2.5 text-left text-xs font-medium transition-all',
+                    active
+                      ? 'border-amber-200 bg-amber-50 text-gray-950'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50',
                   )}
                 >
-                  <span className="flex items-center gap-3">
-                    <span className={cn('h-3 w-3 rounded-full', status.dot)} />
-                    {status.label}
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className={cn('h-2 w-2 rounded-full shrink-0', status.dot)} />
+                    <span className="truncate">{status.label}</span>
                   </span>
-                  <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-700">{count}</span>
+                  {count !== null && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-700">{count}</span>}
                 </button>
               )
             })}
@@ -235,21 +218,23 @@ export default function OrdersPage() {
         </aside>
 
         <div className="space-y-4 min-w-0">
-          <div className="card p-4">
-            <div className="grid gap-2 xl:grid-cols-[minmax(0,1.8fr)_170px_170px_170px_auto]">
-              <div className="relative min-w-0">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input className="input h-11 pl-9" placeholder="Tìm mã đơn, tên khách, số điện thoại..." value={search} onChange={(event) => setSearch(event.target.value)} />
+          <div className="card p-3">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <div className="relative min-w-[220px] flex-1">
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                <input className="input h-9 w-full pl-8 pr-2 text-sm" placeholder="Tìm mã đơn, tên khách, SĐT..." value={search} onChange={(event) => setSearch(event.target.value)} />
               </div>
-              <select className="input h-11 w-full" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
+              <select className="input h-9 w-[104px] shrink-0 text-sm" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
                 {SOURCES.map((source) => <option key={source.value} value={source.value}>{source.label}</option>)}
               </select>
-              <input type="date" className="input h-11 w-full" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
-              <input type="date" className="input h-11 w-full" value={toDate} onChange={(event) => setToDate(event.target.value)} max={today} />
-              <button type="button" onClick={handleExportOrders} className="btn-outline h-11 justify-center whitespace-nowrap"><Download className="h-4 w-4" /> Export</button>
+              <input type="date" className="input h-9 w-[132px] shrink-0 px-2 text-sm" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+              <input type="date" className="input h-9 w-[132px] shrink-0 px-2 text-sm" value={toDate} onChange={(event) => setToDate(event.target.value)} max={today} />
+              <button type="button" onClick={() => refetch()} className="btn-outline h-9 w-9 shrink-0 justify-center px-0" aria-label="Làm mới" title="Làm mới" disabled={isRefetching}>
+                <RefreshCw className={cn('h-4 w-4', isRefetching && 'animate-spin')} />
+              </button>
+              <button type="button" onClick={handleExportOrders} className="btn-outline h-9 w-9 shrink-0 justify-center px-0" aria-label="Export Excel" title="Export Excel"><Download className="h-4 w-4" /></button>
             </div>
           </div>
-
           <div className="space-y-4">
             {isLoading ? (
               <div className="flex min-h-[260px] items-center justify-center rounded-[28px] border border-gray-200 bg-white"><div className="flex items-center gap-3 text-gray-500"><Loader2 className="h-5 w-5 animate-spin" /> Đang tải đơn hàng...</div></div>
@@ -262,47 +247,44 @@ export default function OrdersPage() {
               const showNewBadge = isOrderNew(order)
 
               return (
-                <article key={order._id} className="rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+                <article key={order._id} className="rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm">
                   {/* Header row */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 mb-3">
+                  <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <span className="shrink-0" aria-label={CHANNEL_SOURCE_LABEL[order.source]}>
                         <SourceIcon source={order.source} />
                       </span>
+                      <span className="font-mono text-base font-semibold text-sky-600">#{getOrderDisplayCode(order)}</span>
                       {showNewBadge && <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-rose-600">New</span>}
                       {locationLabel && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">{locationLabel}</span>}
-                      <span className="font-mono text-base font-semibold text-sky-600">#{order.externalOrderId || order.shortId}</span>
                     </div>
                     <span className={cn('badge shrink-0', ORDER_STATUS_COLOR[order.status])}>{ORDER_STATUS_LABEL[order.status]}</span>
                   </div>
 
-                  {/* Info columns */}
-                  <div className="grid gap-x-6 gap-y-3 lg:grid-cols-4">
-                    <div>
-                      <p className="text-xs font-semibold text-gray-500 mb-1">Thông tin khách hàng</p>
-                      <p className="text-sm font-medium text-gray-900">{order.customerName || '–'}</p>
-                      <div className="flex items-center gap-1 text-sm text-gray-600"><Phone className="h-3.5 w-3.5" /> {order.customerPhone || '–'}</div>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-gray-500 mb-1">Thông tin thanh toán</p>
-                      <p className="text-sm text-gray-600">Số lượng: {totalItems} sản phẩm</p>
-                      <p className="text-sm text-gray-600">Tổng cộng: <span className="font-semibold text-gray-900">{formatCurrency(order.total)}</span></p>
-                      <p className="text-sm text-emerald-600">Thực nhận: <span className="font-semibold">{formatCurrency(actualReceived)}</span></p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-gray-500 mb-1">Thông tin giao nhận</p>
-                      <p className="text-sm text-gray-600">Đặt lúc: {formatDate(order.placedAt)}</p>
-                      <p className="text-sm text-gray-600">Nhận hàng: {order.deliveredAt ? formatDate(order.deliveredAt) : '–'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-gray-500 mb-1">Thông tin vận chuyển</p>
-                      <div className="flex items-start gap-1.5 text-sm text-gray-600"><Truck className="mt-0.5 h-3.5 w-3.5 shrink-0" /><div><p>Tài xế: {order.driverInfo?.name || '–'}</p><p>SĐT: {order.driverInfo?.phone || '–'}</p></div></div>
-                      {order.deliveryInfo?.address && <div className="flex items-start gap-1.5 text-xs text-gray-500 mt-1"><MapPin className="mt-0.5 h-3 w-3 shrink-0" /><p className="line-clamp-1">{order.deliveryInfo.address}</p></div>}
+                  <div className="rounded-2xl bg-gray-50 px-2.5 py-2.5">
+                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                      <InfoGroup title="Khách hàng">
+                        <InfoRow label="Tên" value={(order.customerName && order.customerName !== 'Khách hàng') ? order.customerName : '–'} />
+                        <InfoRow label="SĐT" value={getDisplayCustomerPhone(order) || '–'} />
+                      </InfoGroup>
+                      <InfoGroup title="Thanh toán">
+                        <InfoRow label="Số lượng" value={`${totalItems} sản phẩm`} />
+                        <InfoRow label="Thực nhận" value={formatCurrency(actualReceived)} valueClassName="text-emerald-600" />
+                      </InfoGroup>
+                      <InfoGroup title="Giao nhận">
+                        <InfoRow label="Đặt lúc" value={formatDate(order.placedAt)} />
+                        <InfoRow label="Nhận hàng" value={order.deliveredAt ? formatDate(order.deliveredAt) : '–'} />
+                      </InfoGroup>
+                      <InfoGroup title="Vận chuyển">
+                        <InfoRow label="Tài xế" value={order.driverInfo?.name || '–'} />
+                        <InfoRow label="SĐT" value={getDisplayDriverPhone(order) || '–'} />
+                        {order.deliveryInfo?.address && <InfoRow label="Địa chỉ" value={order.deliveryInfo.address} valueClassName="text-xs" />}
+                      </InfoGroup>
                     </div>
                   </div>
 
                   {/* Footer */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 mt-3">
+                  <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2.5">
                     <Link href={`/orders/${order._id}`} className="inline-flex items-center gap-2 rounded-full bg-[#20232A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-black">Chi tiết</Link>
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={() => openWindow(buildReceiptPrintUrl(order._id, { autoprint: true, paperSize: '80mm' }))} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In Đơn</button>
@@ -318,7 +300,7 @@ export default function OrdersPage() {
             <PaginationControls page={page} pageSize={pageSize} total={ordersData?.total ?? 0} totalPages={totalPages} currentFrom={currentFrom} currentTo={currentTo} onPageChange={setPage} onPageSizeChange={(nextSize) => setPageSize(nextSize)} />
           </div>
         </div>
-      </div>
+        </div>
 
       <OrderCreateModal open={showCreateModal} onClose={() => setShowCreateModal(false)} />
     </div>

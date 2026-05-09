@@ -23,6 +23,7 @@ interface Notification {
   count: number
   timestamp: Date
   dismissed: boolean
+  href: string
 }
 
 interface NotificationContextValue {
@@ -39,6 +40,46 @@ const NotificationContext = createContext<NotificationContextValue>({
 
 export const useNotifications = () => useContext(NotificationContext)
 
+type AlertOrder = {
+  _id: string
+  externalOrderId?: string
+  customerName?: string
+  placedAt?: string
+}
+
+function getLatestOrder(orderList: AlertOrder[]) {
+  return [...orderList].sort((left, right) => {
+    return new Date(right.placedAt || 0).getTime() - new Date(left.placedAt || 0).getTime()
+  })[0] ?? null
+}
+
+function getOrderLabel(order: AlertOrder | null) {
+  if (!order) return 'đơn mới nhất'
+  return order.externalOrderId?.trim() || order._id.slice(-6)
+}
+
+function showSystemOrderNotification(order: AlertOrder | null, href: string) {
+  if (typeof window === 'undefined' || typeof Notification === 'undefined') return
+  if (Notification.permission !== 'granted') return
+
+  const notification = new Notification('BPOS có đơn hàng mới', {
+    body: `Đơn mới nhất: ${getOrderLabel(order)}${order?.customerName ? ` • ${order.customerName}` : ''}`,
+    tag: 'bpos-new-order',
+  })
+
+  notification.onclick = () => {
+    window.focus()
+    window.location.assign(href)
+    notification.close()
+  }
+}
+
+function revealLatestOrder(href: string) {
+  if (typeof window === 'undefined') return
+  window.focus()
+  window.location.assign(href)
+}
+
 export default function NotificationProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -47,25 +88,56 @@ export default function NotificationProvider({ children }: { children: React.Rea
   const seenIds = useRef<Set<string>>(new Set())
   const initialized = useRef(false)
 
-  const addNotification = useCallback((count: number, newIds: string[]) => {
+  const addNotification = useCallback((newOrders: AlertOrder[]) => {
+    const latestOrder = getLatestOrder(newOrders)
+    const href = latestOrder ? `/orders/${latestOrder._id}` : '/orders'
     const notif: Notification = {
       id: Date.now().toString(),
-      message: `${count} đơn hàng mới vừa đến!`,
-      count,
+      message: newOrders.length > 1
+        ? `${newOrders.length} đơn mới, đơn mới nhất là ${getOrderLabel(latestOrder)}.`
+        : `Có đơn mới ${getOrderLabel(latestOrder)} vừa đến.`,
+      count: newOrders.length,
       timestamp: new Date(),
       dismissed: false,
+      href,
     }
     setNotifications(prev => [notif, ...prev].slice(0, 5))
     if (settings.soundEnabled) {
-      playOrderAlert(3)
+      playOrderAlert(settings.soundRepeatCount ?? 3, settings.voiceMessage)
     }
-    newIds.forEach(id => seenIds.current.add(id))
-  }, [settings.soundEnabled])
+    newOrders.forEach(order => seenIds.current.add(order._id))
+
+    if (latestOrder) {
+      showSystemOrderNotification(latestOrder, href)
+      if (document.hidden) {
+        revealLatestOrder(href)
+      }
+    }
+  }, [settings.soundEnabled, settings.voiceMessage])
 
   useEffect(() => {
     const nextSettings = loadOrderAlertSettings()
     setSettings(nextSettings)
     persistOrderAlertSettings(nextSettings)
+
+    void fetch('/api/settings/order-alerts')
+      .then(async (response) => {
+        if (!response.ok) return null
+        return response.json() as Promise<{ voiceMessage?: string }>
+      })
+      .then((payload) => {
+        if (!payload?.voiceMessage) return
+        setSettings((prev) => {
+          const merged = {
+            ...prev,
+            voiceMessage: payload.voiceMessage || prev.voiceMessage,
+            soundRepeatCount: typeof payload.soundRepeatCount === 'number' ? payload.soundRepeatCount : prev.soundRepeatCount,
+          }
+          persistOrderAlertSettings(merged)
+          return merged
+        })
+      })
+      .catch(() => null)
   }, [])
 
   const pollOrders = useCallback(async () => {
@@ -73,12 +145,12 @@ export default function NotificationProvider({ children }: { children: React.Rea
       const res = await fetch('/api/orders?status=waiting_confirm&limit=20')
       if (!res.ok) return
       const data = await res.json()
-      const orders: Array<{ _id: string }> = data.orders ?? data ?? []
+      const orders: AlertOrder[] = data.orders ?? data ?? []
       const newOrders = orders.filter(o => !seenIds.current.has(o._id))
       if (newOrders.length > 0) {
         if (initialized.current) {
           const newOrderIds = newOrders.map(o => o._id)
-          addNotification(newOrders.length, newOrderIds)
+          addNotification(newOrders)
           void queryClient.invalidateQueries({ queryKey: ['orders'] })
           void queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
 
@@ -203,7 +275,7 @@ export default function NotificationProvider({ children }: { children: React.Rea
               <div className="text-xs text-gray-400">{notif.timestamp.toLocaleTimeString('vi-VN')}</div>
             </div>
             <div className="flex items-center gap-1">
-              <Link href="/orders" onClick={() => dismiss(notif.id)} className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
+              <Link href={notif.href} onClick={() => dismiss(notif.id)} className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
                 Xem <ExternalLink className="w-3 h-3" />
               </Link>
               <button onClick={() => dismiss(notif.id)} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-100 ml-1">

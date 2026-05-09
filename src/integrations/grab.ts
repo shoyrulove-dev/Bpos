@@ -16,6 +16,15 @@ const GRAB_PORTAL_ORDER_CANDIDATES = [
   'https://merchant.grab.com/portal/v1/orders?merchantID={storeId}',
   'https://merchant.grab.com/portal/merchant/v1/restaurants/{storeId}/orders',
 ]
+const GRAB_PORTAL_ORDER_DETAIL_CANDIDATES = [
+  'https://api.grab.com/food/merchant/v3/orders/{orderId}',
+  'https://api.grab.com/delvplatformapi/merchant/v1/order/details?merchantID={storeId}&orderID={orderId}',
+  'https://api.grab.com/delvplatformapi/merchant/v2/order/details?merchantID={storeId}&orderID={orderId}',
+  'https://api.grab.com/delvplatformapi/merchant/v1/orders/{orderId}?merchantID={storeId}',
+  'https://api.grab.com/delvplatformapi/merchant/v2/orders/{orderId}?merchantID={storeId}',
+  'https://merchant.grab.com/grabfood/v1/orders/{orderId}?merchantID={storeId}',
+]
+const GRAB_PORTAL_ORDER_DETAIL_PAGE_STAGES = ['preparing', 'ready', 'upcoming', 'history', 'completed', 'cancelled'] as const
 const GRAB_PORTAL_HISTORY_REPORTS_URL = 'https://api.grab.com/delvplatformapi/merchant/v1/reports/daily-pagination'
 const GRAB_PORTAL_ACTIVE_PAGE_TYPES = ['PreparingV2', 'Ready', 'Upcoming'] as const
 const GRAB_PORTAL_HISTORY_PAGE_TYPES = ['Completed', 'CompletedV2', 'History', 'Past', 'PastOrders', 'Delivered', 'Cancelled', 'All'] as const
@@ -101,14 +110,28 @@ export class GrabAdapter implements PlatformAdapter {
     const token = extraHeaders['x-grab-token'] ?? extraHeaders['Authorization'] ?? ''
     const discoveredStoreId = extraHeaders['x-grab-store-id'] ?? storeId
 
+    const forwardedHeaders = Object.fromEntries(
+      Object.entries(extraHeaders).filter(([key, value]) => {
+        if (!value) return false
+        const normalizedKey = key.toLowerCase()
+        return normalizedKey !== 'x-grab-orders-api' && normalizedKey !== 'x-grab-stores'
+      })
+    )
+
     const baseHeaders: Record<string, string> = {
+      ...forwardedHeaders,
       'Cookie': cookieHeader,
       'x-grab-tenant': 'GF_VN',
       'x-grab-country': 'VN',
+      'x-grab-language': 'vi',
       'Accept': 'application/json',
       'Accept-Language': 'vi',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Origin': 'https://merchant.grab.com',
       'Referer': 'https://merchant.grab.com/food/orders',
+      'Sec-Fetch-Site': 'same-site',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Dest': 'empty',
       'requestsource': 'troyPortal',
       'merchantid': discoveredStoreId,
     }
@@ -124,7 +147,7 @@ export class GrabAdapter implements PlatformAdapter {
     discoveredStoreId: string,
     pageTypes: readonly string[]
   ): Promise<{
-    orders: NormalizedOrder[] | null
+    orders: Record<string, unknown>[] | null
     sawAuthFailure: boolean
     sawPaginationEnvelope: boolean
   }> {
@@ -171,10 +194,411 @@ export class GrabAdapter implements PlatformAdapter {
     }
 
     return {
-      orders: portalOrders.length ? portalOrders.map((order) => this.normalizePortalOrder(order)) : null,
+      orders: portalOrders.length ? portalOrders : null,
       sawAuthFailure,
       sawPaginationEnvelope,
     }
+  }
+
+  private getGrabPortalOrderId(raw: Record<string, unknown>) {
+    return String(raw.orderID ?? raw.orderId ?? raw.ID ?? raw.id ?? '')
+  }
+
+  private getGrabPortalShortOrderId(raw: Record<string, unknown>) {
+    return String(raw.displayID ?? raw.shortOrderID ?? raw.shortOrderId ?? '')
+  }
+
+  private getGrabPortalOrderPageStage(raw: Record<string, unknown>) {
+    const rawStatus = String(raw.deliveryStatus ?? raw.orderState ?? raw.status ?? raw.orderStatus ?? raw.state ?? '').toLowerCase()
+    if (rawStatus.includes('ready')) return 'ready'
+    if (rawStatus.includes('upcoming') || rawStatus.includes('schedule')) return 'upcoming'
+    if (rawStatus.includes('cancel')) return 'cancelled'
+    if (rawStatus.includes('complete') || rawStatus.includes('deliver') || rawStatus.includes('history') || rawStatus.includes('past')) return 'history'
+    return 'preparing'
+  }
+
+  private buildGrabPortalDetailPageUrls(raw: Record<string, unknown>, discoveredStoreId: string) {
+    const orderId = this.getGrabPortalOrderId(raw)
+    if (!orderId || !discoveredStoreId) return []
+
+    const shortOrderId = this.getGrabPortalShortOrderId(raw)
+    const preferredStage = this.getGrabPortalOrderPageStage(raw)
+    const stages = [preferredStage, ...GRAB_PORTAL_ORDER_DETAIL_PAGE_STAGES.filter((stage) => stage !== preferredStage)]
+
+    return stages.map((stage) => {
+      const url = new URL(`https://merchant.grab.com/order/${encodeURIComponent(discoveredStoreId)}/${stage}/${encodeURIComponent(orderId)}`)
+      if (shortOrderId) url.searchParams.set('shortOrderID', shortOrderId)
+      return url.toString()
+    })
+  }
+
+  private findGrabPortalOrderInValue(value: unknown, orderId: string, depth = 0): Record<string, unknown> | null {
+    if (depth > 10 || value == null) return null
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = this.findGrabPortalOrderInValue(item, orderId, depth + 1)
+        if (found) return found
+      }
+      return null
+    }
+
+    if (typeof value !== 'object') return null
+
+    const record = value as Record<string, unknown>
+    const recordOrderId = this.getGrabPortalOrderId(record)
+    const hasDetailFields = Boolean(
+      Array.isArray(record.items) ||
+      Array.isArray(record.orderItems) ||
+      Array.isArray(record.lineItems) ||
+      record.consumer ||
+      record.customer ||
+      record.receiver ||
+      record.delivery ||
+      record.driver ||
+      record.rider
+    )
+
+    if ((!orderId || recordOrderId === orderId) && hasDetailFields) {
+      return record
+    }
+
+    for (const nested of Object.values(record)) {
+      const found = this.findGrabPortalOrderInValue(nested, orderId, depth + 1)
+      if (found) return found
+    }
+
+    return null
+  }
+
+  private decodeHtmlEntities(value: string) {
+    return value
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&#(\d+);/g, (_match, digits) => String.fromCharCode(Number(digits)))
+  }
+
+  private normalizeGrabPortalText(html: string) {
+    return this.decodeHtmlEntities(html)
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  private escapeRegExp(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  }
+
+  private parseGrabPortalAmount(value: unknown) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value !== 'string') return undefined
+
+    const normalized = value.replace(/[^\d-]/g, '')
+    if (!normalized || normalized === '-') return undefined
+
+    const amount = Number(normalized)
+    return Number.isFinite(amount) ? amount : undefined
+  }
+
+  private extractGrabPortalAmountByLabels(text: string, labels: string[]) {
+    for (const label of labels) {
+      const pattern = new RegExp(`${this.escapeRegExp(label)}\\s*[:：-]?\\s*([-+]?\\d[\\d.,\u00A0\s]*)\\s*(?:₫|đ|VND)`, 'i')
+      const match = text.match(pattern)
+      const amount = this.parseGrabPortalAmount(match?.[1])
+      if (typeof amount === 'number') return amount
+    }
+
+    return undefined
+  }
+
+  private extractGrabPortalSegment(text: string, label: string, nextLabels: string[]) {
+    const startIndex = text.toLowerCase().indexOf(label.toLowerCase())
+    if (startIndex < 0) return ''
+
+    const from = startIndex + label.length
+    let end = text.length
+
+    for (const nextLabel of nextLabels) {
+      const nextIndex = text.toLowerCase().indexOf(nextLabel.toLowerCase(), from)
+      if (nextIndex >= 0 && nextIndex < end) end = nextIndex
+    }
+
+    return text.slice(from, end).trim()
+  }
+
+  private normalizeGrabPortalPhone(phone?: string) {
+    return phone?.replace(/\s+/g, '')
+  }
+
+  private extractGrabPortalPhone(segment: string) {
+    const match = segment.match(/((?:\+?84|0)\d[\d .-]{7,13}\d)/)
+    return match?.[1]?.trim()
+  }
+
+  private extractGrabPortalName(segment: string, phone?: string) {
+    const withoutPhone = phone ? segment.replace(phone, ' ') : segment
+    const cleaned = withoutPhone
+      .replace(/^(?:[:：-]|sdt|sđt|điện thoại|phone)\s*/i, '')
+      .replace(/(?:sdt|sđt|điện thoại|phone).*$/i, '')
+      .replace(/(?:đã giao|đã hoàn tất|hoàn tất|đã hủy|đã huỷ|mã đặt hàng).*$/i, '')
+      .replace(/[📞☎]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    if (!cleaned || /\d/.test(cleaned)) return undefined
+    return cleaned.slice(0, 80).trim()
+  }
+
+  private extractGrabPortalOrderFromText(html: string, orderId: string): Record<string, unknown> | null {
+    const text = this.normalizeGrabPortalText(html)
+    if (!text) return null
+
+    const customerSegment = this.extractGrabPortalSegment(text, 'Khách hàng', ['Tài xế', 'Lưu ý từ khách hàng', 'Sản phẩm', 'Tóm tắt đơn hàng'])
+    const driverSegment = this.extractGrabPortalSegment(text, 'Tài xế', ['Mã đặt hàng', 'Khách hàng', 'Lưu ý từ khách hàng', 'Sản phẩm', 'Tóm tắt đơn hàng'])
+    const rawCustomerPhone = this.extractGrabPortalPhone(customerSegment)
+    const rawDriverPhone = this.extractGrabPortalPhone(driverSegment)
+    const customerPhone = this.normalizeGrabPortalPhone(rawCustomerPhone)
+    const driverPhone = this.normalizeGrabPortalPhone(rawDriverPhone)
+    const customerName = this.extractGrabPortalName(customerSegment, rawCustomerPhone)
+    const driverName = this.extractGrabPortalName(driverSegment, rawDriverPhone)
+
+    const financialBreakdown = {
+      merchandiseAmount: this.extractGrabPortalAmountByLabels(text, ['Tiền hàng']),
+      productDiscount: this.extractGrabPortalAmountByLabels(text, ['Giảm giá sản phẩm']),
+      orderDiscount: this.extractGrabPortalAmountByLabels(text, ['Giảm giá tổng đơn (ĐH + VC)', 'Giảm giá tổng đơn']),
+      platformCommission: this.extractGrabPortalAmountByLabels(text, ['Chiết khấu (CK) sàn', 'Chiết khấu sàn']),
+      revenueAfterPromotion: this.extractGrabPortalAmountByLabels(text, ['Doanh thu sau KM']),
+      taxWithheld: this.extractGrabPortalAmountByLabels(text, ['Khấu trừ thuế']),
+      actualReceived: this.extractGrabPortalAmountByLabels(text, ['Thực nhận từ sàn']),
+    }
+
+    const hasFinancialBreakdown = Object.values(financialBreakdown).some((value) => typeof value === 'number')
+    const hasContacts = Boolean(customerPhone || driverPhone || customerName || driverName)
+    if (!hasFinancialBreakdown && !hasContacts) return null
+
+    const merged: Record<string, unknown> = {
+      orderID: orderId,
+      ID: orderId,
+      financialBreakdown,
+    }
+
+    if (hasContacts) {
+      merged.customer = {
+        name: customerName ?? 'Khách hàng',
+        phone: customerPhone ?? '',
+        phoneNumber: customerPhone ?? '',
+      }
+      merged.driver = {
+        name: driverName ?? '',
+        phone: driverPhone ?? '',
+        phoneNumber: driverPhone ?? '',
+      }
+    }
+
+    if (typeof financialBreakdown.merchandiseAmount === 'number') merged.subtotal = financialBreakdown.merchandiseAmount
+    if (typeof financialBreakdown.revenueAfterPromotion === 'number') merged.total = financialBreakdown.revenueAfterPromotion
+    if (typeof financialBreakdown.actualReceived === 'number') merged.merchantReceivable = financialBreakdown.actualReceived
+    if (typeof financialBreakdown.platformCommission === 'number') merged.platformFee = financialBreakdown.platformCommission
+    if (typeof financialBreakdown.productDiscount === 'number' || typeof financialBreakdown.orderDiscount === 'number') {
+      merged.discountAmount = Number(financialBreakdown.productDiscount ?? 0) + Number(financialBreakdown.orderDiscount ?? 0)
+    }
+
+    return merged
+  }
+
+  private extractGrabPortalOrderFromHtml(html: string, orderId: string): Record<string, unknown> | null {
+    const jsonBlocks = new Set<string>()
+
+    const nextDataMatch = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i)
+    if (nextDataMatch?.[1]) jsonBlocks.add(nextDataMatch[1])
+
+    for (const match of Array.from(html.matchAll(/<script[^>]*type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/gi))) {
+      if (match[1]) jsonBlocks.add(match[1])
+    }
+
+    for (const block of Array.from(jsonBlocks)) {
+      try {
+        const parsed = JSON.parse(block) as unknown
+        const found = this.findGrabPortalOrderInValue(parsed, orderId)
+        if (found) return found
+      } catch {
+        continue
+      }
+    }
+
+    return this.extractGrabPortalOrderFromText(html, orderId)
+  }
+
+  private scoreNormalizedGrabPortalDetail(normalized: NormalizedOrder) {
+    const rawPayload = normalized.rawPayload
+    const financialBreakdown = rawPayload.financialBreakdown && typeof rawPayload.financialBreakdown === 'object' && !Array.isArray(rawPayload.financialBreakdown)
+      ? rawPayload.financialBreakdown as Record<string, unknown>
+      : undefined
+    const financialSignals = [
+      financialBreakdown?.merchandiseAmount,
+      financialBreakdown?.productDiscount,
+      financialBreakdown?.orderDiscount,
+      financialBreakdown?.platformCommission,
+      financialBreakdown?.revenueAfterPromotion,
+      financialBreakdown?.taxWithheld,
+      financialBreakdown?.actualReceived,
+      rawPayload.orderValue,
+      rawPayload.priceDisplay,
+      rawPayload.subtotal,
+      rawPayload.total,
+      rawPayload.merchantReceivable,
+    ].filter((value) => typeof this.parseGrabDisplayAmount(value) === 'number')
+
+    let score = 0
+    if (normalized.customerName && normalized.customerName !== 'Khách hàng') score += 3
+    if (normalized.customerPhone) score += 6
+    if (normalized.driverInfo?.name) score += 3
+    if (normalized.driverInfo?.phone) score += 6
+    if (normalized.items.length) score += normalized.items.length * 2
+    if (normalized.total > 0) score += 4
+    if (normalized.subtotal > 0) score += 3
+    if ((normalized.platformFee ?? 0) > 0) score += 2
+    if (financialSignals.length) score += financialSignals.length * 2
+
+    return score
+  }
+
+  private scoreGrabPortalDetail(detail: Record<string, unknown>) {
+    return this.scoreNormalizedGrabPortalDetail(this.normalizePortalOrder(detail))
+  }
+
+  private async fetchPortalOrderDetailPageWithSession(
+    rawOrder: Record<string, unknown>,
+    baseHeaders: Record<string, string>,
+    discoveredStoreId: string
+  ): Promise<NormalizedOrder | null> {
+    const urlsToTry = this.buildGrabPortalDetailPageUrls(rawOrder, discoveredStoreId)
+    const orderId = this.getGrabPortalOrderId(rawOrder)
+    let bestMergedDetail: Record<string, unknown> | null = null
+    let bestScore = -1
+
+    for (const url of urlsToTry) {
+      try {
+        const res = await fetch(url, {
+          headers: {
+            ...baseHeaders,
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            Referer: `https://merchant.grab.com/order/${encodeURIComponent(discoveredStoreId)}`,
+          },
+          signal: AbortSignal.timeout(8000),
+        })
+        if (!res.ok) continue
+
+        const html = await res.text()
+        if (!html.includes('<html')) continue
+
+        const detail = this.extractGrabPortalOrderFromHtml(html, orderId)
+        if (!detail) continue
+
+        const mergedDetail = {
+          ...rawOrder,
+          ...detail,
+        }
+        const score = this.scoreGrabPortalDetail(mergedDetail)
+        if (score > bestScore) {
+          bestScore = score
+          bestMergedDetail = mergedDetail
+        }
+      } catch {
+        continue
+      }
+    }
+
+    return bestMergedDetail ? this.normalizePortalOrder(bestMergedDetail, discoveredStoreId) : null
+  }
+
+  private async fetchPortalOrderDetailWithSession(
+    rawOrder: Record<string, unknown>,
+    baseHeaders: Record<string, string>,
+    discoveredStoreId: string
+  ): Promise<NormalizedOrder | null> {
+    const orderId = this.getGrabPortalOrderId(rawOrder)
+    if (!orderId) return null
+    let bestDetail: NormalizedOrder | null = null
+    let bestScore = -1
+
+    const urlsToTry = GRAB_PORTAL_ORDER_DETAIL_CANDIDATES.map((template) => (
+      template
+        .replace('{storeId}', encodeURIComponent(discoveredStoreId))
+        .replace('{orderId}', encodeURIComponent(orderId))
+    ))
+
+    for (const url of urlsToTry) {
+      try {
+        const res = await fetch(url, { headers: baseHeaders, signal: AbortSignal.timeout(8000) })
+        if (!res.ok) continue
+
+        const text = await res.text()
+        const trimmed = text.trim()
+        if (trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')) continue
+
+        let data: unknown
+        try {
+          data = JSON.parse(text) as unknown
+        } catch {
+          continue
+        }
+
+        const orders = this.extractOrdersFromPortalResponse(data)
+        const detail = orders?.find((order) => this.getGrabPortalOrderId(order) === orderId)
+        if (!detail) continue
+
+        const normalizedDetail = this.normalizePortalOrder({
+          ...rawOrder,
+          ...detail,
+        }, discoveredStoreId)
+        const score = this.scoreNormalizedGrabPortalDetail(normalizedDetail)
+        if (score > bestScore) {
+          bestScore = score
+          bestDetail = normalizedDetail
+        }
+      } catch {
+        continue
+      }
+    }
+
+    const pageDetail = await this.fetchPortalOrderDetailPageWithSession(rawOrder, baseHeaders, discoveredStoreId)
+    if (pageDetail) {
+      const pageScore = this.scoreNormalizedGrabPortalDetail(pageDetail)
+      if (pageScore > bestScore) return pageDetail
+    }
+
+    return bestDetail
+  }
+
+  private async enrichSessionOrdersWithDetails(
+    rawOrders: Record<string, unknown>[],
+    baseHeaders: Record<string, string>,
+    discoveredStoreId: string
+  ) {
+    const detailMap = new Map<string, NormalizedOrder>()
+    const orderIds = Array.from(new Set(rawOrders.map((order) => this.getGrabPortalOrderId(order)).filter(Boolean)))
+
+    for (let index = 0; index < orderIds.length; index += 5) {
+      const batch = rawOrders.filter((order) => orderIds.slice(index, index + 5).includes(this.getGrabPortalOrderId(order)))
+      const details = await Promise.all(batch.map((order) => this.fetchPortalOrderDetailWithSession(order, baseHeaders, discoveredStoreId)))
+
+      for (const detail of details) {
+        if (!detail?.externalOrderId) continue
+        detailMap.set(detail.externalOrderId, detail)
+      }
+    }
+
+    return rawOrders.map((order) => {
+      const orderId = this.getGrabPortalOrderId(order)
+      return detailMap.get(orderId) ?? this.normalizePortalOrder(order, discoveredStoreId)
+    })
   }
 
   private async getToken(clientId: string, clientSecret: string): Promise<string> {
@@ -254,7 +678,7 @@ export class GrabAdapter implements PlatformAdapter {
 
     const activeResult = await this.fetchPortalOrdersByPageTypes(baseHeaders, discoveredStoreId, GRAB_PORTAL_ACTIVE_PAGE_TYPES)
     sawAuthFailure = activeResult.sawAuthFailure
-    if (activeResult.orders) return activeResult.orders
+    if (activeResult.orders) return this.enrichSessionOrdersWithDetails(activeResult.orders, baseHeaders, discoveredStoreId)
     if (activeResult.sawPaginationEnvelope) {
       return []
     }
@@ -292,7 +716,7 @@ export class GrabAdapter implements PlatformAdapter {
         }
 
         const orders = this.extractOrdersFromPortalResponse(data)
-        if (orders !== null) return orders.map(o => this.normalizePortalOrder(o))
+        if (orders !== null) return this.enrichSessionOrdersWithDetails(orders, baseHeaders, discoveredStoreId)
       } catch {
         continue
       }
@@ -316,7 +740,7 @@ export class GrabAdapter implements PlatformAdapter {
     const historyStatements = await this.fetchPortalHistoryStatements(context.baseHeaders, context.discoveredStoreId, days)
     if (historyStatements === null) return null
     if (historyStatements.length) {
-      return historyStatements.map((statement) => this.normalizePortalOrder(statement, context.discoveredStoreId))
+      return this.enrichSessionOrdersWithDetails(historyStatements, context.baseHeaders, context.discoveredStoreId)
     }
 
     const historyResult = await this.fetchPortalOrdersByPageTypes(
@@ -325,7 +749,7 @@ export class GrabAdapter implements PlatformAdapter {
       GRAB_PORTAL_HISTORY_PAGE_TYPES
     )
 
-    if (historyResult.orders) return historyResult.orders
+    if (historyResult.orders) return this.enrichSessionOrdersWithDetails(historyResult.orders, context.baseHeaders, context.discoveredStoreId)
     if (historyResult.sawPaginationEnvelope) return []
     if (historyResult.sawAuthFailure) return null
     return []
@@ -393,6 +817,7 @@ export class GrabAdapter implements PlatformAdapter {
   private extractOrdersFromPortalResponse(data: unknown): Record<string, unknown>[] | null {
     if (!data || typeof data !== 'object') return null
     const d = data as Record<string, unknown>
+    if (this.looksLikeGrabPortalOrder(d)) return [d]
     if (Array.isArray(d)) return d as Record<string, unknown>[]
     if (Array.isArray(d.orders)) return d.orders as Record<string, unknown>[]
     if (Array.isArray(d.orderList)) return d.orderList as Record<string, unknown>[]
@@ -400,11 +825,28 @@ export class GrabAdapter implements PlatformAdapter {
     if (Array.isArray(d.data)) return d.data as Record<string, unknown>[]
     if (Array.isArray(d.result)) return d.result as Record<string, unknown>[]
     if (Array.isArray(d.results)) return d.results as Record<string, unknown>[]
+    if (d.order && typeof d.order === 'object' && this.looksLikeGrabPortalOrder(d.order)) {
+      return [d.order as Record<string, unknown>]
+    }
     if (d.data && typeof d.data === 'object' && !Array.isArray(d.data)) {
       const inner = d.data as Record<string, unknown>
+      if (this.looksLikeGrabPortalOrder(inner)) return [inner]
       if (Array.isArray(inner.orders)) return inner.orders as Record<string, unknown>[]
       if (Array.isArray(inner.orderList)) return inner.orderList as Record<string, unknown>[]
       if (Array.isArray(inner.results)) return inner.results as Record<string, unknown>[]
+      if (inner.order && typeof inner.order === 'object' && this.looksLikeGrabPortalOrder(inner.order)) {
+        return [inner.order as Record<string, unknown>]
+      }
+      if (inner.result && typeof inner.result === 'object' && this.looksLikeGrabPortalOrder(inner.result)) {
+        return [inner.result as Record<string, unknown>]
+      }
+    }
+    if (d.result && typeof d.result === 'object' && !Array.isArray(d.result)) {
+      const inner = d.result as Record<string, unknown>
+      if (this.looksLikeGrabPortalOrder(inner)) return [inner]
+      if (inner.order && typeof inner.order === 'object' && this.looksLikeGrabPortalOrder(inner.order)) {
+        return [inner.order as Record<string, unknown>]
+      }
     }
     for (const value of Object.values(d)) {
       if (Array.isArray(value) && value.some(item => this.looksLikeGrabPortalOrder(item))) {
@@ -446,7 +888,8 @@ export class GrabAdapter implements PlatformAdapter {
 
   private normalizePortalOrder(raw: Record<string, unknown>, fallbackStoreId?: string): NormalizedOrder {
     // Portal might use different field names than Partner API
-    const itemsRaw = (raw.items ?? raw.orderItems ?? raw.lineItems ?? []) as Record<string, unknown>[]
+    const itemInfo = (raw.itemInfo ?? {}) as Record<string, unknown>
+    const itemsRaw = (raw.items ?? raw.orderItems ?? raw.lineItems ?? itemInfo.items ?? []) as Record<string, unknown>[]
     const items: OrderItem[] = itemsRaw.map(i => ({
       name:     String(i.name ?? i.itemName ?? ''),
       quantity: Number(i.quantity ?? 1),
@@ -456,15 +899,23 @@ export class GrabAdapter implements PlatformAdapter {
 
     const rawStatus = String(raw.deliveryStatus ?? raw.orderState ?? raw.status ?? raw.orderStatus ?? raw.state ?? '')
     const orderStatus = mapGrabStatus(rawStatus)
-    const consumer  = raw.consumer ?? raw.customer ?? raw.receiver ?? {} as Record<string, unknown>
+    const consumer  = raw.consumer ?? raw.customer ?? raw.receiver ?? raw.eater ?? {} as Record<string, unknown>
     const consumerObj = typeof consumer === 'object' ? consumer as Record<string, unknown> : {}
+    const consumerPhone = String(
+      consumerObj.phones ??
+      consumerObj.phone ??
+      consumerObj.phoneNumber ??
+      consumerObj.mobileNumber ??
+      this.extractGrabPortalPhone(String(consumerObj.comment ?? '')) ??
+      ''
+    )
 
     const priceObj = (raw.price ?? raw.pricing ?? {}) as Record<string, unknown>
     const subtotal = Number(
       priceObj.subtotal ??
       raw.subtotal ??
       raw.subTotal ??
-      this.parseGrabDisplayAmount(raw.cancelledOriginalPriceDisplay ?? raw.priceDisplay)
+      this.parseGrabDisplayAmount(raw.cancelledOriginalPriceDisplay ?? raw.priceDisplay ?? raw.orderValue)
     )
     const discount = Number(priceObj.basketPromo ?? priceObj.discount ?? raw.discount ?? raw.discountAmount ?? 0)
     const total    = Number(
@@ -472,7 +923,7 @@ export class GrabAdapter implements PlatformAdapter {
       priceObj.total ??
       raw.total ??
       raw.orderTotal ??
-      this.parseGrabDisplayAmount(raw.priceDisplay)
+      this.parseGrabDisplayAmount(raw.priceDisplay ?? raw.orderValue)
     )
     const actualReceived = Number(
       priceObj.merchantPayment ??
@@ -494,7 +945,7 @@ export class GrabAdapter implements PlatformAdapter {
       externalOrderId: String(raw.orderID ?? raw.ID ?? raw.id ?? raw.orderId ?? ''),
       externalStoreId: String(raw.merchantID ?? raw.merchantId ?? raw.storeId ?? fallbackStoreId ?? ''),
       customerName:    String(consumerObj.name ?? consumerObj.displayName ?? 'Khách hàng'),
-      customerPhone:   String(consumerObj.phones ?? consumerObj.phone ?? consumerObj.phoneNumber ?? ''),
+      customerPhone:   consumerPhone,
       items,
       subtotal,
       discount,
@@ -504,7 +955,7 @@ export class GrabAdapter implements PlatformAdapter {
       deliveryInfo:    { address },
       driverInfo:      {
         name: String(driver.name ?? driver.displayName ?? ''),
-        phone: String(driver.phone ?? driver.phoneNumber ?? ''),
+        phone: String(driver.phone ?? driver.phoneNumber ?? driver.mobileNumber ?? ''),
       },
       orderStatus,
       placedAt:        String(raw.orderTime ?? raw.createdAt ?? raw.createTime ?? new Date().toISOString()),
@@ -515,26 +966,35 @@ export class GrabAdapter implements PlatformAdapter {
 
   normalizeOrder(raw: Record<string, unknown>): NormalizedOrder {
     // items[] — field name is 'items' in POS API v1.1.3 (not 'orderItems')
-    const items: OrderItem[] = ((raw.items as Record<string, unknown>[]) ?? []).map((i) => ({
-      name:     String(i.name ?? ''),
+    const itemInfo = raw.itemInfo as Record<string, unknown> | undefined
+    const items: OrderItem[] = (((raw.items as Record<string, unknown>[]) ?? (itemInfo?.items as Record<string, unknown>[] | undefined) ?? [])).map((i) => ({
+      name:     String(i.name ?? i.itemName ?? ''),
       quantity: Number(i.quantity ?? 1),
-      price:    Number(i.price ?? 0),
-      total:    Number(i.quantity ?? 1) * Number(i.price ?? 0),
+      price:    Number(i.price ?? i.itemPrice ?? i.unitPrice ?? 0),
+      total:    Number(i.quantity ?? 1) * Number(i.price ?? i.itemPrice ?? i.unitPrice ?? 0),
     }))
 
     // orderState field (not 'state')
     const rawStatus = String(raw.orderState ?? '')
 
     // receiver object contains customer name, phone, and delivery address
-    const receiver = raw.receiver as Record<string, unknown> | undefined
+    const receiver = (raw.receiver ?? raw.eater) as Record<string, unknown> | undefined
+    const receiverPhone = String(
+      receiver?.phones ??
+      receiver?.phone ??
+      receiver?.phoneNumber ??
+      receiver?.mobileNumber ??
+      this.extractGrabPortalPhone(String(receiver?.comment ?? '')) ??
+      ''
+    )
     const receiverAddress = receiver?.address as Record<string, unknown> | undefined
 
     // price is a nested object in POS API v1.1.3
     const price = raw.price as Record<string, unknown> | undefined
 
-    const subtotal = Number(price?.subtotal ?? 0)
+    const subtotal = Number(price?.subtotal ?? this.parseGrabDisplayAmount(raw.orderValue) ?? 0)
     const discount = Number(price?.basketPromo ?? 0)
-    const total = Number(price?.eaterPayment ?? 0)
+    const total = Number(price?.eaterPayment ?? this.parseGrabDisplayAmount(raw.orderValue) ?? 0)
     const actualReceived = Number(price?.merchantPayment ?? price?.merchantReceivable ?? 0)
 
     return {
@@ -542,7 +1002,7 @@ export class GrabAdapter implements PlatformAdapter {
       externalOrderId: String(raw.orderID ?? ''),
       externalStoreId: String(raw.merchantID ?? ''),
       customerName:    String(receiver?.name ?? 'Khách hàng'),
-      customerPhone:   String(receiver?.phones ?? ''),
+      customerPhone:   receiverPhone,
       items,
       subtotal,
       discount,
@@ -554,7 +1014,12 @@ export class GrabAdapter implements PlatformAdapter {
       },
       driverInfo: {
         name:  String((raw.driver as Record<string, unknown> | undefined)?.name ?? ''),
-        phone: String((raw.driver as Record<string, unknown> | undefined)?.phone ?? ''),
+        phone: String(
+          (raw.driver as Record<string, unknown> | undefined)?.phone ??
+          (raw.driver as Record<string, unknown> | undefined)?.phoneNumber ??
+          (raw.driver as Record<string, unknown> | undefined)?.mobileNumber ??
+          ''
+        ),
       },
       orderStatus: mapGrabStatus(rawStatus),
       placedAt:    String(raw.orderTime ?? new Date().toISOString()),

@@ -4,7 +4,7 @@ import IntegrationModel from '@/models/Integration'
 import OrderModel from '@/models/Order'
 import { getAdapter } from '@/integrations/registry'
 import { decryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert } from '@/lib/order-upsert'
+import { buildOrderUpsert, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import type { NormalizedOrder } from '@/types'
 import type { SessionData } from '@/integrations/types'
 
@@ -12,19 +12,39 @@ const CRON_SECRET = process.env.CRON_SECRET
 
 async function upsertOrders(intg: {
   _id: string
+  provider: string
   brandId: string
   hubId?: string
 }, orders: NormalizedOrder[]) {
   let upserted = 0
   let updated = 0
 
+  const externalOrderIds = orders
+    .map((order) => order.externalOrderId)
+    .filter((value): value is string => Boolean(value))
+
+  const existingOrders = externalOrderIds.length
+    ? await OrderModel.find({ source: intg.provider, externalOrderId: { $in: externalOrderIds } })
+        .select('externalOrderId customerName customerPhone items subtotal discount total platformFee paymentMethod deliveryInfo driverInfo rawPayload')
+        .lean()
+    : []
+
+  const existingOrdersByExternalId = new Map(
+    existingOrders.map((order) => [String(order.externalOrderId ?? ''), order])
+  )
+
   for (const normalized of orders) {
     if (!normalized.externalOrderId) continue
 
     try {
+      const mergedNormalized = mergeNormalizedOrderPreservingDetail(
+        existingOrdersByExternalId.get(normalized.externalOrderId) as Partial<NormalizedOrder> | undefined,
+        normalized
+      )
+
       const result = await OrderModel.findOneAndUpdate(
-        { source: normalized.source, externalOrderId: normalized.externalOrderId },
-        buildOrderUpsert(intg, normalized),
+        { source: mergedNormalized.source, externalOrderId: mergedNormalized.externalOrderId },
+        buildOrderUpsert(intg, mergedNormalized),
         { upsert: true, new: true, includeResultMetadata: true }
       )
 
@@ -75,7 +95,7 @@ export async function GET(req: NextRequest) {
       let orders: NormalizedOrder[] = []
 
       if (intg.loginMode === 'auto') {
-        if (!intg.sessionData || intg.sessionStatus !== 'active') {
+        if (!intg.sessionData) {
           throw new Error('Session chưa active – bỏ qua backfill')
         }
         if (!adapter.fetchHistoricalOrdersWithSession) {

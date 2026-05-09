@@ -1,0 +1,14 @@
+Failed to compile.
+
+./src/app/api/cron/sync-orders/route.ts:72:5
+Type error: Type 'unknown[]' is not assignable to type 'NormalizedOrder[]'.
+  Type 'unknown' is not assignable to type 'NormalizedOrder'.
+
+[0m [90m 70 |[39m   [36mreturn[39m {[0m
+[0m [90m 71 |[39m     session[33m,[39m[0m
+[0m[31m[1m>[22m[39m[90m 72 |[39m     orders[33m:[39m [33mArray[39m[33m.[39misArray(data[33m.[39morders) [33m?[39m data[33m.[39morders [33m:[39m [][33m,[39m[0m
+[0m [90m    |[39m     [31m[1m^[22m[39m[0m
+[0m [90m 73 |[39m   }[0m
+[0m [90m 74 |[39m }[0m
+[0m [90m 75 |[39m[0m
+Next.js build worker exited with code: 1 and signal: null

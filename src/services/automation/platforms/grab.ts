@@ -22,11 +22,105 @@ import type { SessionData, PlaywrightCookie } from '@/integrations/types'
 
 const PORTAL_ORDERS_URL = 'https://merchant.grab.com/food/orders'
 const LOGIN_URL          = 'https://merchant.grab.com/login'
+const WEBLOGIN_URL       = 'https://weblogin.grab.com/merchant/login?service_id=MEXUSERS&redirect=https%3A%2F%2Fmerchant.grab.com%2Fportal'
 const SESSION_TTL        = 20 * 3600  // 20 hours (refresh before 24h expiry)
 
 export class GrabAutomation implements PlatformAutomation {
   provider = 'grab' as const
   sessionTtlSeconds = SESSION_TTL
+
+  private async getFirstVisibleLocator(page: import('playwright').Page, selectors: string) {
+    const locator = page.locator(selectors)
+    const count = await locator.count()
+
+    for (let index = 0; index < count; index += 1) {
+      const candidate = locator.nth(index)
+      if (await candidate.isVisible().catch(() => false)) return candidate
+    }
+
+    return null
+  }
+
+  private async hasAuthenticatedShell(page: import('playwright').Page) {
+    if (page.url().includes('/portal') || page.url().includes('/order/')) return true
+
+    const shellSelectors = [
+      'img[alt="Grab Logo"]',
+      'button[aria-label="settings"]',
+      'text=/Truy cập chưa được cấp quyền/i',
+      'text=/Quay lại trang chủ/i',
+    ]
+
+    for (const selector of shellSelectors) {
+      const isVisible = await page.locator(selector).first().isVisible().catch(() => false)
+      if (isVisible) return true
+    }
+
+    return false
+  }
+
+  private matchesPreferredStore(storeId: string | null | undefined, preferredStoreId: string | null | undefined) {
+    if (!storeId || !preferredStoreId) return false
+    const normalizedStoreId = storeId.trim().toLowerCase()
+    const normalizedPreferredStoreId = preferredStoreId.trim().toLowerCase()
+    return normalizedStoreId === normalizedPreferredStoreId
+      || normalizedStoreId.includes(normalizedPreferredStoreId)
+      || normalizedPreferredStoreId.includes(normalizedStoreId)
+  }
+
+  private async waitForEnabledLocator(page: import('playwright').Page, selectors: string, timeoutMs = 10_000) {
+    const startedAt = Date.now()
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const locator = await this.getFirstVisibleLocator(page, selectors)
+      if (!locator) {
+        await page.waitForTimeout(250)
+        continue
+      }
+
+      const isDisabled = await locator.isDisabled().catch(() => false)
+      if (!isDisabled) return locator
+
+      await page.waitForTimeout(250)
+    }
+
+    return null
+  }
+
+  private async openLoginSurface(page: import('playwright').Page, usernameSelectors: string) {
+    const targets = [LOGIN_URL, WEBLOGIN_URL, PORTAL_ORDERS_URL]
+
+    for (const target of targets) {
+      await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => null)
+      await page.waitForTimeout(target === WEBLOGIN_URL ? 5000 : 3000)
+
+      const emailTab = await page.$('button:has-text("Email"), [data-testid="email-tab"], a:has-text("Email")')
+      if (emailTab) await emailTab.click().catch(() => null)
+
+      const accountInput = await this.getFirstVisibleLocator(page, usernameSelectors)
+      if (accountInput || await this.hasAuthenticatedShell(page)) return accountInput
+    }
+
+    return null
+  }
+
+  private async summarizeAuthSurface(page: import('playwright').Page) {
+    return page.locator('input, button, a, [role="button"]').evaluateAll((elements) => {
+      return elements
+        .slice(0, 20)
+        .map((element) => {
+          const htmlElement = element as HTMLElement
+          const text = (htmlElement.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60)
+          return {
+            tag: htmlElement.tagName,
+            type: htmlElement.getAttribute('type'),
+            name: htmlElement.getAttribute('name'),
+            placeholder: htmlElement.getAttribute('placeholder'),
+            text,
+          }
+        })
+    }).catch(() => [])
+  }
 
   async login(credentials: AutomationCredentials): Promise<AutomationResult> {
     let browser: import('playwright').Browser | null = null
@@ -68,64 +162,128 @@ export class GrabAutomation implements PlatformAutomation {
 
       const page = await context.newPage()
 
+      const preferredStoreId = credentials.storeId?.trim() || null
+
       // ── 1. Navigate to login ───────────────────────────────────────────────
-      await page.goto(LOGIN_URL, { waitUntil: 'networkidle', timeout: 30_000 })
-      await page.waitForTimeout(2000)
+      await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+      await page.waitForTimeout(3000)
 
       // ── 2. Detect login form type and fill credentials ─────────────────────
-      const isEmail = credentials.username.includes('@')
-
       // Try to click "Email" tab if present (some portals show email/phone toggle)
       const emailTab = await page.$('button:has-text("Email"), [data-testid="email-tab"], a:has-text("Email")')
       if (emailTab) await emailTab.click()
 
-      // Fill username/email - try multiple selectors
-      const emailInput = await page.$(
-        'input[type="email"], input[name="email"], input[placeholder*="email" i], input[placeholder*="Email"]'
-      )
-      if (emailInput) {
-        await emailInput.fill(credentials.username)
-      } else {
-        // Try generic text/tel input (phone or username)
-        const textInput = await page.$(
-          'input[type="text"], input[type="tel"], input[name="username"], input[name="phone"]'
+      const usernameSelectors = [
+        'input[type="email"]',
+        'input[name="email"]',
+        'input[placeholder*="email" i]',
+        'input[placeholder*="Email"]',
+        'input[autocomplete="username"]',
+        'input[name="username"]',
+        'input[name="phone"]',
+        'input[type="text"]',
+        'input[type="tel"]',
+        'input[placeholder*="phone" i]',
+        'input[placeholder*="số điện thoại" i]',
+        'input[placeholder*="tài khoản" i]',
+      ].join(', ')
+      const passwordSelectors = [
+        'input[type="password"]',
+        'input[name="password"]',
+        'input[autocomplete="current-password"]',
+      ].join(', ')
+      const nextSelectors = [
+        'button:has-text("Next")',
+        'button:has-text("Tiếp")',
+        'button:has-text("Continue")',
+        '[role="button"]:has-text("Next")',
+        '[role="button"]:has-text("Tiếp")',
+        '[role="button"]:has-text("Continue")',
+      ].join(', ')
+      const submitSelectors = 'button[type="submit"], button:has-text("Đăng nhập"), button:has-text("Log in"), button:has-text("Sign in"), button:has-text("Continue"), button:has-text("Tiếp")'
+
+      const accountInput = await this.openLoginSurface(page, usernameSelectors)
+
+      if (!accountInput && !(await this.hasAuthenticatedShell(page))) {
+        await browser.close()
+        return { success: false, error: `Không tìm thấy ô nhập tài khoản Grab (url: ${page.url()})` }
+      }
+
+      if (accountInput) {
+        await accountInput.fill(credentials.username)
+        await page.waitForTimeout(500)
+
+        const continueButton = await this.waitForEnabledLocator(page, nextSelectors, 5_000)
+        if (continueButton) {
+          await continueButton.click()
+          await page.waitForTimeout(2000)
+        }
+
+        let passwordInput = await this.getFirstVisibleLocator(page, passwordSelectors)
+        const onPasswordChallenge = page.url().includes('/challenge/password')
+        const onRecaptchaChallenge = page.url().includes('/challenge/recaptcha')
+
+        if (onRecaptchaChallenge) {
+          await browser.close()
+          return {
+            success: false,
+            error: `Grab yeu cau reCAPTCHA, can dang nhap thu cong de lay JWT/session (url=${page.url()})`,
+          }
+        }
+
+        if (!passwordInput && !onPasswordChallenge && !(await this.hasAuthenticatedShell(page))) {
+          try {
+            await page.waitForSelector(passwordSelectors, { timeout: 15_000 })
+          } catch (error) {
+            if (page.url().includes('/challenge/recaptcha')) {
+              await browser.close()
+              return {
+                success: false,
+                error: `Grab yeu cau reCAPTCHA, can dang nhap thu cong de lay JWT/session (url=${page.url()})`,
+              }
+            }
+            const authSurface = await this.summarizeAuthSurface(page)
+            await browser.close()
+            return {
+              success: false,
+              error: `${error instanceof Error ? error.message : String(error)} | url=${page.url()} | controls=${JSON.stringify(authSurface)}`,
+            }
+          }
+          passwordInput = await this.getFirstVisibleLocator(page, passwordSelectors)
+        }
+
+        if (!passwordInput) {
+          await browser.close()
+          return { success: false, error: `Không tìm thấy ô mật khẩu Grab (url: ${page.url()})` }
+        }
+
+        await passwordInput.fill(credentials.password)
+
+        const submitButton = await this.getFirstVisibleLocator(
+          page,
+          submitSelectors
         )
-        if (textInput) {
-          await textInput.fill(credentials.username)
-        } else {
+        if (submitButton) {
+          const enabledSubmitButton = await this.waitForEnabledLocator(page, submitSelectors, 5_000)
+          const targetSubmitButton = enabledSubmitButton ?? submitButton
+          await targetSubmitButton.click()
+          await page.waitForTimeout(5000)
+        } else if (!(await this.hasAuthenticatedShell(page))) {
           await browser.close()
-          return { success: false, error: 'Không tìm thấy ô nhập tài khoản' }
+          return { success: false, error: `Không tìm thấy nút đăng nhập Grab (url: ${page.url()})` }
         }
-      }
 
-      await page.waitForTimeout(500)
-
-      // Click Next/Continue if email-first flow
-      const nextBtn = await page.$('button:has-text("Next"), button:has-text("Tiếp"), button:has-text("Continue")')
-      if (nextBtn) {
-        await nextBtn.click()
-        await page.waitForTimeout(2000)
-      }
-
-      // ── 3. Fill password ───────────────────────────────────────────────────
-      await page.waitForSelector('input[type="password"]', { timeout: 10_000 })
-      await page.fill('input[type="password"]', credentials.password)
-
-      // ── 4. Submit ──────────────────────────────────────────────────────────
-      await page.click('button[type="submit"]')
-      await page.waitForTimeout(5000)
-
-      // ── 5. OTP / 2FA check ────────────────────────────────────────────────
-      const otpInput = await page.$('input[placeholder*="code" i], input[placeholder*="OTP" i], input[name*="otp" i], input[maxlength="6"]')
-      if (otpInput) {
-        if (!credentials.otp) {
-          const otpTarget = await page.textContent('[class*="phone"], [class*="email"], [class*="sent"]').catch(() => null)
-          await browser.close()
-          return { success: false, requiresOtp: true, otpTarget: otpTarget?.trim() ?? credentials.username }
+        const otpInput = await page.$('input[placeholder*="code" i], input[placeholder*="OTP" i], input[name*="otp" i], input[maxlength="6"]')
+        if (otpInput) {
+          if (!credentials.otp) {
+            const otpTarget = await page.textContent('[class*="phone"], [class*="email"], [class*="sent"]').catch(() => null)
+            await browser.close()
+            return { success: false, requiresOtp: true, otpTarget: otpTarget?.trim() ?? credentials.username }
+          }
+          await otpInput.fill(credentials.otp)
+          await page.click('button[type="submit"]')
+          await page.waitForTimeout(5000)
         }
-        await otpInput.fill(credentials.otp)
-        await page.click('button[type="submit"]')
-        await page.waitForTimeout(5000)
       }
 
       // ── 6. Verify login success ────────────────────────────────────────────
@@ -159,7 +317,7 @@ export class GrabAutomation implements PlatformAutomation {
       })
 
       // Try to fetch store list from the Grab internal API using cookies
-      const rawCookiesEarly = await context.cookies(['https://merchant.grab.com', 'https://grab.com'])
+      const rawCookiesEarly = await context.cookies(['https://merchant.grab.com', 'https://api.grab.com', 'https://grab.com'])
       const cookieStr = rawCookiesEarly.map(c => `${c.name}=${c.value}`).join('; ')
 
       let storeIdFromApi: string | null = null
@@ -200,8 +358,10 @@ export class GrabAutomation implements PlatformAutomation {
                 name: String(s.name ?? s.storeName ?? s.restaurantName ?? ''),
               })).filter(s => s.id)
               if (storesFromApi.length > 0) {
-                storeIdFromApi = storesFromApi[0].id
-                storeNameFromApi = storesFromApi[0].name
+                const matchedStore = storesFromApi.find((store) => this.matchesPreferredStore(store.id, preferredStoreId))
+                const selectedStore = matchedStore ?? storesFromApi[0]
+                storeIdFromApi = selectedStore.id
+                storeNameFromApi = selectedStore.name
                 break
               }
             }
@@ -217,7 +377,7 @@ export class GrabAutomation implements PlatformAutomation {
         })
         .find(Boolean) ?? null
 
-      const storeId = storeIdFromApi ?? storeIdFromJs ?? storeIdFromUrl ?? storeIdFromCaptured
+      const storeId = preferredStoreId ?? storeIdFromApi ?? storeIdFromJs ?? storeIdFromUrl ?? storeIdFromCaptured
 
       // ── 9. Capture Bearer token from storage / headers ────────────────────
       const tokenFromStorage = await page.evaluate(() => {
@@ -233,12 +393,24 @@ export class GrabAutomation implements PlatformAutomation {
 
       // Find the orders API endpoint from captured requests
       const ordersApiCall = capturedApis.find(a =>
+        a.url.includes('/order')
+        && !a.url.includes('/login')
+        && this.matchesPreferredStore(a.url, storeId)
+      ) ?? capturedApis.find(a =>
         a.url.includes('/order') && !a.url.includes('/login')
       )
 
       // ── 10. Collect cookies ────────────────────────────────────────────────
-      const rawCookies = await context.cookies('https://merchant.grab.com')
-      const cookies: PlaywrightCookie[] = rawCookies.map(c => ({
+      const rawCookies = await context.cookies(['https://merchant.grab.com', 'https://api.grab.com', 'https://grab.com'])
+      const seenCookies = new Set<string>()
+      const cookies: PlaywrightCookie[] = rawCookies
+        .filter((cookie) => {
+          const key = `${cookie.name}|${cookie.domain}|${cookie.path}`
+          if (seenCookies.has(key)) return false
+          seenCookies.add(key)
+          return true
+        })
+        .map(c => ({
         name: c.name, value: c.value, domain: c.domain, path: c.path,
         expires: c.expires, httpOnly: c.httpOnly, secure: c.secure,
         sameSite: (c.sameSite as PlaywrightCookie['sameSite']) ?? 'Lax',

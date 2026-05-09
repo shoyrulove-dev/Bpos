@@ -15,6 +15,7 @@ import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { encryptJSON } from '@/lib/crypto'
+import { buildSessionSuccessUpdate } from '@/lib/session-health'
 import type { SessionData } from '@/integrations/types'
 
 const SHOPEE_MERCHANT_BASE = 'https://merchant.shopeefood.vn'
@@ -247,11 +248,13 @@ async function storeSession(
     sessionStatus:     'active',
     sessionCapturedAt: capturedAt,
     sessionExpiresAt:  expiresAt,
-    sessionError:      undefined,
     automationRunning: false,
   }
   if (phone)   updates.loginUsername   = phone
   if (storeId) updates.externalStoreId = String(storeId)
 
-  await IntegrationModel.updateOne({ _id: integId }, updates)
+  await IntegrationModel.updateOne(
+    { _id: integId },
+    buildSessionSuccessUpdate(updates),
+  )
 }

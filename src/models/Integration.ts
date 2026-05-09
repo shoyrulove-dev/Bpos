@@ -28,6 +28,8 @@ export interface IIntegration extends Document {
   sessionExpiresAt?: Date
   /** Last error from automation login. */
   sessionError?: string
+  /** Consecutive session failures used to soften transient Grab portal flapping. */
+  sessionFailureCount?: number
   /** Whether automation is currently running for this integration. */
   automationRunning: boolean
   // ──────────────────────────────────────────────────────────────────────────
@@ -57,6 +59,7 @@ const IntegrationSchema = new Schema<IIntegration>({
   sessionCapturedAt: { type: Date },
   sessionExpiresAt:  { type: Date },
   sessionError:      { type: String },
+  sessionFailureCount: { type: Number, default: 0 },
   automationRunning: { type: Boolean, default: false },
 
   isActive:          { type: Boolean, default: true },

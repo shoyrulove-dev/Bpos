@@ -15,6 +15,10 @@ export function buildOrderFilter(params: OrderFilterParams) {
   if (params.q) {
     filter.$or = [
       { shortId: { $regex: params.q, $options: 'i' } },
+      { externalOrderId: { $regex: params.q, $options: 'i' } },
+      { 'rawPayload.displayID': { $regex: params.q, $options: 'i' } },
+      { 'rawPayload.shortOrderID': { $regex: params.q, $options: 'i' } },
+      { 'rawPayload.shortOrderId': { $regex: params.q, $options: 'i' } },
       { customerName: { $regex: params.q, $options: 'i' } },
       { customerPhone: { $regex: params.q, $options: 'i' } },
     ]

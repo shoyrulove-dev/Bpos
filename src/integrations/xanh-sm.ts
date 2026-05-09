@@ -1,5 +1,6 @@
 import type { NormalizedOrder, OrderItem, OrderStatus } from '@/types'
 import type { PlatformAdapter, AdapterConfig } from './types'
+import type { SessionData } from './types'
 
 const XANH_SM_BASE = 'https://merchant.xanhsm.com/api/v1'
 
@@ -9,6 +10,29 @@ const XANH_SM_BASE = 'https://merchant.xanhsm.com/api/v1'
  */
 export class XanhSMAdapter implements PlatformAdapter {
   source = 'xanh_sm' as const
+
+  private getSessionToken(session: SessionData) {
+    const raw = session.extraHeaders?.Authorization ?? session.extraHeaders?.authorization
+    if (raw) return raw.replace(/^Bearer\s+/i, '').trim() || null
+
+    const localToken = session.localStorage?.token
+      ?? session.localStorage?.access_token
+      ?? session.localStorage?.jwt
+    return localToken ? String(localToken).trim() : null
+  }
+
+  private async fetchOrdersByToken(accessToken: string, storeId: string) {
+    const res = await fetch(`${XANH_SM_BASE}/stores/${storeId}/orders?limit=20`, {
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    })
+
+    if (res.status === 401 || res.status === 403) return null
+    if (!res.ok) throw new Error(`Xanh SM API ${res.status}: ${res.statusText}`)
+
+    const data = await res.json() as { orders?: Record<string, unknown>[]; items?: Record<string, unknown>[] }
+    const orders = data.orders ?? data.items ?? []
+    return orders.map(o => this.normalizeOrder(o))
+  }
 
   async fetchOrders(config: AdapterConfig): Promise<NormalizedOrder[]> {
     const apiKey  = String(config.apiKey  ?? '')
@@ -27,6 +51,14 @@ export class XanhSMAdapter implements PlatformAdapter {
     const data   = await res.json() as { orders?: Record<string, unknown>[]; items?: Record<string, unknown>[] }
     const orders = data.orders ?? data.items ?? []
     return orders.map(o => this.normalizeOrder(o))
+  }
+
+  async fetchOrdersWithSession(session: SessionData, storeId: string): Promise<NormalizedOrder[] | null> {
+    const accessToken = this.getSessionToken(session)
+    const resolvedStoreId = String(storeId || session.extraHeaders?.['x-store-id'] || session.storeInfo?.storeId || '')
+
+    if (!accessToken || !resolvedStoreId) return null
+    return this.fetchOrdersByToken(accessToken, resolvedStoreId)
   }
 
   async fetchOrderDetail(orderId: string, config: AdapterConfig): Promise<NormalizedOrder | null> {

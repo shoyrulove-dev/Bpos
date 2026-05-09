@@ -1,6 +1,9 @@
 import { NextRequest } from 'next/server'
 import { connectDB } from '@/lib/db'
 import OrderModel from '@/models/Order'
+import '@/models/Brand'
+import '@/models/Hub'
+import '@/models/Channel'
 import { ok, err, requireAuth } from '@/lib/api-helpers'
 
 type PopulatedRef = { _id?: { toString(): string } | string; name?: string } | string | null | undefined

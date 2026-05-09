@@ -10,15 +10,30 @@ export function Providers({ children }: { children: React.ReactNode }) {
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [desktopSidebarVisible, setDesktopSidebarVisible] = useState(true)
+
+  const handleSidebarToggle = () => {
+    if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+      setDesktopSidebarVisible((visible) => !visible)
+      return
+    }
+
+    setMobileSidebarOpen((open) => !open)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar
+        isOpen={mobileSidebarOpen}
+        onClose={() => setMobileSidebarOpen(false)}
+        isDesktopVisible={desktopSidebarVisible}
+        onDesktopToggle={() => setDesktopSidebarVisible(false)}
+      />
 
       {/* Main area */}
-      <div className="lg:pl-64 flex flex-col min-h-screen">
-        <Topbar onMenuClick={() => setSidebarOpen(true)} />
+      <div className={`${desktopSidebarVisible ? 'lg:pl-64' : 'lg:pl-0'} flex flex-col min-h-screen transition-[padding] duration-300`}>
+        <Topbar onMenuClick={handleSidebarToggle} desktopSidebarVisible={desktopSidebarVisible} />
 
         <main className="flex-1 p-4 lg:p-6">
           {children}

@@ -3,17 +3,22 @@ export interface OrderAlertSettings {
   autoPrintEnabled: boolean
   printerName: string
   printerPaperSize: '80mm' | '58mm' | 'A4'
+  voiceMessage: string
+  soundRepeatCount: number
 }
 
 export const ORDER_ALERT_POLL_INTERVAL_MS = 5_000
 export const PRINTER_MODEL_LABEL = 'Xprinter XP-T80L (80mm / ESC/POS)'
 export const ORDER_ALERT_VOICE_MESSAGE = 'Anh ơi. Mình có đơn hàng mới. Anh kiểm tra giúp em nhé.'
+export const ORDER_ALERT_DEFAULT_REPEAT_COUNT = 3
 const ORDER_ALERT_AUDIO_URL = '/audio/order-alert-vi.mp3?v=20260508'
 
 const SOUND_SETTING_KEY = 'bpos.order-alert.sound-enabled'
 const AUTO_PRINT_SETTING_KEY = 'bpos.order-alert.auto-print-enabled'
 const PRINTER_NAME_SETTING_KEY = 'bpos.order-alert.printer-name'
 const PRINTER_PAPER_SIZE_SETTING_KEY = 'bpos.order-alert.printer-paper-size'
+const VOICE_MESSAGE_SETTING_KEY = 'bpos.order-alert.voice-message'
+const SOUND_REPEAT_COUNT_SETTING_KEY = 'bpos.order-alert.sound-repeat-count'
 const PRINTED_IDS_KEY = 'bpos.order-alert.printed-order-ids'
 const MAX_RECENT_PRINTED_IDS = 120
 
@@ -22,6 +27,8 @@ export const DEFAULT_ORDER_ALERT_SETTINGS: OrderAlertSettings = {
   autoPrintEnabled: true,
   printerName: PRINTER_MODEL_LABEL,
   printerPaperSize: '80mm',
+  voiceMessage: ORDER_ALERT_VOICE_MESSAGE,
+  soundRepeatCount: ORDER_ALERT_DEFAULT_REPEAT_COUNT,
 }
 
 let activeAlertAudio: HTMLAudioElement | null = null
@@ -77,12 +84,16 @@ function writeRecentPrintedIds(orderIds: string[]) {
 
 export function loadOrderAlertSettings(): OrderAlertSettings {
   const printerPaperSize = readStringSetting(PRINTER_PAPER_SIZE_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.printerPaperSize)
+  const rawRepeat = parseInt(readStringSetting(SOUND_REPEAT_COUNT_SETTING_KEY, String(ORDER_ALERT_DEFAULT_REPEAT_COUNT)), 10)
+  const soundRepeatCount = Number.isFinite(rawRepeat) && rawRepeat >= 1 && rawRepeat <= 10 ? rawRepeat : ORDER_ALERT_DEFAULT_REPEAT_COUNT
 
   return {
     soundEnabled: readBooleanSetting(SOUND_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.soundEnabled),
     autoPrintEnabled: readBooleanSetting(AUTO_PRINT_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.autoPrintEnabled),
     printerName: readStringSetting(PRINTER_NAME_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.printerName),
     printerPaperSize: printerPaperSize === '58mm' || printerPaperSize === 'A4' ? printerPaperSize : '80mm',
+    voiceMessage: readStringSetting(VOICE_MESSAGE_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.voiceMessage).trim() || DEFAULT_ORDER_ALERT_SETTINGS.voiceMessage,
+    soundRepeatCount,
   }
 }
 
@@ -91,6 +102,12 @@ export function persistOrderAlertSettings(settings: OrderAlertSettings) {
   writeBooleanSetting(AUTO_PRINT_SETTING_KEY, settings.autoPrintEnabled)
   writeStringSetting(PRINTER_NAME_SETTING_KEY, settings.printerName.trim() || DEFAULT_ORDER_ALERT_SETTINGS.printerName)
   writeStringSetting(PRINTER_PAPER_SIZE_SETTING_KEY, settings.printerPaperSize)
+  writeStringSetting(VOICE_MESSAGE_SETTING_KEY, settings.voiceMessage.trim() || DEFAULT_ORDER_ALERT_SETTINGS.voiceMessage)
+  writeStringSetting(SOUND_REPEAT_COUNT_SETTING_KEY, String(settings.soundRepeatCount ?? ORDER_ALERT_DEFAULT_REPEAT_COUNT))
+}
+
+function normalizeVoiceMessage(message?: string) {
+  return String(message || '').trim() || ORDER_ALERT_VOICE_MESSAGE
 }
 
 function pickPreferredVietnameseVoice() {
@@ -167,7 +184,7 @@ function playBundledAlertAudio(times: number, onFailure: () => void) {
   return true
 }
 
-function speakAlertMessage(times: number) {
+function speakAlertMessage(message: string, times: number) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return false
 
   const synth = window.speechSynthesis
@@ -178,7 +195,7 @@ function speakAlertMessage(times: number) {
 
   let spoken = 0
   const speakOnce = () => {
-    const utterance = new SpeechSynthesisUtterance(ORDER_ALERT_VOICE_MESSAGE)
+    const utterance = new SpeechSynthesisUtterance(message)
     utterance.lang = voice.lang || 'vi-VN'
     utterance.voice = voice
     utterance.rate = 0.86
@@ -197,8 +214,10 @@ function speakAlertMessage(times: number) {
   return true
 }
 
-export function playOrderAlert(times = 3) {
+export function playOrderAlert(times = 3, message = ORDER_ALERT_VOICE_MESSAGE) {
   if (typeof window === 'undefined') return
+
+  const normalizedMessage = normalizeVoiceMessage(message)
 
   const ringFallback = () => {
     let currentRing = 0
@@ -237,8 +256,13 @@ export function playOrderAlert(times = 3) {
   }
 
   const fallbackToSpeech = () => {
-    if (speakAlertMessage(times)) return
+    if (speakAlertMessage(normalizedMessage, times)) return
     ringFallback()
+  }
+
+  if (normalizedMessage !== ORDER_ALERT_VOICE_MESSAGE) {
+    fallbackToSpeech()
+    return
   }
 
   if (playBundledAlertAudio(times, fallbackToSpeech)) return
