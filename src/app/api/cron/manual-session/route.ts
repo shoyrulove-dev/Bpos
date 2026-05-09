@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json() as {
     integrationId?: string
+    provider?: string
     manualJwt?: string
     storeId?: string
     username?: string
@@ -24,23 +25,25 @@ export async function POST(req: NextRequest) {
   }
 
   const integrationId = String(body.integrationId ?? '').trim()
+  const provider = String(body.provider ?? 'grab').trim()
   const jwt = String(body.manualJwt ?? '').replace(/^Bearer\s+/i, '').trim()
   const storeId = String(body.storeId ?? '').trim() || undefined
   const username = String(body.username ?? '').trim() || undefined
   const ttlSeconds = Math.max(300, Number(body.ttlSeconds ?? 8 * 3600) || 8 * 3600)
 
-  if (!integrationId) {
-    return NextResponse.json({ error: 'Missing integrationId' }, { status: 400 })
-  }
   if (!jwt) {
     return NextResponse.json({ error: 'Missing manualJwt' }, { status: 400 })
   }
 
   await connectDB()
 
-  const integration = await IntegrationModel.findById(integrationId)
+  const integration = integrationId
+    ? await IntegrationModel.findById(integrationId)
+    : storeId
+    ? await IntegrationModel.findOne({ provider, externalStoreId: storeId, isActive: true })
+    : null
   if (!integration) {
-    return NextResponse.json({ error: 'Integration not found' }, { status: 404 })
+    return NextResponse.json({ error: 'Integration not found', provider, storeId }, { status: 404 })
   }
 
   const session: SessionData = {
@@ -77,7 +80,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    integrationId,
+    integrationId: String(integration._id),
     provider: integration.provider,
     loginUsername: username ?? integration.loginUsername,
     externalStoreId: storeId ?? integration.externalStoreId,
