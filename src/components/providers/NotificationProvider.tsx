@@ -45,7 +45,10 @@ type AlertOrder = {
   externalOrderId?: string
   customerName?: string
   placedAt?: string
+  status?: string
 }
+
+const NEW_ORDER_STATUSES = ['waiting_confirm', 'waiting_pickup']
 
 function getLatestOrder(orderList: AlertOrder[]) {
   return [...orderList].sort((left, right) => {
@@ -142,11 +145,19 @@ export default function NotificationProvider({ children }: { children: React.Rea
 
   const pollOrders = useCallback(async () => {
     try {
-      const res = await fetch('/api/orders?status=waiting_confirm&limit=20')
+      const searchParams = new URLSearchParams({
+        status: NEW_ORDER_STATUSES.join(','),
+        limit: '30',
+      })
+      const res = await fetch(`/api/orders?${searchParams.toString()}`)
       if (!res.ok) return
       const data = await res.json()
       const orders: AlertOrder[] = data.orders ?? data ?? []
-      const newOrders = orders.filter(o => !seenIds.current.has(o._id))
+      const newOrders = orders.filter((order) => {
+        if (!order?._id || seenIds.current.has(order._id)) return false
+        if (!order.status || !NEW_ORDER_STATUSES.includes(order.status)) return false
+        return true
+      })
       if (newOrders.length > 0) {
         if (initialized.current) {
           const newOrderIds = newOrders.map(o => o._id)

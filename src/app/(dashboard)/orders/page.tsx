@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, Plus, Printer, RefreshCw, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, ExternalLink, Loader2, Plus, Printer, RefreshCw, Search } from 'lucide-react'
 import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -50,6 +50,34 @@ function openWindow(url: string) {
 
 function getTotalItems(order: Order) {
   return order.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+}
+
+function getGrabPortalOrderStage(order: Order) {
+  const raw = order.rawPayload as Record<string, unknown> | undefined
+  const rawStatus = String(raw?.deliveryStatus ?? raw?.orderState ?? raw?.status ?? raw?.orderStatus ?? raw?.state ?? '').toLowerCase()
+
+  if (rawStatus.includes('ready')) return 'ready'
+  if (rawStatus.includes('upcoming') || rawStatus.includes('schedule')) return 'upcoming'
+  if (rawStatus.includes('cancel')) return 'cancelled'
+  if (rawStatus.includes('complete') || rawStatus.includes('deliver') || rawStatus.includes('history') || rawStatus.includes('past')) return 'history'
+
+  return 'preparing'
+}
+
+function buildGrabPortalOrderUrl(order: Order) {
+  if (order.source !== 'grab') return null
+
+  const raw = order.rawPayload as Record<string, unknown> | undefined
+  const merchant = raw?.merchant as Record<string, unknown> | undefined
+  const merchantId = String(merchant?.ID ?? raw?.merchantID ?? raw?.merchantId ?? '').trim()
+  const orderId = String(order.externalOrderId ?? raw?.orderID ?? raw?.ID ?? '').trim()
+  const shortOrderId = String(raw?.displayID ?? raw?.shortOrderID ?? raw?.shortOrderId ?? '').trim()
+
+  if (!merchantId || !orderId) return null
+
+  const url = new URL(`https://merchant.grab.com/order/${encodeURIComponent(merchantId)}/${getGrabPortalOrderStage(order)}/${encodeURIComponent(orderId)}`)
+  if (shortOrderId) url.searchParams.set('shortOrderID', shortOrderId)
+  return url.toString()
 }
 
 function InfoRow({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
@@ -245,17 +273,18 @@ export default function OrdersPage() {
               const actualReceived = getActualReceived(order)
               const locationLabel = [order.brandName, order.hubName].filter(Boolean).join(' - ')
               const showNewBadge = isOrderNew(order)
+              const grabPortalOrderUrl = order.status === 'waiting_pickup' ? buildGrabPortalOrderUrl(order) : null
 
               return (
                 <article key={order._id} className="rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm">
                   {/* Header row */}
                   <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      {showNewBadge && <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-rose-600">New</span>}
                       <span className="shrink-0" aria-label={CHANNEL_SOURCE_LABEL[order.source]}>
                         <SourceIcon source={order.source} />
                       </span>
                       <span className="font-mono text-base font-semibold text-sky-600">#{getOrderDisplayCode(order)}</span>
-                      {showNewBadge && <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-rose-600">New</span>}
                       {locationLabel && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">{locationLabel}</span>}
                     </div>
                     <span className={cn('badge shrink-0', ORDER_STATUS_COLOR[order.status])}>{ORDER_STATUS_LABEL[order.status]}</span>
@@ -289,6 +318,16 @@ export default function OrdersPage() {
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={() => openWindow(buildReceiptPrintUrl(order._id, { autoprint: true, paperSize: '80mm' }))} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In Đơn</button>
                       <button type="button" onClick={() => openWindow(buildReceiptPrintUrl(order._id, { autoprint: true, paperSize: '58mm' }))} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In phiếu tem</button>
+                      {grabPortalOrderUrl && (
+                        <button
+                          type="button"
+                          onClick={() => openWindow(grabPortalOrderUrl)}
+                          className="inline-flex items-center gap-2 rounded-full bg-[#ffbf1b] px-4 py-2 text-sm font-semibold text-[#3e2d00] transition hover:bg-[#efb100]"
+                          title="Mở đúng trang đơn trên Grab để báo sẵn sàng"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" /> Đánh dấu đơn hàng sẵn sàng
+                        </button>
+                      )}
                     </div>
                   </div>
                 </article>
