@@ -1,32 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { User, Phone, Mail, Shield, Camera, Key, LogOut, Printer, Volume2 } from 'lucide-react'
+import { User, Phone, Mail, Shield, Camera, Key, LogOut } from 'lucide-react'
 import { signOut } from 'next-auth/react'
-import { DEFAULT_ORDER_ALERT_SETTINGS, loadOrderAlertSettings, persistOrderAlertSettings, playOrderAlert, type OrderAlertSettings } from '@/lib/order-alerts'
 
 export default function ProfilePage() {
   const { data: session } = useSession()
   const [showChangePw, setShowChangePw] = useState(false)
   const [form, setForm] = useState({ name: session?.user?.name ?? '', phone: '' })
   const [saved, setSaved] = useState(false)
-  const [orderSettings, setOrderSettings] = useState<OrderAlertSettings>(DEFAULT_ORDER_ALERT_SETTINGS)
-  const [settingsSaved, setSettingsSaved] = useState(false)
-
-  useEffect(() => {
-    setOrderSettings(loadOrderAlertSettings())
-  }, [])
 
   const handleSave = () => {
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
-  }
-
-  const handleSaveOrderSettings = () => {
-    persistOrderAlertSettings(orderSettings)
-    setSettingsSaved(true)
-    setTimeout(() => setSettingsSaved(false), 2000)
   }
 
   return (
@@ -78,75 +65,6 @@ export default function ProfilePage() {
         <button onClick={handleSave} className="btn-primary">
           {saved ? '✓ Đã lưu' : 'Lưu thay đổi'}
         </button>
-      </div>
-
-      <div id="order-alert-settings" className="card p-6 space-y-4 scroll-mt-24">
-        <div>
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Printer className="w-4 h-4" /> Cài đặt in đơn và âm thanh</h3>
-          <p className="text-sm text-gray-500 mt-1">Bật tắt âm báo, tự động in và chọn khổ giấy mặc định cho đơn hàng.</p>
-        </div>
-
-        <label className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
-          <div>
-            <p className="text-sm font-medium text-gray-900">Âm thanh đơn mới</p>
-            <p className="text-xs text-gray-500">Phát âm báo khi có đơn mới</p>
-          </div>
-          <input
-            type="checkbox"
-            className="h-4 w-4"
-            checked={orderSettings.soundEnabled}
-            onChange={(event) => setOrderSettings((prev) => ({ ...prev, soundEnabled: event.target.checked }))}
-          />
-        </label>
-
-        <label className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
-          <div>
-            <p className="text-sm font-medium text-gray-900">Tự động in đơn mới</p>
-            <p className="text-xs text-gray-500">Tự mở phiếu in khi có đơn mới vào hàng chờ</p>
-          </div>
-          <input
-            type="checkbox"
-            className="h-4 w-4"
-            checked={orderSettings.autoPrintEnabled}
-            onChange={(event) => setOrderSettings((prev) => ({ ...prev, autoPrintEnabled: event.target.checked }))}
-          />
-        </label>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="form-group">
-            <label className="label">Tên máy in</label>
-            <input
-              className="input"
-              value={orderSettings.printerName}
-              onChange={(event) => setOrderSettings((prev) => ({ ...prev, printerName: event.target.value }))}
-              placeholder="VD: Xprinter XP-T80L"
-            />
-          </div>
-          <div className="form-group">
-            <label className="label">Khổ giấy mặc định</label>
-            <select
-              className="input"
-              value={orderSettings.printerPaperSize}
-              onChange={(event) => setOrderSettings((prev) => ({
-                ...prev,
-                printerPaperSize: event.target.value as OrderAlertSettings['printerPaperSize'],
-              }))}
-            >
-              <option value="80mm">80mm</option>
-              <option value="58mm">58mm</option>
-              <option value="A4">A4</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => playOrderAlert(1)} className="btn-outline">
-            <Volume2 className="w-4 h-4" /> Test âm thanh
-          </button>
-          <button type="button" onClick={handleSaveOrderSettings} className="btn-primary">
-            {settingsSaved ? '✓ Đã lưu cài đặt' : 'Lưu cài đặt in / âm thanh'}
-          </button>
-        </div>
       </div>
 
       {/* Change password */}

@@ -121,7 +121,11 @@ export class BeAdapter implements PlatformAdapter {
 
       for (const detail of details) {
         if (!detail?.externalOrderId) continue
-        detailMap.set(detail.externalOrderId, detail)
+        // fetchOrderDetail normalizes without fetchType context — re-apply cancelled status
+        const corrected = fetchType === 'cancelled'
+          ? { ...detail, orderStatus: 'cancelled' as const }
+          : detail
+        detailMap.set(detail.externalOrderId, corrected)
       }
     }
 

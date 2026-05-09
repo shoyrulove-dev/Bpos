@@ -615,7 +615,7 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
                 {items.map((item, index) => (
                   <tr key={`${item.name}-${index}`} className="border-t border-gray-100 align-top">
                     <td className="px-3 py-2.5">
-                      <p className="text-sm font-medium text-gray-950">{item.name}</p>
+                      <p className="text-base font-semibold text-gray-950">{item.name}</p>
                       {item.note && <p className="mt-0.5 whitespace-pre-line text-xs text-gray-500">{item.note}</p>}
                       {item.addonLines.length > 0 && <div className="mt-0.5 space-y-0.5 text-xs text-gray-500">{item.addonLines.map((addon, addonIndex) => <p key={`${addon}-${addonIndex}`}>• {addon}</p>)}</div>}
                     </td>
@@ -639,32 +639,22 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
           )}
 
           {voucherLines.length > 0 && (
-            <div className="mt-4 rounded-[24px] border border-emerald-200 bg-emerald-50/70 p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-emerald-500 shadow-sm">
-                  <TicketPercent className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-lg font-semibold text-gray-950">Voucher</p>
-                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-emerald-600">+{voucherLines.length}</span>
-                  </div>
-                  <p className="text-sm text-gray-500">Hiển thị ưu đãi từ payload Grab để đối soát đơn.</p>
-                </div>
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/50 px-3 py-2">
+              <div className="flex items-center gap-2 mb-1.5">
+                <TicketPercent className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                <span className="text-xs font-semibold text-emerald-700">Voucher</span>
+                <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">{voucherLines.length}</span>
               </div>
-
-              <div className="mt-3 space-y-2">
+              <div className="space-y-1">
                 {voucherLines.map((voucher, index) => (
-                  <div key={`${voucher.title}-${index}`} className="rounded-2xl border border-white/80 bg-white/90 px-3 py-2.5">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-[15px] font-semibold text-gray-900">{voucher.title}</p>
-                        <p className="mt-0.5 text-xs font-medium uppercase tracking-[0.12em] text-emerald-600">{voucher.scopeLabel}</p>
-                      </div>
-                      {typeof voucher.discountValue === 'number' && (
-                        <p className="text-sm font-semibold text-emerald-600">-{formatCurrency(voucher.discountValue)}</p>
-                      )}
+                  <div key={`${voucher.title}-${index}`} className="flex items-center justify-between gap-2 rounded-lg bg-white/80 px-2.5 py-1.5">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-gray-900 truncate">{voucher.title}</p>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-emerald-600">{voucher.scopeLabel}</p>
                     </div>
+                    {typeof voucher.discountValue === 'number' && (
+                      <p className="text-xs font-semibold text-emerald-600 flex-shrink-0">-{formatCurrency(voucher.discountValue)}</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -789,7 +779,7 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
               <tbody>
                 {items.map((item, index) => (
                   <tr key={`${item.name}-${index}`} className="border-t border-gray-100 align-top">
-                    <td className="px-3 py-2.5"><p className="text-sm font-medium text-gray-950">{item.name}</p>{item.note && <p className="mt-0.5 whitespace-pre-line text-xs text-gray-500">{item.note}</p>}{item.addonLines.length > 0 && <div className="mt-0.5 space-y-0.5 text-xs text-gray-500">{item.addonLines.map((addon, addonIndex) => <p key={`${addon}-${addonIndex}`}>• {addon}</p>)}</div>}</td>
+                    <td className="px-3 py-2.5"><p className="text-base font-semibold text-gray-950">{item.name}</p>{item.note && <p className="mt-0.5 whitespace-pre-line text-xs text-gray-500">{item.note}</p>}{item.addonLines.length > 0 && <div className="mt-0.5 space-y-0.5 text-xs text-gray-500">{item.addonLines.map((addon, addonIndex) => <p key={`${addon}-${addonIndex}`}>• {addon}</p>)}</div>}</td>
                     <td className="px-3 py-2.5 text-center text-sm font-medium text-gray-900">{item.quantity}</td>
                     <td className="px-3 py-2.5 text-right text-sm text-gray-700">{formatCurrency(item.originalPrice)}</td>
                     <td className="px-3 py-2.5 text-right text-sm text-gray-700">{formatCurrency(item.strikePrice)}</td>
@@ -802,32 +792,22 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
           </div>
 
           {voucherLines.length > 0 && (
-            <div className="mt-4 rounded-[24px] border border-amber-200 bg-amber-50/70 p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-amber-500 shadow-sm">
-                  <TicketPercent className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-lg font-semibold text-gray-950">Voucher</p>
-                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-amber-600">+{voucherLines.length}</span>
-                  </div>
-                  <p className="text-sm text-gray-500">Hiển thị đầy đủ ưu đãi từ payload Be để đối soát đơn.</p>
-                </div>
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/50 px-3 py-2">
+              <div className="flex items-center gap-2 mb-1.5">
+                <TicketPercent className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                <span className="text-xs font-semibold text-amber-700">Voucher</span>
+                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">{voucherLines.length}</span>
               </div>
-
-              <div className="mt-3 space-y-2">
+              <div className="space-y-1">
                 {voucherLines.map((voucher, index) => (
-                  <div key={`${voucher.title}-${index}`} className="rounded-2xl border border-white/80 bg-white/90 px-3 py-2.5">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-[15px] font-semibold text-gray-900">{voucher.title}</p>
-                        <p className="mt-0.5 text-xs font-medium uppercase tracking-[0.12em] text-amber-600">{voucher.scopeLabel}</p>
-                      </div>
-                      {typeof voucher.discountValue === 'number' && (
-                        <p className="text-sm font-semibold text-emerald-600">-{formatCurrency(voucher.discountValue)}</p>
-                      )}
+                  <div key={`${voucher.title}-${index}`} className="flex items-center justify-between gap-2 rounded-lg bg-white/80 px-2.5 py-1.5">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-gray-900 truncate">{voucher.title}</p>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-amber-600">{voucher.scopeLabel}</p>
                     </div>
+                    {typeof voucher.discountValue === 'number' && (
+                      <p className="text-xs font-semibold text-emerald-600 flex-shrink-0">-{formatCurrency(voucher.discountValue)}</p>
+                    )}
                   </div>
                 ))}
               </div>
