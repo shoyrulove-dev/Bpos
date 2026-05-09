@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
       provider?: string
       manualJwt?: string
       cookies?: PlaywrightCookie[]
+      extraHeaders?: Record<string, string>
       localStorage?: Record<string, string>
       storeId?: string
       username?: string
@@ -31,6 +32,13 @@ export async function POST(req: NextRequest) {
     const provider = String(body.provider ?? 'grab').trim()
     const jwt = String(body.manualJwt ?? '').replace(/^Bearer\s+/i, '').trim()
     const cookies = Array.isArray(body.cookies) ? body.cookies : []
+    const extraHeaders = body.extraHeaders && typeof body.extraHeaders === 'object'
+      ? Object.fromEntries(
+          Object.entries(body.extraHeaders)
+            .filter(([key, value]) => key && typeof value === 'string' && value.trim())
+            .map(([key, value]) => [key, value.trim()])
+        )
+      : undefined
     const localStorage = body.localStorage && typeof body.localStorage === 'object' ? body.localStorage : undefined
     const storeId = String(body.storeId ?? '').trim() || undefined
     const username = String(body.username ?? '').trim() || undefined
@@ -58,7 +66,14 @@ export async function POST(req: NextRequest) {
 
     const session: SessionData = {
       cookies,
-      ...(jwt ? { extraHeaders: { Authorization: `Bearer ${jwt}` } } : {}),
+      ...(jwt || extraHeaders
+        ? {
+            extraHeaders: {
+              ...(extraHeaders ?? {}),
+              ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+            },
+          }
+        : {}),
       capturedAt: new Date().toISOString(),
       sessionTtlSeconds: ttlSeconds,
       ...(localStorage ? { localStorage } : {}),
