@@ -1,2 +1,0 @@
-@echo off
-"C:\Windows\System32\OpenSSH\ssh.exe" -o StrictHostKeyChecking=no root@103.200.20.7 "cd /root/bpos-automation; printf '===FILE===\n'; ls -l platforms/grab.js; printf '\n===HEADLESS_ENV===\n'; grep '^GRAB_AUTOMATION_HEADLESS=' .env || true; printf '\n===HUMAN_MARKERS===\n'; grep -n 'humanType\|humanClick\|GRAB_AUTOMATION_HEADLESS\|headless,' platforms/grab.js || true; printf '\n===CONTAINER===\n'; docker ps --filter name=bpos-automation --format '{{.Names}} {{.Image}} {{.Status}}'; printf '\n===LOGS===\n'; docker logs --tail 30 bpos-automation || true"
