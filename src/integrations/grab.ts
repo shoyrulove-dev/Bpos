@@ -136,6 +136,35 @@ export class GrabAdapter implements PlatformAdapter {
     )
   }
 
+  private getGrabEstimatedTime(raw: Record<string, unknown>) {
+    const times = raw.times && typeof raw.times === 'object' && !Array.isArray(raw.times)
+      ? raw.times as Record<string, unknown>
+      : undefined
+
+    return String(
+      times?.dropOffTime ?? times?.dropoffTime ?? times?.deliveryTime ?? times?.estimatedDeliveryTime ??
+      times?.pickUpTime ?? times?.pickupTime ?? times?.estimatedPickupTime ??
+      raw.schedulePickupTime ?? raw.scheduledOrderPickUpTime ?? raw.scheduledAt ?? raw.estimatedDeliveryTime ??
+      raw.estimatedPickupTime ?? raw.promisedDeliveryTime ?? raw.promisedPickupTime ??
+      ''
+    ) || undefined
+  }
+
+  private getGrabDeliveredAt(raw: Record<string, unknown>, orderStatus: OrderStatus) {
+    if (orderStatus !== 'completed') return undefined
+
+    const times = raw.times && typeof raw.times === 'object' && !Array.isArray(raw.times)
+      ? raw.times as Record<string, unknown>
+      : undefined
+
+    return String(
+      raw.deliveredAt ?? raw.deliveryCompletedAt ?? raw.completedAt ?? raw.delivered_time ??
+      times?.deliveredAt ?? times?.deliveryCompletedAt ?? times?.completedAt ?? times?.updatedAt ??
+      raw.updatedAt ?? raw.createdAt ?? raw.orderTime ??
+      ''
+    ) || undefined
+  }
+
   private async enrichOrdersWithDetails(rawOrders: Record<string, unknown>[], config: AdapterConfig) {
     const detailMap = new Map<string, NormalizedOrder>()
     const orderIds = rawOrders
@@ -1079,15 +1108,7 @@ export class GrabAdapter implements PlatformAdapter {
     const address  = String(dropoff.address ?? dropoff.formattedAddress ?? delivery.address ?? raw.deliveryAddress ?? '')
     const driver   = (delivery.driver ?? raw.driver ?? raw.rider ?? raw.driverDetails ?? raw.driverInfo ?? raw.courier ?? raw.deliveryPerson ?? raw.deliveryAgent ?? {}) as Record<string, unknown>
 
-    // Estimated pickup / scheduled time
-    const times = raw.times && typeof raw.times === 'object' && !Array.isArray(raw.times)
-      ? raw.times as Record<string, unknown>
-      : undefined
-    const estimatedTime = String(
-      times?.pickUpTime ?? times?.pickupTime ?? times?.estimatedPickupTime ??
-      raw.schedulePickupTime ?? raw.scheduledOrderPickUpTime ?? raw.scheduledAt ?? raw.estimatedPickupTime ??
-      ''
-    ) || undefined
+    const estimatedTime = this.getGrabEstimatedTime(raw)
 
     // Order-level note (special request)
     const deliveryNote = String(raw.specialRequest ?? raw.note ?? raw.remarks ?? '') || undefined
@@ -1123,7 +1144,7 @@ export class GrabAdapter implements PlatformAdapter {
       },
       orderStatus,
       placedAt:        String(raw.orderTime ?? raw.createdAt ?? raw.createTime ?? new Date().toISOString()),
-      deliveredAt:     orderStatus === 'completed' ? String(raw.deliveredAt ?? raw.completedAt ?? raw.updatedAt ?? raw.createdAt ?? '') : undefined,
+      deliveredAt:     this.getGrabDeliveredAt(raw, orderStatus),
       rawPayload:      raw,
     }
   }
@@ -1131,7 +1152,14 @@ export class GrabAdapter implements PlatformAdapter {
   normalizeOrder(raw: Record<string, unknown>): NormalizedOrder {
     // items[] — field name is 'items' in POS API v1.1.3 (not 'orderItems')
     const itemInfo = raw.itemInfo as Record<string, unknown> | undefined
-    const items: OrderItem[] = (((raw.items as Record<string, unknown>[]) ?? (itemInfo?.items as Record<string, unknown>[] | undefined) ?? [])).map((i) => {
+    const rawItems = Array.isArray(raw.items)
+      ? raw.items as Record<string, unknown>[]
+      : Array.isArray(raw.orderItems)
+      ? raw.orderItems as Record<string, unknown>[]
+      : Array.isArray(raw.lineItems)
+      ? raw.lineItems as Record<string, unknown>[]
+      : (itemInfo?.items as Record<string, unknown>[] | undefined) ?? []
+    const items: OrderItem[] = rawItems.map((i) => {
       // Flatten modifiers into item note
       const modifiers = Array.isArray(i.modifiers) ? i.modifiers as Record<string, unknown>[] : []
       const addons = Array.isArray(i.addons) ? i.addons as Record<string, unknown>[] : []
@@ -1227,11 +1255,7 @@ export class GrabAdapter implements PlatformAdapter {
           receiverAddress?.displayAddress ?? receiverAddress?.label ?? ''
         ),
         note: String(raw.specialRequest ?? raw.note ?? raw.remarks ?? '') || undefined,
-        estimatedTime: String(
-          (raw.times as Record<string, unknown> | undefined)?.pickUpTime ??
-          (raw.times as Record<string, unknown> | undefined)?.pickupTime ??
-          raw.schedulePickupTime ?? raw.scheduledOrderPickUpTime ?? raw.estimatedPickupTime ?? ''
-        ) || undefined,
+        estimatedTime: this.getGrabEstimatedTime(raw),
       },
       driverInfo: driverName || driverPhone ? {
         name:  driverName,
@@ -1239,7 +1263,7 @@ export class GrabAdapter implements PlatformAdapter {
       } : undefined,
       orderStatus,
       placedAt:    String(raw.orderTime ?? new Date().toISOString()),
-      deliveredAt: orderStatus === 'completed' ? String(raw.deliveredAt ?? raw.completedAt ?? raw.updatedAt ?? raw.orderTime ?? '') : undefined,
+      deliveredAt: this.getGrabDeliveredAt(raw, orderStatus),
       rawPayload:  raw,
     }
   }

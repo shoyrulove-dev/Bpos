@@ -279,7 +279,7 @@ export default function OrdersPage() {
                       </InfoGroup>
                       <InfoGroup title="Giao nhận">
                         <InfoRow label="Đặt lúc" value={formatDate(order.placedAt)} />
-                        <InfoRow label="Nhận hàng" value={order.deliveredAt ? formatDate(order.deliveredAt) : '–'} />
+                        <InfoRow label="Nhận hàng" value={order.deliveredAt ? formatDate(order.deliveredAt) : order.deliveryInfo?.estimatedTime ? formatDate(order.deliveryInfo.estimatedTime) : '–'} />
                       </InfoGroup>
                       <InfoGroup title="Vận chuyển">
                         <InfoRow label="Tài xế" value={order.driverInfo?.name || '–'} />

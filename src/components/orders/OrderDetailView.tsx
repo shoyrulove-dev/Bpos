@@ -86,7 +86,15 @@ function getGrabTimeline(order: Order) {
 function getGrabDetailItems(order: Order) {
   const raw = getRecord(order.rawPayload)
   const itemInfo = getRecord(raw?.itemInfo)
-  const rawItems = Array.isArray(itemInfo?.items) ? itemInfo.items : []
+  const rawItems = Array.isArray(raw?.items)
+    ? raw.items
+    : Array.isArray(raw?.orderItems)
+    ? raw.orderItems
+    : Array.isArray(raw?.lineItems)
+    ? raw.lineItems
+    : Array.isArray(itemInfo?.items)
+    ? itemInfo.items
+    : []
 
   if (!rawItems.length && order.items.length && order.items.some((item) => (item.price ?? 0) > 0 || (item.total ?? 0) > 0)) {
     return order.items.map((item): GrabDetailItem => ({
@@ -148,7 +156,7 @@ function getGrabDetailItems(order: Order) {
       strikePrice,
       sellingPrice,
       total: Number(record?.total ?? (quantity * sellingPrice)),
-      note: String(record?.comment ?? '').trim() || undefined,
+      note: String(record?.comment ?? record?.remarks ?? record?.note ?? record?.specialInstruction ?? '').trim() || undefined,
       addonGroups: addonGroups.filter((group) => group.lines.length > 0),
     }
   })
@@ -178,7 +186,24 @@ function getGrabPaymentMethodLabel(order: Order) {
 
 function getBeDetailItems(order: Order) {
   const raw = getRecord(order.rawPayload)
-  const rawItems = Array.isArray(raw?.order_items) ? raw.order_items : []
+  const rawItems = Array.isArray(raw?.order_items)
+    ? raw.order_items
+    : Array.isArray(raw?.items)
+    ? raw.items
+    : []
+
+  if (!rawItems.length && order.items.length) {
+    return order.items.map((item) => ({
+      name: item.name,
+      quantity: Number(item.quantity ?? 1),
+      originalPrice: Number(item.price ?? 0),
+      strikePrice: 0,
+      sellingPrice: Number(item.price ?? 0),
+      total: Number(item.total ?? 0),
+      note: item.note,
+      addonLines: item.note ? item.note.split('|').map((line) => line.trim()).filter(Boolean) : [],
+    }))
+  }
 
   return rawItems.map((item) => {
     const record = getRecord(item)
@@ -294,9 +319,18 @@ function buildGrabVoucherLine(value: unknown, scopeLabel: string): GrabVoucherLi
 function getGrabVoucherLines(order: Order) {
   const raw = getRecord(order.rawPayload)
   const itemInfo = getRecord(raw?.itemInfo)
-  const rawItems = Array.isArray(itemInfo?.items) ? itemInfo.items : []
+  const rawItems = Array.isArray(raw?.items)
+    ? raw.items
+    : Array.isArray(raw?.orderItems)
+    ? raw.orderItems
+    : Array.isArray(raw?.lineItems)
+    ? raw.lineItems
+    : Array.isArray(itemInfo?.items)
+    ? itemInfo.items
+    : []
   const orderLevelDiscounts = Array.isArray(raw?.orderLevelDiscounts) ? raw.orderLevelDiscounts : []
   const voucherInfo = getRecord(raw?.voucherInfo)
+  const price = getRecord(raw?.price)
   const voucherCandidates = [
     ...(Array.isArray(voucherInfo?.vouchers) ? voucherInfo.vouchers : []),
     ...(Array.isArray(voucherInfo?.discounts) ? voucherInfo.discounts : []),
@@ -323,6 +357,22 @@ function getGrabVoucherLines(order: Order) {
     for (const discount of discountInfo) {
       const line = buildGrabVoucherLine(discount, 'Voucher món')
       if (line) lines.push(line)
+    }
+  }
+
+  if (!lines.length) {
+    const genericDiscount =
+      parseAmount(price?.basketPromo) ??
+      parseAmount(price?.discount) ??
+      parseAmount(raw?.discountAmount) ??
+      parseAmount(raw?.discount)
+
+    if (typeof genericDiscount === 'number' && genericDiscount > 0) {
+      lines.push({
+        title: 'Ưu đãi Grab',
+        discountValue: genericDiscount,
+        scopeLabel: 'Voucher đơn hàng',
+      })
     }
   }
 
@@ -366,8 +416,9 @@ function getBeVoucherLines(order: Order) {
   const offers = getRecord(raw?.offers)
   const foodDiscounts = Array.isArray(offers?.food_discounts) ? offers.food_discounts : []
   const deliveryDiscounts = Array.isArray(offers?.delivery_discounts) ? offers.delivery_discounts : []
+  const orderDiscount = getRecord(raw?.order_discount)
 
-  return [...foodDiscounts, ...deliveryDiscounts]
+  const lines = [...foodDiscounts, ...deliveryDiscounts]
     .map((offer) => {
       const record = getRecord(offer)
       const title = String(record?.title ?? '').trim()
@@ -384,6 +435,25 @@ function getBeVoucherLines(order: Order) {
       }
     })
     .filter((offer): offer is BeVoucherLine => Boolean(offer))
+
+  if (!lines.length && orderDiscount) {
+    const discountValue =
+      parseAmount(orderDiscount.total_customer_discount) ??
+      parseAmount(orderDiscount.be_discount) ??
+      parseAmount(orderDiscount.merchant_discount) ??
+      parseAmount(orderDiscount.partner_discount) ??
+      parseAmount(raw?.partner_discount)
+
+    if (typeof discountValue === 'number' && discountValue > 0) {
+      lines.push({
+        title: String(orderDiscount.title ?? orderDiscount.voucher_title ?? orderDiscount.voucher_name ?? orderDiscount.promotion_name ?? 'Ưu đãi từ Be').trim() || 'Ưu đãi từ Be',
+        discountValue,
+        scopeLabel: 'Voucher đơn hàng',
+      })
+    }
+  }
+
+  return lines
 }
 
 function getBeUtensilRequest(order: Order) {
@@ -816,7 +886,7 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
           <div>
             <p className="text-[10px] text-gray-400">Thời gian</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(order.placedAt)}</p>
-            <p className="text-xs text-gray-500">Lấy: {formatMaybeDate(order.deliveredAt)}</p>
+            <p className="text-xs text-gray-500">Lấy: {formatMaybeDate(order.deliveredAt || order.deliveryInfo?.estimatedTime)}</p>
           </div>
           <div>
             <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>

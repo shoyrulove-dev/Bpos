@@ -392,14 +392,48 @@ export class BeAdapter implements PlatformAdapter {
   }
 
   normalizeOrder(raw: Record<string, unknown>, fetchType?: string): NormalizedOrder {
-    const orderItems = raw.order_items as Record<string, unknown>[] ?? []
-    const items: OrderItem[] = orderItems.map((i) => ({
-      name:     String(i.item_name ?? ''),
-      quantity: Number(i.quantity ?? i.item_quantity ?? 1),
-      price:    Math.round(Number(i.amount ?? i.original_amount ?? i.item_price ?? i.unit_price ?? i.uint_price ?? 0) / Math.max(1, Number(i.quantity ?? i.item_quantity ?? 1))),
-      total:    Number(i.amount ?? 0),
-      note:     String(i.customize_object ?? i.note ?? '').trim() || undefined,
-    }))
+    const orderItems = Array.isArray(raw.order_items)
+      ? raw.order_items as Record<string, unknown>[]
+      : Array.isArray(raw.items)
+      ? raw.items as Record<string, unknown>[]
+      : []
+    const items: OrderItem[] = orderItems.map((i) => {
+      const quantity = Math.max(1, Number(i.quantity ?? i.item_quantity ?? 1))
+      const customizeJson = String(i.customize_json ?? '').trim()
+      let customizationLines: string[] = []
+
+      if (customizeJson) {
+        try {
+          const groups = JSON.parse(customizeJson) as Array<{ options?: Array<{ name?: string; quantity?: number; price?: number }> }>
+          customizationLines = groups.flatMap((group) =>
+            (group.options ?? []).map((option) => {
+              const quantityText = option.quantity && option.quantity > 1 ? `${option.quantity} x ` : ''
+              const priceText = typeof option.price === 'number' && option.price > 0 ? ` (+${option.price})` : ''
+              return `${quantityText}${option.name ?? ''}${priceText}`.trim()
+            })
+          ).filter(Boolean)
+        } catch {
+          customizationLines = []
+        }
+      }
+
+      if (!customizationLines.length && typeof i.customize_object === 'string' && i.customize_object.trim()) {
+        customizationLines = i.customize_object.split(/[:,]/).map((part) => part.trim()).filter(Boolean)
+      }
+
+      const noteParts = Array.from(new Set([
+        String(i.note ?? i.item_note ?? '').trim(),
+        ...customizationLines,
+      ].filter(Boolean)))
+
+      return {
+        name:     String(i.item_name ?? i.name ?? ''),
+        quantity,
+        price:    Math.round(Number(i.amount ?? i.original_amount ?? i.item_price ?? i.unit_price ?? i.uint_price ?? 0) / quantity),
+        total:    Number(i.amount ?? i.original_amount ?? 0),
+        note:     noteParts.join(' | ') || undefined,
+      }
+    })
 
     // Be API uses integer status codes — check multiple possible field names (merchant portal may use order_status / current_status)
     const statusInt = Number(raw.status ?? raw.order_status ?? raw.current_status ?? raw.state ?? raw.order_state ?? -1)
@@ -422,6 +456,9 @@ export class BeAdapter implements PlatformAdapter {
     const discount = original > total ? original - total : 0
     const actualReceived = Number(raw.net_order_amount ?? raw.received_amount ?? raw.merchant_receivable ?? total)
     const platformFee = Number(raw.jugnoo_commission ?? raw.merchant_pays ?? (actualReceived > 0 ? Math.max(0, total - actualReceived) : 0))
+    const deliveredAt = String(
+      raw.delivered_at ?? raw.completed_at ?? raw.completedAt ?? raw.finished_at ?? raw.updated_at ?? raw.updatedAt ?? ''
+    ) || undefined
 
     return {
       source:          'be',
@@ -437,8 +474,8 @@ export class BeAdapter implements PlatformAdapter {
       paymentMethod:   String(raw.payment_method ?? raw.payment_mode ?? (raw.is_pickup_order ? 'pickup' : 'delivery')),
       deliveryInfo: {
         address: String(raw.delivery_address ?? ''),
-        note:    String(raw.delivery_note    ?? '') || undefined,
-        estimatedTime: String(raw.to_be_delivered_at ?? '') || undefined,
+        note:    String(raw.delivery_note ?? raw.note ?? raw.customer_note ?? raw.special_instruction ?? raw.remark ?? '') || undefined,
+        estimatedTime: String(raw.to_be_delivered_at ?? raw.estimated_delivery_time ?? raw.promised_delivery_time ?? '') || undefined,
       },
       driverInfo: {
         name:  String(raw.driver_name     ?? ''),
@@ -446,7 +483,7 @@ export class BeAdapter implements PlatformAdapter {
       },
       orderStatus,
       placedAt:   String(raw.created_at ?? raw.ordered_at ?? new Date().toISOString()),
-      deliveredAt: raw.delivered_at ? String(raw.delivered_at) : undefined,
+      deliveredAt: orderStatus === 'completed' ? deliveredAt : undefined,
       rawPayload:  raw,
     }
   }

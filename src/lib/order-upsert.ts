@@ -170,6 +170,18 @@ function parseDateValue(value: unknown) {
   return date
 }
 
+function extractNestedTimes(rawPayload: Record<string, unknown>) {
+  const times = rawPayload.times && typeof rawPayload.times === 'object' && !Array.isArray(rawPayload.times)
+    ? rawPayload.times as Record<string, unknown>
+    : undefined
+
+  return {
+    completedAt: parseDateValue(times?.completedAt),
+    deliveredAt: parseDateValue(times?.deliveredAt),
+    updatedAt: parseDateValue(times?.updatedAt),
+  }
+}
+
 function extractCancellationReason(rawPayload: Record<string, unknown>) {
   const reason = rawPayload.cancelReason
     ?? rawPayload.cancellationReason
@@ -202,16 +214,26 @@ function extractCancellationDate(normalized: NormalizedOrder) {
 
 function extractDeliveredDate(normalized: NormalizedOrder) {
   const rawPayload = normalized.rawPayload ?? {}
+  const nestedTimes = extractNestedTimes(rawPayload)
+
   return (
     parseDateValue(normalized.deliveredAt) ??
     parseDateValue(rawPayload.deliveredAt) ??
+    parseDateValue(rawPayload.delivered_at) ??
     parseDateValue(rawPayload.completedAt) ??
+    parseDateValue(rawPayload.completed_at) ??
+    parseDateValue(rawPayload.deliveryCompletedAt) ??
+    parseDateValue(rawPayload.delivered_time) ??
+    nestedTimes.deliveredAt ??
+    nestedTimes.completedAt ??
+    parseDateValue(rawPayload.updated_at) ??
     parseDateValue(rawPayload.updatedAt)
   )
 }
 
 function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
   const rawPayload = normalized.rawPayload ?? {}
+  const nestedTimes = extractNestedTimes(rawPayload)
 
   if (
     parseDateValue(rawPayload.cancelledAt)
@@ -225,8 +247,13 @@ function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
   if (
     parseDateValue(normalized.deliveredAt)
     || parseDateValue(rawPayload.deliveredAt)
+    || parseDateValue(rawPayload.delivered_at)
     || parseDateValue(rawPayload.completedAt)
+    || parseDateValue(rawPayload.completed_at)
     || parseDateValue(rawPayload.deliveryCompletedAt)
+    || parseDateValue(rawPayload.delivered_time)
+    || nestedTimes.deliveredAt
+    || nestedTimes.completedAt
   ) {
     return 'completed' as const
   }

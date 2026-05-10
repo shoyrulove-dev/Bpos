@@ -18,6 +18,8 @@ type StoredOrder = Order & {
   _id: string
   shortId?: string
   brandId?: string
+  hubId?: string
+  externalStoreId?: string
   driverInfo?: { name?: string; phone?: string; vehiclePlate?: string; status?: string }
   rawPayload?: Record<string, unknown>
   status: string
@@ -56,6 +58,16 @@ function parseDateValue(value: unknown) {
   if (!value) return undefined
   const date = new Date(String(value))
   return Number.isNaN(date.getTime()) ? undefined : date
+}
+
+function getRecord(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+}
+
+function asObjectIdString(value: unknown) {
+  return value ? String(value) : undefined
 }
 
 function sameNumber(left: unknown, right: unknown) {
@@ -240,6 +252,244 @@ async function upsertHistoricalOrders(days: number, providers: string[], targetE
   }
 
   return summary
+}
+
+async function resolveScopedExternalOrderIds(providers: string[], externalOrderIds?: string[], shortIds?: string[]) {
+  const resolved = new Set((externalOrderIds ?? []).map((value) => value.trim()).filter(Boolean))
+
+  if (!shortIds?.length) return Array.from(resolved)
+
+  const scopedOrders = await OrderModel.find(buildScopedOrderQuery({ providers, shortIds }))
+    .select('externalOrderId')
+    .lean()
+
+  for (const order of scopedOrders) {
+    const externalOrderId = String(order.externalOrderId ?? '').trim()
+    if (externalOrderId) resolved.add(externalOrderId)
+  }
+
+  return Array.from(resolved)
+}
+
+function hasGrabDetailedItems(rawPayload?: Record<string, unknown>) {
+  const raw = getRecord(rawPayload)
+  const itemInfo = getRecord(raw?.itemInfo)
+  const rawItems = Array.isArray(raw?.items)
+    ? raw.items
+    : Array.isArray(raw?.orderItems)
+    ? raw.orderItems
+    : Array.isArray(raw?.lineItems)
+    ? raw.lineItems
+    : Array.isArray(itemInfo?.items)
+    ? itemInfo.items
+    : []
+
+  return rawItems.length > 0
+}
+
+function hasBeDetailedItems(rawPayload?: Record<string, unknown>) {
+  const raw = getRecord(rawPayload)
+  return Boolean(Array.isArray(raw?.order_items) ? raw.order_items.length : Array.isArray(raw?.items) ? raw.items.length : 0)
+}
+
+function hasGrabPromotionDetail(rawPayload?: Record<string, unknown>) {
+  const raw = getRecord(rawPayload)
+  const itemInfo = getRecord(raw?.itemInfo)
+  const voucherInfo = getRecord(raw?.voucherInfo)
+  const rawItems = Array.isArray(raw?.items)
+    ? raw.items
+    : Array.isArray(raw?.orderItems)
+    ? raw.orderItems
+    : Array.isArray(raw?.lineItems)
+    ? raw.lineItems
+    : Array.isArray(itemInfo?.items)
+    ? itemInfo.items
+    : []
+
+  return Boolean(
+    (Array.isArray(raw?.orderLevelDiscounts) && raw.orderLevelDiscounts.length)
+    || (Array.isArray(voucherInfo?.vouchers) && voucherInfo.vouchers.length)
+    || (Array.isArray(voucherInfo?.discounts) && voucherInfo.discounts.length)
+    || rawItems.some((item) => Array.isArray(getRecord(item)?.discountInfo) && (getRecord(item)?.discountInfo as unknown[]).length > 0)
+  )
+}
+
+function hasBePromotionDetail(rawPayload?: Record<string, unknown>) {
+  const raw = getRecord(rawPayload)
+  const offers = getRecord(raw?.offers)
+  const orderDiscount = getRecord(raw?.order_discount)
+
+  return Boolean(
+    (Array.isArray(offers?.food_discounts) && offers.food_discounts.length)
+    || (Array.isArray(offers?.delivery_discounts) && offers.delivery_discounts.length)
+    || orderDiscount
+  )
+}
+
+function hasDeliveredAtSignal(rawPayload?: Record<string, unknown>) {
+  const raw = getRecord(rawPayload)
+  const times = getRecord(raw?.times)
+
+  return Boolean(
+    parseDateValue(raw?.deliveredAt)
+    || parseDateValue(raw?.delivered_at)
+    || parseDateValue(raw?.completedAt)
+    || parseDateValue(raw?.completed_at)
+    || parseDateValue(raw?.deliveryCompletedAt)
+    || parseDateValue(raw?.delivered_time)
+    || parseDateValue(raw?.finished_at)
+    || parseDateValue(raw?.updatedAt)
+    || parseDateValue(raw?.updated_at)
+    || parseDateValue(times?.deliveredAt)
+    || parseDateValue(times?.completedAt)
+  )
+}
+
+function needsOrderDetailBackfill(order: StoredOrder) {
+  if (!['grab', 'be'].includes(String(order.source ?? ''))) return false
+  if (!order.externalOrderId) return false
+
+  const rawPayload = getRecord(order.rawPayload)
+  const missingDeliveredAt = order.status === 'completed' && !order.deliveredAt && !hasDeliveredAtSignal(rawPayload)
+  const missingItemDetail = order.source === 'grab'
+    ? !hasGrabDetailedItems(rawPayload)
+    : !hasBeDetailedItems(rawPayload)
+  const missingPromotionDetail = Number(order.discount ?? 0) > 0 && (
+    order.source === 'grab'
+      ? !hasGrabPromotionDetail(rawPayload)
+      : !hasBePromotionDetail(rawPayload)
+  )
+
+  return missingDeliveredAt || missingItemDetail || missingPromotionDetail
+}
+
+function buildAdapterConfigFromIntegration(integration: {
+  externalStoreId?: string
+  credentials?: unknown
+}) {
+  const rawCreds = integration.credentials as unknown
+  const credObj: Record<string, unknown> =
+    rawCreds instanceof Map
+      ? Object.fromEntries((rawCreds as Map<string, unknown>).entries())
+      : typeof rawCreds === 'object' && rawCreds !== null
+      ? rawCreds as Record<string, unknown>
+      : {}
+
+  return {
+    ...credObj,
+    storeId: credObj.storeId ?? credObj.merchantId ?? credObj.restaurantId ?? integration.externalStoreId,
+    merchantId: credObj.merchantId ?? credObj.storeId ?? integration.externalStoreId,
+    restaurantId: credObj.restaurantId ?? credObj.storeId ?? integration.externalStoreId,
+  }
+}
+
+function pickIntegrationForOrder<T extends { provider: string; brandId?: unknown; hubId?: unknown; externalStoreId?: string }>(
+  order: StoredOrder,
+  integrations: T[]
+) {
+  const source = String(order.source ?? '')
+  const orderBrandId = asObjectIdString(order.brandId)
+  const orderHubId = asObjectIdString(order.hubId)
+  const orderStoreId = String(order.externalStoreId ?? '').trim()
+
+  const sameProvider = integrations.filter((integration) => integration.provider === source)
+  if (!sameProvider.length) return undefined
+
+  if (orderStoreId) {
+    const exactStore = sameProvider.find((integration) => String(integration.externalStoreId ?? '').trim() === orderStoreId)
+    if (exactStore) return exactStore
+  }
+
+  if (orderBrandId && orderHubId) {
+    const brandHubMatch = sameProvider.find((integration) => asObjectIdString(integration.brandId) === orderBrandId && asObjectIdString(integration.hubId) === orderHubId)
+    if (brandHubMatch) return brandHubMatch
+  }
+
+  if (orderBrandId) {
+    const brandMatch = sameProvider.find((integration) => asObjectIdString(integration.brandId) === orderBrandId)
+    if (brandMatch) return brandMatch
+  }
+
+  return sameProvider[0]
+}
+
+async function backfillOrderDetails(days: number, providers: string[], externalOrderIds?: string[], shortIds?: string[]) {
+  const resolvedExternalOrderIds = await resolveScopedExternalOrderIds(providers, externalOrderIds, shortIds)
+  const isScoped = Boolean(resolvedExternalOrderIds.length || shortIds?.length)
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+
+  const query: Record<string, unknown> = isScoped
+    ? buildScopedOrderQuery({ providers, externalOrderIds: resolvedExternalOrderIds, shortIds })
+    : {
+        source: { $in: providers },
+        placedAt: { $gte: cutoff },
+      }
+
+  const candidateDocs = await OrderModel.find(query)
+    .select('shortId source externalOrderId externalStoreId brandId hubId items discount status deliveredAt deliveryInfo rawPayload')
+    .lean()
+
+  const candidates = candidateDocs
+    .map((doc) => doc as unknown as StoredOrder)
+    .filter((order) => isScoped || needsOrderDetailBackfill(order))
+
+  if (!candidates.length) {
+    return { scanned: candidateDocs.length, targeted: 0, refreshed: 0, failed: 0, skipped: 0 }
+  }
+
+  const integrations = await IntegrationModel.find({ isActive: true, provider: { $in: providers } })
+    .select('+credentials brandId hubId provider externalStoreId loginMode')
+    .lean()
+
+  let refreshed = 0
+  let failed = 0
+  let skipped = 0
+
+  for (const order of candidates) {
+    const integration = pickIntegrationForOrder(order, integrations as Array<{ provider: string; brandId?: unknown; hubId?: unknown; externalStoreId?: string; loginMode?: string; credentials?: unknown }>)
+    if (!integration) {
+      skipped += 1
+      continue
+    }
+
+    if (integration.loginMode === 'auto') {
+      skipped += 1
+      continue
+    }
+
+    const adapter = getAdapter(String(integration.provider ?? ''))
+    if (!adapter?.fetchOrderDetail || !order.externalOrderId) {
+      skipped += 1
+      continue
+    }
+
+    try {
+      const normalized = await adapter.fetchOrderDetail(String(order.externalOrderId), buildAdapterConfigFromIntegration(integration))
+      if (!normalized?.externalOrderId) {
+        skipped += 1
+        continue
+      }
+
+      const mergedNormalized = mergeNormalizedOrderPreservingDetail(order as unknown as Partial<NormalizedOrder>, normalized)
+
+      await OrderModel.findOneAndUpdate(
+        { source: mergedNormalized.source, externalOrderId: mergedNormalized.externalOrderId },
+        buildOrderUpsert({ brandId: String(order.brandId ?? integration.brandId ?? ''), hubId: order.hubId ? String(order.hubId) : integration.hubId ? String(integration.hubId) : undefined }, mergedNormalized),
+        { upsert: false }
+      )
+      refreshed += 1
+    } catch {
+      failed += 1
+    }
+  }
+
+  return {
+    scanned: candidateDocs.length,
+    targeted: candidates.length,
+    refreshed,
+    failed,
+    skipped,
+  }
 }
 
 async function repairStoredOrders(
@@ -779,9 +1029,10 @@ export async function runOrderRepair(options?: {
   const forceCancelledOrderIds = (options?.forceCancelledOrderIds ?? []).map((value) => value.trim()).filter(Boolean)
   const forceCompletedShortIds = (options?.forceCompletedShortIds ?? []).map((value) => value.trim()).filter(Boolean)
   const isScopedRepair = Boolean(externalOrderIds.length || shortIds.length || driverPhone)
+  const scopedExternalOrderIds = await resolveScopedExternalOrderIds(providers, externalOrderIds, shortIds)
 
   const historical = includeHistorical
-    ? await upsertHistoricalOrders(days, providers, externalOrderIds)
+    ? await upsertHistoricalOrders(days, providers, scopedExternalOrderIds.length ? scopedExternalOrderIds : undefined)
     : {
         integrations: 0,
         fetched: 0,
@@ -790,6 +1041,7 @@ export async function runOrderRepair(options?: {
         failed: 0,
         skipped: true,
       }
+  const detailBackfill = await backfillOrderDetails(days, providers, scopedExternalOrderIds, shortIds)
   const orders = await repairStoredOrders(providers, { externalOrderIds, shortIds, driverPhone, forceCancelledOrderIds, forceCompletedShortIds })
   const customerBackfill = await backfillCustomersFromOrders({ providers, externalOrderIds, shortIds })
   const customerRepair = isScopedRepair ? null : await repairCustomers()
@@ -815,6 +1067,7 @@ export async function runOrderRepair(options?: {
     forceCancelledOrderIds,
     forceCompletedShortIds,
     historical,
+    detailBackfill,
     orders,
     customers,
     drivers,
