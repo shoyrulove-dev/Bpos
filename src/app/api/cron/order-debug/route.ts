@@ -51,6 +51,12 @@ export async function GET(req: NextRequest) {
         .select('name phone brandId points totalSpend orderCount tier status lastOrderAt updatedAt createdAt')
         .lean()
     : null
+  const customerCandidates = customerPhone
+    ? await CustomerModel.find({ phone: customerPhone })
+        .select('name phone brandId points totalSpend orderCount tier status lastOrderAt updatedAt createdAt')
+        .limit(10)
+        .lean()
+    : []
   const integrations = brandId
     ? await IntegrationModel.find({ brandId, ...(source ? { provider: source } : {}) })
         .select('provider externalStoreId externalStoreName loginMode loginUsername sessionStatus sessionCapturedAt sessionExpiresAt sessionError sessionFailureCount automationRunning isActive lastSyncAt syncStatus syncError updatedAt')
@@ -63,6 +69,7 @@ export async function GET(req: NextRequest) {
     foundOrder: Boolean(order),
     order,
     customer,
+    customerCandidates,
     driver,
     integrations,
   })
