@@ -4,6 +4,8 @@ import CustomerModel from '@/models/Customer'
 import OrderModel from '@/models/Order'
 import DriverModel from '@/models/Driver'
 import IntegrationModel from '@/models/Integration'
+import { getDisplayCustomerName, getDisplayCustomerPhone } from '@/lib/order-financials'
+import mongoose from 'mongoose'
 
 const CRON_SECRET = process.env.CRON_SECRET
 
@@ -46,6 +48,9 @@ export async function GET(req: NextRequest) {
 
   const brandId = (order as { brandId?: { toString(): string } | string } | null)?.brandId
   const customerPhone = String((order as { customerPhone?: string } | null)?.customerPhone ?? '').trim()
+  const derivedCustomerPhone = order ? getDisplayCustomerPhone(order as never) : ''
+  const derivedCustomerName = order ? getDisplayCustomerName(order as never) : undefined
+  const derivedBrandIdValid = mongoose.isValidObjectId((order as { brandId?: unknown } | null)?.brandId)
   const customer = customerPhone && brandId
     ? await CustomerModel.findOne({ phone: customerPhone, brandId })
         .select('name phone brandId points totalSpend orderCount tier status lastOrderAt updatedAt createdAt')
@@ -68,6 +73,9 @@ export async function GET(req: NextRequest) {
     query: { shortId, externalOrderId, displayId, bookingCode, source, phone },
     foundOrder: Boolean(order),
     order,
+    derivedCustomerName,
+    derivedCustomerPhone,
+    derivedBrandIdValid,
     customer,
     customerCandidates,
     driver,
