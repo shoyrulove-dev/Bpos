@@ -1108,13 +1108,16 @@ export class GrabAdapter implements PlatformAdapter {
     const orderStatus = resolveGrabStatus(rawStatus, raw)
 
     // receiver object contains customer name, phone, and delivery address
-    const receiver = (raw.receiver ?? raw.eater) as Record<string, unknown> | undefined
+    const receiver = (raw.receiver ?? raw.eater ?? raw.customer) as Record<string, unknown> | undefined
     const receiverPhone = normalizeCompactPhone(this.getGrabPhoneCandidate([
       receiver?.phones,
       receiver?.phone,
       receiver?.phoneNumber,
       receiver?.mobileNumber,
+      receiver?.displayPhone,
+      receiver?.contactNumber,
       this.extractGrabPortalPhone(String(receiver?.comment ?? '')),
+      this.extractGrabPortalPhone(String(raw.specialRequest ?? raw.note ?? '')),
     ]))
     const receiverAddress = receiver?.address as Record<string, unknown> | undefined
 
@@ -1134,11 +1137,27 @@ export class GrabAdapter implements PlatformAdapter {
       0
     )
 
+    // driver object — Grab API uses different field names across versions
+    const driverRaw = (
+      raw.driver ?? raw.driverInfo ?? raw.courier ?? raw.driverDetails ?? raw.deliveryBoy
+    ) as Record<string, unknown> | undefined
+    const driverPhone = normalizeCompactPhone(this.getGrabPhoneCandidate([
+      driverRaw?.phones,
+      driverRaw?.phone,
+      driverRaw?.phoneNumber,
+      driverRaw?.mobileNumber,
+      driverRaw?.contactNumber,
+      driverRaw?.displayPhone,
+    ]))
+    const driverName = String(
+      driverRaw?.name ?? driverRaw?.driverName ?? driverRaw?.fullName ?? driverRaw?.displayName ?? ''
+    )
+
     return {
       source:          'grab',
       externalOrderId: String(raw.orderID ?? ''),
       externalStoreId: String(raw.merchantID ?? ''),
-      customerName:    String(receiver?.name ?? 'Khách hàng'),
+      customerName:    String(receiver?.name ?? receiver?.displayName ?? receiver?.fullName ?? 'Khách hàng'),
       customerPhone:   receiverPhone,
       items,
       subtotal,
@@ -1147,17 +1166,16 @@ export class GrabAdapter implements PlatformAdapter {
       platformFee,
       paymentMethod:   String(raw.paymentType ?? ''),
       deliveryInfo: {
-        address: String(receiverAddress?.address ?? receiverAddress?.formattedAddress ?? ''),
+        address: String(
+          receiverAddress?.address ?? receiverAddress?.formattedAddress ??
+          receiverAddress?.displayAddress ?? receiverAddress?.label ?? ''
+        ),
+        note: String(raw.specialRequest ?? raw.note ?? '') || undefined,
       },
-      driverInfo: {
-        name:  String((raw.driver as Record<string, unknown> | undefined)?.name ?? ''),
-        phone: normalizeCompactPhone(String(
-          (raw.driver as Record<string, unknown> | undefined)?.phone ??
-          (raw.driver as Record<string, unknown> | undefined)?.phoneNumber ??
-          (raw.driver as Record<string, unknown> | undefined)?.mobileNumber ??
-          ''
-        )),
-      },
+      driverInfo: driverName || driverPhone ? {
+        name:  driverName,
+        phone: driverPhone ?? '',
+      } : undefined,
       orderStatus,
       placedAt:    String(raw.orderTime ?? new Date().toISOString()),
       deliveredAt: orderStatus === 'completed' ? String(raw.deliveredAt ?? raw.completedAt ?? raw.updatedAt ?? raw.orderTime ?? '') : undefined,

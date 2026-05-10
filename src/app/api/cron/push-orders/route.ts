@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
   const externalIds = normalized.map((o) => o.externalOrderId).filter(Boolean)
   const existingOrders = externalIds.length
     ? await OrderModel.find({ source: intg.provider, externalOrderId: { $in: externalIds } })
-        .select('externalOrderId status customerName customerPhone items subtotal discount total rawPayload')
+        .select('externalOrderId status customerName customerPhone driverInfo deliveryInfo items subtotal discount total rawPayload')
         .lean()
     : []
 
