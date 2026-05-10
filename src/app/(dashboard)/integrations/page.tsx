@@ -551,7 +551,7 @@ export default function IntegrationsPage() {
 
   const openAutoLogin = (integ: Integ) => {
     setAutoLoginId(integ._id)
-    setAutoLoginMode(providerUsesSmsOtp(integ.provider) ? 'otp' : usesBrowserRelog(integ) ? 'manual' : 'auto')
+    setAutoLoginMode(providerUsesSmsOtp(integ.provider) ? 'otp' : 'auto')
     setAutoLoginForm({ username: integ.loginUsername ?? '', password: '', otp: '' })
     setManualJwt('')
     setManualCookieString('')
@@ -1221,7 +1221,7 @@ export default function IntegrationsPage() {
                     {providerUsesSmsOtp(settingsInteg.provider)
                       ? 'Sau khi lưu số điện thoại → nhấn Login trên card để gửi OTP rồi xác nhận OTP.'
                       : (creds.__sessionRefreshMode ?? getDefaultSessionRefreshMode(settingsInteg.provider)) === 'browser'
-                      ? 'Nếu chọn Browser relog, khi session hết hạn hãy dùng nút Login browser để mở flow đăng nhập tay và lưu lại session.'
+                      ? 'Nếu chọn Browser relog, khi session hết hạn hãy dùng nút Login browser để chạy browser automation, capture session mới và cập nhật lại trạng thái account.'
                       : 'Sau khi lưu → nhấn nút Login trên card để chạy automation.'}
                   </p>
                 </div>
@@ -1344,8 +1344,11 @@ export default function IntegrationsPage() {
               {/* ── AUTO mode ── */}
               {autoLoginMode === 'auto' && !autoLoginResult && (
                 <>
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-                    ⚠️ Yêu cầu VPS automation service đang chạy. Nếu VPS hết RAM, dùng chế độ <strong>Manual</strong>.
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 space-y-1">
+                    <p>{usesBrowserRelog(autoLoginInteg)
+                      ? '🌐 Browser relog: hệ thống chạy browser automation trên VPS để đăng nhập lại, capture session và cập nhật trạng thái account ngay sau khi thành công.'
+                      : '🤖 Auto login: hệ thống dùng Playwright trên VPS để đăng nhập và lưu session tự động.'}</p>
+                    <p>Yêu cầu VPS automation service đang chạy. Nếu VPS hết RAM hoặc sàn chặn phiên automation, chuyển sang <strong>Manual</strong>.</p>
                   </div>
                   {!autoLoginWaiting && (
                     <div className="space-y-3">
