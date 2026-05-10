@@ -5,6 +5,7 @@ import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, h
 import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
 import { buildSessionStoreId } from '@/lib/realtime-order-sync'
 import { normalizeCompactPhone } from '@/lib/phone'
+import mongoose from 'mongoose'
 import IntegrationModel from '@/models/Integration'
 import OrderModel from '@/models/Order'
 import CustomerModel from '@/models/Customer'
@@ -86,16 +87,18 @@ function buildScopedOrderQuery(options: {
 async function upsertCustomerFromOrder(order: StoredOrder) {
   const phone = getDisplayCustomerPhone(order as unknown as Order) || undefined
   const name = getDisplayCustomerName(order as unknown as Order) || undefined
-  const brandId = String(order.brandId ?? '').trim()
+  const brandIdText = String(order.brandId ?? '').trim()
 
-  if (!brandId || !phone || !name || !hasMeaningfulPhone(phone) || !hasMeaningfulCustomerName(name)) {
+  if (!brandIdText || !mongoose.Types.ObjectId.isValid(brandIdText) || !phone || !name || !hasMeaningfulPhone(phone) || !hasMeaningfulCustomerName(name)) {
     return false
   }
+
+  const brandId = new mongoose.Types.ObjectId(brandIdText)
 
   const existingCustomer = await CustomerModel.findOne({ phone, brandId }).select('name').lean() as { name?: string } | null
   const shouldUpdateName = !existingCustomer || !hasMeaningfulCustomerName(existingCustomer.name)
 
-  await CustomerModel.updateOne(
+  await CustomerModel.findOneAndUpdate(
     { phone, brandId },
     {
       $set: {
@@ -113,7 +116,7 @@ async function upsertCustomerFromOrder(order: StoredOrder) {
         status: 'active',
       },
     },
-    { upsert: true }
+    { upsert: true, new: true, setDefaultsOnInsert: true }
   )
 
   return true
