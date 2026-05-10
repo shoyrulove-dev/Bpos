@@ -79,11 +79,14 @@ export async function POST(req: NextRequest) {
   const startedAt = Date.now()
 
   // Normalize raw orders using the provider adapter
+  // Pass _fetchType if present so BE adapter can map status correctly
   const normalized: NormalizedOrder[] = rawOrders
     .filter((o) => o !== null && typeof o === 'object' && !Array.isArray(o))
     .map((o) => {
       try {
-        return adapter.normalizeOrder!(o as Record<string, unknown>)
+        const raw = o as Record<string, unknown>
+        const fetchType = typeof raw._fetchType === 'string' ? raw._fetchType : undefined
+        return adapter.normalizeOrder!(raw, fetchType)
       } catch {
         return null
       }

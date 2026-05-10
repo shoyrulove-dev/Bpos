@@ -63,6 +63,7 @@ export async function GET(req: NextRequest) {
       const restaurantId = Number(integ.externalStoreId ?? 0)
       if (!restaurantId) continue
       be.push({
+        integrationId: String(integ._id),
         username,
         password,
         restaurantId,
