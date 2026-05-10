@@ -277,7 +277,7 @@ async function repairStoredOrders(
   const forceCompletedShortIdSet = options?.forceCompletedShortIds?.length ? new Set(options.forceCompletedShortIds) : null
 
   const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds }))
-    .select('shortId source externalOrderId customerName customerPhone driverInfo subtotal discount total platformFee status cancelReason cancelledAt deliveredAt updatedAt rawPayload')
+    .select('shortId source externalOrderId brandId customerName customerPhone driverInfo subtotal discount total platformFee status cancelReason placedAt cancelledAt deliveredAt updatedAt rawPayload')
     .lean()
     .cursor()
 
