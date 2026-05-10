@@ -28,6 +28,7 @@ export interface IOrder extends Document {
   shortId: string
   source: string
   externalOrderId?: string
+  externalStoreId?: string
   brandId: mongoose.Types.ObjectId
   hubId?: mongoose.Types.ObjectId
   channelId?: mongoose.Types.ObjectId
@@ -54,6 +55,7 @@ const OrderSchema = new Schema<IOrder>({
   shortId:        { type: String, required: true, unique: true },
   source:         { type: String, enum: ['shopee', 'grab', 'xanh_sm', 'be', 'internal', 'other'], required: true },
   externalOrderId:{ type: String },
+  externalStoreId:{ type: String },
   brandId:        { type: Schema.Types.ObjectId, ref: 'Brand', required: true },
   hubId:          { type: Schema.Types.ObjectId, ref: 'Hub' },
   channelId:      { type: Schema.Types.ObjectId, ref: 'Channel' },
@@ -78,6 +80,7 @@ const OrderSchema = new Schema<IOrder>({
 
 OrderSchema.index({ brandId: 1, status: 1 })
 OrderSchema.index({ source: 1 })
+OrderSchema.index({ source: 1, externalStoreId: 1 })
 OrderSchema.index({ placedAt: -1 })
 OrderSchema.index({ externalOrderId: 1, source: 1 }, { unique: true, sparse: true })
 
