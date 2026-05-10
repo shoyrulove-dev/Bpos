@@ -64,7 +64,7 @@ export interface PlatformAdapter {
   fetchOrderDetail(externalOrderId: string, config: AdapterConfig): Promise<NormalizedOrder | null>
 
   /** Normalize a raw platform order object into NormalizedOrder. */
-  normalizeOrder(raw: Record<string, unknown>): NormalizedOrder
+  normalizeOrder(raw: Record<string, unknown>, fetchType?: string): NormalizedOrder
 
   /**
    * Fetch orders using a captured browser session (auto-login mode).

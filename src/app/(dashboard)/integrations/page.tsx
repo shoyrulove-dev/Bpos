@@ -238,8 +238,8 @@ function PlatformAccountsSection() {
     (!filterProvider || a.provider === filterProvider)
   )
 
-  const brands = [...new Set(PLATFORM_ACCOUNTS.map(a => a.brand))]
-  const providers = [...new Set(PLATFORM_ACCOUNTS.map(a => a.provider))]
+  const brands = Array.from(new Set(PLATFORM_ACCOUNTS.map(a => a.brand)))
+  const providers = Array.from(new Set(PLATFORM_ACCOUNTS.map(a => a.provider)))
 
   return (
     <div className="rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden">
