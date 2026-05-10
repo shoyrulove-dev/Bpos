@@ -365,7 +365,25 @@ export default function IntegrationsPage() {
           </div>
         )}
 
-        {integ.loginMode === 'auto' && (
+        {integ.loginMode === 'auto' && integ.provider === 'be' && (
+          /* BE dùng API inject trực tiếp — không cần browser */
+          <div className={cn('flex items-center gap-1.5 text-xs rounded-lg px-2.5 py-1.5 border',
+            integ.sessionStatus === 'active'
+              ? 'bg-teal-50 border-teal-200 text-teal-700'
+              : integ.sessionStatus === 'error'
+              ? 'bg-red-50 border-red-200 text-red-600'
+              : 'bg-gray-50 border-gray-200 text-gray-500')}>
+            <Zap className="w-3 h-3 shrink-0" />
+            {integ.sessionStatus === 'active'
+              ? <span>API trực tiếp · token còn hạn{integ.sessionExpiresAt ? ` đến ${new Date(integ.sessionExpiresAt).toLocaleDateString('vi-VN')}` : ''}</span>
+              : integ.sessionStatus === 'error'
+              ? <span className="truncate">{integ.sessionError ?? 'Lỗi token'}</span>
+              : <span>API trực tiếp · chưa inject token</span>}
+          </div>
+        )}
+
+        {integ.loginMode === 'auto' && integ.provider !== 'be' && (
+          /* Grab / các sàn khác: dùng browser automation */
           <div className={cn('flex items-center gap-1.5 text-xs rounded-lg px-2.5 py-1.5 border',
             integ.automationRunning
               ? 'bg-blue-50 border-blue-200 text-blue-700'
@@ -377,14 +395,14 @@ export default function IntegrationsPage() {
               ? 'bg-amber-50 border-amber-200 text-amber-700'
               : 'bg-gray-50 border-gray-200 text-gray-500')}>
             {integ.automationRunning
-              ? <><Loader2 className="w-3 h-3 animate-spin shrink-0" /><span>Đang login…</span></>
+              ? <><Loader2 className="w-3 h-3 animate-spin shrink-0" /><span>Đang login browser…</span></>
               : integ.sessionStatus === 'active'
-              ? <><Wifi className="w-3 h-3 shrink-0" /><span>Session active{integ.sessionExpiresAt ? ` · hết hạn ${new Date(integ.sessionExpiresAt).toLocaleDateString('vi-VN')}` : ''}</span></>
+              ? <><Wifi className="w-3 h-3 shrink-0" /><span>Browser session active{integ.sessionExpiresAt ? ` · hết hạn ${new Date(integ.sessionExpiresAt).toLocaleDateString('vi-VN')}` : ''}</span></>
               : integ.sessionStatus === 'expired'
-              ? <><Clock className="w-3 h-3 shrink-0" /><span>{usesBrowserRelog(integ) ? 'Session hết hạn – relog bằng browser' : 'Session hết hạn – cần login lại'}</span></>
+              ? <><Clock className="w-3 h-3 shrink-0" /><span>Session hết hạn – scraper sẽ tự relog</span></>
               : integ.sessionStatus === 'error'
               ? <><WifiOff className="w-3 h-3 shrink-0" /><span className="truncate">{integ.sessionError ?? 'Lỗi login'}</span></>
-              : <><Clock className="w-3 h-3 shrink-0" /><span>Chưa có session</span></>}
+              : <><Clock className="w-3 h-3 shrink-0" /><span>Chờ scraper login…</span></>}
           </div>
         )}
 
@@ -899,7 +917,7 @@ export default function IntegrationsPage() {
                       <span className="flex items-center gap-2 whitespace-nowrap overflow-hidden">
                         <span className={cn('badge badge-sm shrink-0', pr.color)}>{pr.label}</span>
                         <span className="truncate text-xs text-gray-400">
-                          {AUTO_PROVIDERS.includes(pr.value) ? 'Auto Login' : 'API'}
+                          {pr.value === 'be' ? 'API trực tiếp' : AUTO_PROVIDERS.includes(pr.value) ? 'Browser auto' : 'API'}
                         </span>
                       </span>
                     </button>
@@ -929,8 +947,9 @@ export default function IntegrationsPage() {
               {isAuto && (
                 <div className="space-y-3">
                   <div className="bg-violet-50 border border-violet-100 rounded-xl p-3 text-xs text-violet-700">
-                    🔐 Hệ thống tự động đăng nhập merchant portal để lấy đơn hàng.
-                    Mật khẩu được mã hoá AES-256 trước khi lưu.
+                    {form.provider === 'be'
+                      ? '⚡ Be dùng API trực tiếp — không cần mở browser. Scraper tự login API và inject token mỗi 22h. Mật khẩu mã hoá AES-256.'
+                      : '🔐 Hệ thống tự động đăng nhập merchant portal qua browser để lấy đơn hàng. Mật khẩu được mã hoá AES-256 trước khi lưu.'}
                   </div>
                   <div>
                     <label className="label">
