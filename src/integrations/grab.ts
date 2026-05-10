@@ -1006,12 +1006,34 @@ export class GrabAdapter implements PlatformAdapter {
     // Portal might use different field names than Partner API
     const itemInfo = (raw.itemInfo ?? {}) as Record<string, unknown>
     const itemsRaw = (raw.items ?? raw.orderItems ?? raw.lineItems ?? itemInfo.items ?? []) as Record<string, unknown>[]
-    const items: OrderItem[] = itemsRaw.map(i => ({
-      name:     String(i.name ?? i.itemName ?? ''),
-      quantity: Number(i.quantity ?? 1),
-      price:    this.getGrabItemUnitPrice(i),
-      total:    Number(i.quantity ?? 1) * this.getGrabItemUnitPrice(i),
-    }))
+    const items: OrderItem[] = itemsRaw.map(i => {
+      // Flatten modifiers/add-ons into item note
+      const modifiers = Array.isArray(i.modifiers) ? i.modifiers as Record<string, unknown>[] : []
+      const addons = Array.isArray(i.addons) ? i.addons as Record<string, unknown>[] : []
+      const modifierTexts: string[] = []
+      for (const m of [...modifiers, ...addons]) {
+        const mItems = Array.isArray(m.modifierItems) ? m.modifierItems as Record<string, unknown>[] : Array.isArray(m.items) ? m.items as Record<string, unknown>[] : []
+        for (const mi of mItems) {
+          const miName = String(mi.name ?? mi.itemName ?? '').trim()
+          if (miName) modifierTexts.push(miName)
+        }
+        // Some formats have name directly on modifier item
+        const mName = String(m.name ?? '').trim()
+        if (mName && mItems.length === 0) modifierTexts.push(mName)
+      }
+      const itemNote = [
+        String(i.remarks ?? i.note ?? i.specialInstruction ?? i.comment ?? '').trim(),
+        modifierTexts.length ? modifierTexts.join(', ') : '',
+      ].filter(Boolean).join(' | ') || undefined
+
+      return {
+        name:     String(i.name ?? i.itemName ?? ''),
+        quantity: Number(i.quantity ?? 1),
+        price:    this.getGrabItemUnitPrice(i),
+        total:    Number(i.quantity ?? 1) * this.getGrabItemUnitPrice(i),
+        note:     itemNote,
+      }
+    })
 
     const rawStatus = String(raw.deliveryStatus ?? raw.orderState ?? raw.status ?? raw.orderStatus ?? raw.state ?? '')
     const orderStatus = resolveGrabStatus(rawStatus, raw)
@@ -1057,6 +1079,19 @@ export class GrabAdapter implements PlatformAdapter {
     const address  = String(dropoff.address ?? dropoff.formattedAddress ?? delivery.address ?? raw.deliveryAddress ?? '')
     const driver   = (delivery.driver ?? raw.driver ?? raw.rider ?? raw.driverDetails ?? raw.driverInfo ?? raw.courier ?? raw.deliveryPerson ?? raw.deliveryAgent ?? {}) as Record<string, unknown>
 
+    // Estimated pickup / scheduled time
+    const times = raw.times && typeof raw.times === 'object' && !Array.isArray(raw.times)
+      ? raw.times as Record<string, unknown>
+      : undefined
+    const estimatedTime = String(
+      times?.pickUpTime ?? times?.pickupTime ?? times?.estimatedPickupTime ??
+      raw.schedulePickupTime ?? raw.scheduledOrderPickUpTime ?? raw.scheduledAt ?? raw.estimatedPickupTime ??
+      ''
+    ) || undefined
+
+    // Order-level note (special request)
+    const deliveryNote = String(raw.specialRequest ?? raw.note ?? raw.remarks ?? '') || undefined
+
     return {
       source:          'grab',
       externalOrderId: String(raw.orderID ?? raw.ID ?? raw.id ?? raw.orderId ?? ''),
@@ -1069,7 +1104,7 @@ export class GrabAdapter implements PlatformAdapter {
       total,
       platformFee,
       paymentMethod:   String(raw.paymentType ?? raw.paymentMethod ?? (raw.isTakeawayOrder ? 'pickup' : 'delivery')),
-      deliveryInfo:    { address },
+      deliveryInfo:    { address, note: deliveryNote, estimatedTime },
       driverInfo:      {
         name: String(driver.name ?? driver.displayName ?? '') || undefined,
         phone: normalizeCompactPhone(this.getGrabPhoneCandidate([
@@ -1096,12 +1131,33 @@ export class GrabAdapter implements PlatformAdapter {
   normalizeOrder(raw: Record<string, unknown>): NormalizedOrder {
     // items[] — field name is 'items' in POS API v1.1.3 (not 'orderItems')
     const itemInfo = raw.itemInfo as Record<string, unknown> | undefined
-    const items: OrderItem[] = (((raw.items as Record<string, unknown>[]) ?? (itemInfo?.items as Record<string, unknown>[] | undefined) ?? [])).map((i) => ({
-      name:     String(i.name ?? i.itemName ?? ''),
-      quantity: Number(i.quantity ?? 1),
-      price:    this.getGrabItemUnitPrice(i),
-      total:    Number(i.quantity ?? 1) * this.getGrabItemUnitPrice(i),
-    }))
+    const items: OrderItem[] = (((raw.items as Record<string, unknown>[]) ?? (itemInfo?.items as Record<string, unknown>[] | undefined) ?? [])).map((i) => {
+      // Flatten modifiers into item note
+      const modifiers = Array.isArray(i.modifiers) ? i.modifiers as Record<string, unknown>[] : []
+      const addons = Array.isArray(i.addons) ? i.addons as Record<string, unknown>[] : []
+      const modifierTexts: string[] = []
+      for (const m of [...modifiers, ...addons]) {
+        const mItems = Array.isArray(m.modifierItems) ? m.modifierItems as Record<string, unknown>[] : Array.isArray(m.items) ? m.items as Record<string, unknown>[] : []
+        for (const mi of mItems) {
+          const miName = String(mi.name ?? mi.itemName ?? '').trim()
+          if (miName) modifierTexts.push(miName)
+        }
+        const mName = String(m.name ?? '').trim()
+        if (mName && mItems.length === 0) modifierTexts.push(mName)
+      }
+      const itemNote = [
+        String(i.remarks ?? i.note ?? i.specialInstruction ?? i.comment ?? '').trim(),
+        modifierTexts.length ? modifierTexts.join(', ') : '',
+      ].filter(Boolean).join(' | ') || undefined
+
+      return {
+        name:     String(i.name ?? i.itemName ?? ''),
+        quantity: Number(i.quantity ?? 1),
+        price:    this.getGrabItemUnitPrice(i),
+        total:    Number(i.quantity ?? 1) * this.getGrabItemUnitPrice(i),
+        note:     itemNote,
+      }
+    })
 
     // orderState field (not 'state')
     const rawStatus = String(raw.orderState ?? raw.deliveryStatus ?? raw.status ?? raw.orderStatus ?? raw.state ?? '')
@@ -1170,7 +1226,12 @@ export class GrabAdapter implements PlatformAdapter {
           receiverAddress?.address ?? receiverAddress?.formattedAddress ??
           receiverAddress?.displayAddress ?? receiverAddress?.label ?? ''
         ),
-        note: String(raw.specialRequest ?? raw.note ?? '') || undefined,
+        note: String(raw.specialRequest ?? raw.note ?? raw.remarks ?? '') || undefined,
+        estimatedTime: String(
+          (raw.times as Record<string, unknown> | undefined)?.pickUpTime ??
+          (raw.times as Record<string, unknown> | undefined)?.pickupTime ??
+          raw.schedulePickupTime ?? raw.scheduledOrderPickUpTime ?? raw.estimatedPickupTime ?? ''
+        ) || undefined,
       },
       driverInfo: driverName || driverPhone ? {
         name:  driverName,
