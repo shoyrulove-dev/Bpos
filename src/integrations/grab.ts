@@ -778,7 +778,10 @@ export class GrabAdapter implements PlatformAdapter {
    */
   async fetchOrdersWithSession(session: SessionData, storeId: string): Promise<NormalizedOrder[] | null> {
     const context = this.buildGrabSessionContext(session, storeId)
-    if (!context) return null
+    // When all cookies have expired, return [] instead of null so sync-orders
+    // does not mark the integration as error. Real orders are handled by the
+    // browser-based scraper via /api/cron/push-orders.
+    if (!context) return []
 
     const { baseHeaders, extraHeaders, discoveredStoreId } = context
 
