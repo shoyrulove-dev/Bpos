@@ -69,6 +69,7 @@ export async function upsertCustomerProfile(input: UpsertCustomerProfileInput): 
 
   const existingCustomer = await CustomerModel.findOne({ phone, brandId }).select('name').lean() as { name?: string } | null
   const shouldUpdateName = !existingCustomer || !hasMeaningfulCustomerName(existingCustomer.name)
+  const isExistingCustomer = Boolean(existingCustomer)
 
   const saved = await CustomerModel.findOneAndUpdate(
     { phone, brandId },
@@ -79,25 +80,30 @@ export async function upsertCustomerProfile(input: UpsertCustomerProfileInput): 
         lastOrderAt: placedAt,
         status: 'active',
       },
-      ...(source ? { $addToSet: { sources: source } } : {}),
-      ...(isNewOrder ? { $inc: { orderCount: 1, totalSpend: orderTotal } } : {}),
+      // NOTE: $addToSet is intentionally NOT here — combining $addToSet on an array
+      // field with $setOnInsert (which Mongoose auto-populates with the array default [])
+      // causes MongoDB to throw "conflict at 'sources'". Sources is updated below.
+      // Only $inc for confirmed existing customers — avoids conflict with $setOnInsert on same fields
+      ...(isExistingCustomer && isNewOrder ? { $inc: { orderCount: 1, totalSpend: orderTotal } } : {}),
       $setOnInsert: {
         phone,
         brandId,
-        name,
         points: 0,
-        totalSpend: isNewOrder ? 0 : orderTotal,
-        orderCount: isNewOrder ? 0 : 1,
         tier: 'bronze',
-        status: 'active',
-        ...(source ? { source, sources: [source] } : {}),
+        orderCount: 1,
+        totalSpend: orderTotal,
       },
     },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
+    { upsert: true, new: true }
   )
 
   if (!saved) {
     return { ok: false, error: 'Không thể lưu hồ sơ khách hàng' }
+  }
+
+  // Update sources array separately to avoid the $setOnInsert/$addToSet conflict
+  if (source) {
+    await CustomerModel.findByIdAndUpdate(saved._id, { $addToSet: { sources: source } }).catch(() => {})
   }
 
   const nextTier = calcCustomerTier(Number(saved.totalSpend ?? 0))
