@@ -3,6 +3,7 @@
  *
  * Trả về danh sách tài khoản Grab + BE để scraper tự fetch thay vì hardcode.
  * Auth: Bearer bpos-cron-2024 (cron token, giống push-orders)
+ * v2: integrationId trả về cho cả be accounts
  *
  * Response:
  *   { grab: GrabAccount[], be: BeAccount[] }
