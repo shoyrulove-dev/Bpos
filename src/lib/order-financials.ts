@@ -184,7 +184,7 @@ export function getGrabMoneyBreakdown(order: Order) {
     ['merchandiseAmount', 'subTotalDisplay', 'subtotalIncludeMerchantCharge', 'originalPriceInMin', 'subtotal', 'subTotal'],
   ) ?? order.subtotal
   const explicitItemDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['productDiscount', 'itemDiscount'])
-  const explicitPromotionDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['orderDiscount', 'merchantDiscount', 'merchantPromotionDiscount'])
+  const explicitPromotionDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['orderDiscount', 'merchantDiscount', 'merchantPromotionDiscount', 'basketPromo', 'discountAmount', 'discount'])
   const explicitRevenueAfterPromotion = getAmountFromSources([financialBreakdown], ['revenueAfterPromotion'])
   const itemDiscount = explicitItemDiscount ?? getGrabItemDiscountTotal(order)
   const promotionDiscount = typeof explicitPromotionDiscount === 'number'
