@@ -678,6 +678,7 @@ async function backfillDriversFromOrders(options?: {
   const targetPhone = normalizeCompactPhone(options?.driverPhone)
   let scanned = 0
   let updated = 0
+  let failed = 0
 
   const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds }))
     .select('shortId source externalOrderId driverInfo rawPayload')
@@ -694,30 +695,34 @@ async function backfillDriversFromOrders(options?: {
     if (targetPhone && phone !== targetPhone) continue
 
     scanned += 1
-    const displayName = getDisplayDriverName(order as unknown as Order) || undefined
-    const name = displayName && hasMeaningfulDriverName(displayName)
-      ? displayName
-      : `(Tài xế ${String(order.source ?? '').trim() || 'platform'})`
+    try {
+      const displayName = getDisplayDriverName(order as unknown as Order) || undefined
+      const name = displayName && hasMeaningfulDriverName(displayName)
+        ? displayName
+        : `(Tài xế ${String(order.source ?? '').trim() || 'platform'})`
 
-    await DriverModel.updateOne(
-      { phone, platform: String(order.source) },
-      {
-        $set: {
-          name,
-          lastSeenAt: new Date(),
+      await DriverModel.updateOne(
+        { phone, platform: String(order.source) },
+        {
+          $set: {
+            name,
+            lastSeenAt: new Date(),
+          },
+          $setOnInsert: {
+            phone,
+            platform: String(order.source),
+            visitCount: 1,
+          },
         },
-        $setOnInsert: {
-          phone,
-          platform: String(order.source),
-          visitCount: 1,
-        },
-      },
-      { upsert: true }
-    )
-    updated += 1
+        { upsert: true }
+      )
+      updated += 1
+    } catch {
+      failed += 1
+    }
   }
 
-  return { scanned, updated, removed: 0, scoped: true }
+  return { scanned, updated, failed, removed: 0, scoped: true }
 }
 
 async function backfillCustomersFromOrders(options?: {
@@ -730,6 +735,7 @@ async function backfillCustomersFromOrders(options?: {
   const shortIdSet = options?.shortIds?.length ? new Set(options.shortIds) : null
   let scanned = 0
   let updated = 0
+  let failed = 0
 
   type CustomerAggregate = {
     phone: string
@@ -794,46 +800,50 @@ async function backfillCustomersFromOrders(options?: {
   }
 
   for (const aggregate of Array.from(aggregates.values())) {
-    const brandId = new mongoose.Types.ObjectId(aggregate.brandId)
-    const existingCustomer = await CustomerModel.findOne({ phone: aggregate.phone, brandId })
-      .select('name points totalSpend orderCount')
-      .lean() as { name?: string; points?: number; totalSpend?: number; orderCount?: number } | null
-    const shouldUpdateName = !existingCustomer || !hasMeaningfulCustomerName(existingCustomer.name)
-    const nextTotalSpend = Math.max(Number(existingCustomer?.totalSpend ?? 0), aggregate.totalSpend)
-    const nextOrderCount = Math.max(Number(existingCustomer?.orderCount ?? 0), aggregate.orderCount)
-    const nextTier = calcCustomerTier(nextTotalSpend)
+    try {
+      const brandId = new mongoose.Types.ObjectId(aggregate.brandId)
+      const existingCustomer = await CustomerModel.findOne({ phone: aggregate.phone, brandId })
+        .select('name points totalSpend orderCount')
+        .lean() as { name?: string; points?: number; totalSpend?: number; orderCount?: number } | null
+      const shouldUpdateName = !existingCustomer || !hasMeaningfulCustomerName(existingCustomer.name)
+      const nextTotalSpend = Math.max(Number(existingCustomer?.totalSpend ?? 0), aggregate.totalSpend)
+      const nextOrderCount = Math.max(Number(existingCustomer?.orderCount ?? 0), aggregate.orderCount)
+      const nextTier = calcCustomerTier(nextTotalSpend)
 
-    const updateResult = await CustomerModel.updateOne(
-      { phone: aggregate.phone, brandId },
-      {
-        $set: {
-          ...(shouldUpdateName ? { name: aggregate.name } : {}),
-          ...(aggregate.lastOrderAt ? { lastOrderAt: aggregate.lastOrderAt } : {}),
-          ...(aggregate.source ? { source: aggregate.source } : {}),
-          totalSpend: nextTotalSpend,
-          orderCount: nextOrderCount,
-          tier: nextTier,
-          status: 'active',
-        },
-        $setOnInsert: {
-          phone: aggregate.phone,
-          brandId,
-          points: Number(existingCustomer?.points ?? 0),
-        },
-      },
-      { upsert: true }
-    )
-
-    if (updateResult.acknowledged && aggregate.sources.size) {
-      await CustomerModel.updateOne(
+      const updateResult = await CustomerModel.updateOne(
         { phone: aggregate.phone, brandId },
-        { $addToSet: { sources: { $each: Array.from(aggregate.sources) } } }
-      ).catch(() => {})
+        {
+          $set: {
+            ...(shouldUpdateName ? { name: aggregate.name } : {}),
+            ...(aggregate.lastOrderAt ? { lastOrderAt: aggregate.lastOrderAt } : {}),
+            ...(aggregate.source ? { source: aggregate.source } : {}),
+            totalSpend: nextTotalSpend,
+            orderCount: nextOrderCount,
+            tier: nextTier,
+            status: 'active',
+          },
+          $setOnInsert: {
+            phone: aggregate.phone,
+            brandId,
+            points: Number(existingCustomer?.points ?? 0),
+          },
+        },
+        { upsert: true }
+      )
+
+      if (updateResult.acknowledged && aggregate.sources.size) {
+        await CustomerModel.updateOne(
+          { phone: aggregate.phone, brandId },
+          { $addToSet: { sources: { $each: Array.from(aggregate.sources) } } }
+        ).catch(() => {})
+      }
+      updated += 1
+    } catch {
+      failed += 1
     }
-    updated += 1
   }
 
-  return { scanned, updated, removed: 0, scoped: true }
+  return { scanned, updated, failed, removed: 0, scoped: true }
 }
 
 async function repairCustomers() {
@@ -855,6 +865,7 @@ async function repairCustomers() {
 
   let updated = 0
   let removed = 0
+  let failed = 0
 
   if (invalidIds.length) {
     await CustomerModel.deleteMany({ _id: { $in: invalidIds } })
@@ -862,47 +873,51 @@ async function repairCustomers() {
   }
 
   for (const [key, group] of Array.from(grouped.entries())) {
-    const [brandId, normalizedPhone] = key.split(':')
-    const primary = group.find((item: StoredCustomer) => item.phone === normalizedPhone && hasMeaningfulCustomerName(item.name))
-      ?? group.find((item: StoredCustomer) => hasMeaningfulCustomerName(item.name))
-      ?? group[0]
-    const duplicates = group.filter((item: StoredCustomer) => String(item._id) !== String(primary._id))
-    const totalSpend = group.reduce((sum: number, item: StoredCustomer) => sum + Number(item.totalSpend ?? 0), 0)
-    const orderCount = group.reduce((sum: number, item: StoredCustomer) => sum + Number(item.orderCount ?? 0), 0)
-    const points = group.reduce((sum: number, item: StoredCustomer) => sum + Number(item.points ?? 0), 0)
-    const lastOrderAt = group.reduce((latest: Date | undefined, item: StoredCustomer) => {
-      const current = parseDateValue(item.lastOrderAt)
-      if (!current) return latest
-      if (!latest || current > latest) return current
-      return latest
-    }, undefined)
+    try {
+      const [brandId, normalizedPhone] = key.split(':')
+      const primary = group.find((item: StoredCustomer) => item.phone === normalizedPhone && hasMeaningfulCustomerName(item.name))
+        ?? group.find((item: StoredCustomer) => hasMeaningfulCustomerName(item.name))
+        ?? group[0]
+      const duplicates = group.filter((item: StoredCustomer) => String(item._id) !== String(primary._id))
+      const totalSpend = group.reduce((sum: number, item: StoredCustomer) => sum + Number(item.totalSpend ?? 0), 0)
+      const orderCount = group.reduce((sum: number, item: StoredCustomer) => sum + Number(item.orderCount ?? 0), 0)
+      const points = group.reduce((sum: number, item: StoredCustomer) => sum + Number(item.points ?? 0), 0)
+      const lastOrderAt = group.reduce((latest: Date | undefined, item: StoredCustomer) => {
+        const current = parseDateValue(item.lastOrderAt)
+        if (!current) return latest
+        if (!latest || current > latest) return current
+        return latest
+      }, undefined)
 
-    if (duplicates.length) {
-      await CustomerModel.deleteMany({ _id: { $in: duplicates.map((item: StoredCustomer) => item._id) } })
-      removed += duplicates.length
-    }
-
-    await CustomerModel.updateOne(
-      { _id: primary._id },
-      {
-        $set: {
-          phone: normalizedPhone,
-          brandId,
-          name: primary.name,
-          ...(primary.source ? { source: primary.source } : {}),
-          ...(primary.sources?.length ? { sources: primary.sources } : {}),
-          totalSpend,
-          orderCount,
-          points,
-          tier: calcCustomerTier(totalSpend),
-          ...(lastOrderAt ? { lastOrderAt } : {}),
-        },
+      if (duplicates.length) {
+        await CustomerModel.deleteMany({ _id: { $in: duplicates.map((item: StoredCustomer) => item._id) } })
+        removed += duplicates.length
       }
-    )
-    updated += 1
+
+      await CustomerModel.updateOne(
+        { _id: primary._id },
+        {
+          $set: {
+            phone: normalizedPhone,
+            brandId,
+            name: primary.name,
+            ...(primary.source ? { source: primary.source } : {}),
+            ...(primary.sources?.length ? { sources: primary.sources } : {}),
+            totalSpend,
+            orderCount,
+            points,
+            tier: calcCustomerTier(totalSpend),
+            ...(lastOrderAt ? { lastOrderAt } : {}),
+          },
+        },
+      )
+      updated += 1
+    } catch {
+      failed += 1
+    }
   }
 
-  return { scanned: docs.length, updated, removed }
+  return { scanned: docs.length, updated, failed, removed }
 }
 
 async function repairDrivers() {
@@ -930,6 +945,7 @@ async function repairDrivers() {
 
   let updated = 0
   let removed = 0
+  let failed = 0
 
   if (invalidIds.length) {
     await DriverModel.deleteMany({ _id: { $in: invalidIds } })
@@ -966,57 +982,61 @@ async function repairDrivers() {
   }
 
   for (const [key, group] of Array.from(grouped.entries())) {
-    const [platform, normalizedPhone] = key.split(':')
-    const primary = group.find((item: StoredDriver) => item.phone === normalizedPhone && hasMeaningfulDriverName(item.name) && !isDriverNamePlaceholder(item.name))
-      ?? group.find((item: StoredDriver) => hasMeaningfulDriverName(item.name) && !isDriverNamePlaceholder(item.name))
-      ?? group.find((item: StoredDriver) => isDriverNamePlaceholder(item.name))
-      ?? group[0]
-    const duplicates = group.filter((item: StoredDriver) => String(item._id) !== String(primary._id))
-    const visitCount = group.reduce((sum: number, item: StoredDriver) => sum + Number(item.visitCount ?? 0), 0)
-    const lastSeenAt = group.reduce((latest: Date | undefined, item: StoredDriver) => {
-      const current = parseDateValue(item.lastSeenAt)
-      if (!current) return latest
-      if (!latest || current > latest) return current
-      return latest
-    }, undefined)
+    try {
+      const [platform, normalizedPhone] = key.split(':')
+      const primary = group.find((item: StoredDriver) => item.phone === normalizedPhone && hasMeaningfulDriverName(item.name) && !isDriverNamePlaceholder(item.name))
+        ?? group.find((item: StoredDriver) => hasMeaningfulDriverName(item.name) && !isDriverNamePlaceholder(item.name))
+        ?? group.find((item: StoredDriver) => isDriverNamePlaceholder(item.name))
+        ?? group[0]
+      const duplicates = group.filter((item: StoredDriver) => String(item._id) !== String(primary._id))
+      const visitCount = group.reduce((sum: number, item: StoredDriver) => sum + Number(item.visitCount ?? 0), 0)
+      const lastSeenAt = group.reduce((latest: Date | undefined, item: StoredDriver) => {
+        const current = parseDateValue(item.lastSeenAt)
+        if (!current) return latest
+        if (!latest || current > latest) return current
+        return latest
+      }, undefined)
 
-    if (duplicates.length) {
-      await DriverModel.deleteMany({ _id: { $in: duplicates.map((item: StoredDriver) => item._id) } })
-      removed += duplicates.length
-    }
+      if (duplicates.length) {
+        await DriverModel.deleteMany({ _id: { $in: duplicates.map((item: StoredDriver) => item._id) } })
+        removed += duplicates.length
+      }
 
-    if (String(primary._id).startsWith('order:')) {
-      await DriverModel.updateOne(
-        { phone: normalizedPhone, platform },
-        {
-          $set: {
-            phone: normalizedPhone,
-            platform,
-            name: primary.name,
-            ...(lastSeenAt ? { lastSeenAt } : {}),
+      if (String(primary._id).startsWith('order:')) {
+        await DriverModel.updateOne(
+          { phone: normalizedPhone, platform },
+          {
+            $set: {
+              phone: normalizedPhone,
+              platform,
+              name: primary.name,
+              ...(lastSeenAt ? { lastSeenAt } : {}),
+            },
+            $inc: { visitCount },
           },
-          $inc: { visitCount },
-        },
-        { upsert: true }
-      )
-    } else {
-      await DriverModel.updateOne(
-        { _id: primary._id },
-        {
-          $set: {
-            phone: normalizedPhone,
-            platform,
-            name: primary.name,
-            visitCount,
-            ...(lastSeenAt ? { lastSeenAt } : {}),
+          { upsert: true }
+        )
+      } else {
+        await DriverModel.updateOne(
+          { _id: primary._id },
+          {
+            $set: {
+              phone: normalizedPhone,
+              platform,
+              name: primary.name,
+              visitCount,
+              ...(lastSeenAt ? { lastSeenAt } : {}),
+            },
           },
-        }
-      )
+        )
+      }
+      updated += 1
+    } catch {
+      failed += 1
     }
-    updated += 1
   }
 
-  return { scanned: docs.length, updated, removed }
+  return { scanned: docs.length, updated, failed, removed }
 }
 
 export async function runOrderRepair(options?: {
