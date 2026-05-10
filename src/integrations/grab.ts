@@ -181,13 +181,15 @@ export class GrabAdapter implements PlatformAdapter {
     if (!cookieHeader) return null
 
     const { extraHeaders, discoveredStoreId } = enrichGrabSessionExtraHeaders(session, storeId)
-    const token = extraHeaders['x-grab-token'] ?? extraHeaders['Authorization'] ?? ''
 
     const forwardedHeaders = Object.fromEntries(
       Object.entries(extraHeaders).filter(([key, value]) => {
         if (!value) return false
         const normalizedKey = key.toLowerCase()
-        return normalizedKey !== 'x-grab-orders-api' && normalizedKey !== 'x-grab-stores'
+        return normalizedKey !== 'x-grab-orders-api'
+          && normalizedKey !== 'x-grab-stores'
+          && normalizedKey !== 'authorization'
+          && normalizedKey !== 'x-grab-token'
       })
     )
 
@@ -208,10 +210,6 @@ export class GrabAdapter implements PlatformAdapter {
       'requestsource': 'troyPortal',
       'merchantid': discoveredStoreId,
     }
-    if (token && !token.startsWith('x-grab')) {
-      baseHeaders['Authorization'] = token.startsWith('Bearer ') ? token : `Bearer ${token}`
-    }
-
     return { baseHeaders, extraHeaders, discoveredStoreId }
   }
 
@@ -833,10 +831,14 @@ export class GrabAdapter implements PlatformAdapter {
       }
     }
 
-    if (sawAuthFailure) return null
+    // When the server-side fetch fails with 401 (TLS fingerprint mismatch between
+    // Node.js and Chromium), return [] instead of null so sync-orders does not
+    // treat this as a session-expired error. Real orders are pushed separately
+    // by the browser-based scraper via /api/cron/push-orders.
+    if (sawAuthFailure) return []
     if (sawHtmlShell) return []
 
-    return null  // all endpoints failed – session likely expired
+    return []  // all endpoints failed – treat as empty (browser scraper handles real orders)
   }
 
   async fetchHistoricalOrdersWithSession(
