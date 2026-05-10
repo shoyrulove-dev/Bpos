@@ -12,10 +12,10 @@ function hasCancelledText(value: unknown) {
 
   return (
     normalized.includes('cancel') ||
-    normalized.includes('huy') ||
     normalized.includes('da huy') ||
     normalized.includes('order canceled') ||
-    normalized.includes('order cancelled')
+    normalized.includes('order cancelled') ||
+    /(?:^|\s)huy(?:\s|$)/.test(normalized)
   )
 }
 
@@ -54,7 +54,6 @@ export function hasBeCancelSignal(raw: Record<string, unknown>) {
     raw.order_state_text,
     raw.state_text,
     raw.reason,
-    raw.note,
   ]
 
   return statusTextFields.some((value) => hasCancelledText(value))
