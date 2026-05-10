@@ -2,13 +2,13 @@ import { NextRequest } from 'next/server'
 import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import OrderModel from '@/models/Order'
-import CustomerModel from '@/models/Customer'
 import DriverModel from '@/models/Driver'
 import SyncLogModel from '@/models/SyncLog'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { getAdapter } from '@/integrations/registry'
 import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/automation-session'
 import { requestAutomationLogin } from '@/lib/automation-login'
+import { upsertCustomerProfile } from '@/lib/customer-upsert'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
 import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone } from '@/lib/order-financials'
@@ -25,13 +25,9 @@ type AutomationRefreshResult = {
   orders: NormalizedOrder[]
 }
 
-function calcCustomerTier(totalSpend: number): 'bronze' | 'silver' | 'gold' | 'platinum' {
-  if (totalSpend >= 20_000_000) return 'platinum'
-  if (totalSpend >= 5_000_000) return 'gold'
-  if (totalSpend >= 1_000_000) return 'silver'
-  return 'bronze'
+function usesBrowserRelog(integration: { sessionRefreshMode?: string }) {
+  return integration.sessionRefreshMode === 'browser'
 }
-
 async function refreshSessionIfPossible(integration: {
   _id: string
   provider: string
@@ -39,8 +35,10 @@ async function refreshSessionIfPossible(integration: {
   externalStoreName?: string
   loginUsername?: string
   loginPassword?: string
+  sessionRefreshMode?: 'auto' | 'browser'
   sessionFailureCount?: number
 }, options?: { includeOrders?: boolean }): Promise<AutomationRefreshResult | null> {
+  if (usesBrowserRelog(integration)) return null
   if (!AUTOMATION_URL || !integration.loginUsername || !integration.loginPassword) return null
 
   const { serviceRes, data } = await requestAutomationLogin({
@@ -79,7 +77,7 @@ async function refreshSessionIfPossible(integration: {
 
   return {
     session,
-    orders: (Array.isArray(data.orders) ? data.orders : []) as NormalizedOrder[],
+    orders: Array.isArray(data.orders) ? (data.orders as NormalizedOrder[]) : [],
   }
 }
 
@@ -114,6 +112,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     sessionExpiresAt?: Date
     loginUsername?: string
     loginPassword?: string
+    sessionRefreshMode?: 'auto' | 'browser'
     isActive: boolean
   }
 
@@ -140,8 +139,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       let refreshed: AutomationRefreshResult | null = null
       let session = intg.sessionData ? decryptJSON<SessionData>(intg.sessionData) : null
       const isExpired = intg.sessionExpiresAt ? new Date(intg.sessionExpiresAt) < new Date() : false
+      const browserRelog = usesBrowserRelog(intg)
 
       if (!session || isExpired) {
+        if (browserRelog) {
+          await IntegrationModel.findByIdAndUpdate(params.id, buildSessionFailureUpdate({
+            provider: intg.provider,
+            currentFailureCount: intg.sessionFailureCount,
+            errorMessage: 'Session đã hết hạn – dùng Login trình duyệt để đăng nhập lại',
+            fallbackStatus: 'expired',
+          }))
+          return err('Session đã hết hạn – dùng Login trình duyệt để đăng nhập lại', 401)
+        }
         refreshed = await refreshSessionIfPossible(intg, { includeOrders: shouldFetchLiveOrders })
         session = refreshed?.session ?? null
         if (!session) {
@@ -161,6 +170,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         result = refreshed.orders
       }
       if (result === null) {
+        if (browserRelog) {
+          await IntegrationModel.findByIdAndUpdate(params.id, buildSessionFailureUpdate({
+            provider: intg.provider,
+            currentFailureCount: intg.sessionFailureCount,
+            errorMessage: 'Session không còn hợp lệ – dùng Login trình duyệt để đăng nhập lại',
+            fallbackStatus: 'expired',
+          }))
+          return err('Session không còn hợp lệ – dùng Login trình duyệt để đăng nhập lại', 401)
+        }
         refreshed = await refreshSessionIfPossible(intg, { includeOrders: shouldFetchLiveOrders })
         session = refreshed?.session ?? null
         if (!session) {
@@ -225,7 +243,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const existingOrdersByExternalId = new Map(
       existingOrders.map((order) => [String(order.externalOrderId ?? ''), order])
     )
-    const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean }> = []
+    const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean; placedAt?: string | Date }> = []
     const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean }> = []
 
     for (const normalized of orders) {
@@ -256,7 +274,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const cName = getDisplayCustomerName(customerOrder) ?? mergedNormalized.customerName?.trim()
         const cPhone = getDisplayCustomerPhone(customerOrder) || mergedNormalized.customerPhone?.trim()
         if (cName && cPhone && hasMeaningfulCustomerName(cName) && hasMeaningfulPhone(cPhone)) {
-          customersToSave.push({ name: cName, phone: cPhone, brandId: String(intg.brandId), total: mergedNormalized.total ?? 0, isNew: isNewOrder })
+          customersToSave.push({ name: cName, phone: cPhone, brandId: String(intg.brandId), total: mergedNormalized.total ?? 0, isNew: isNewOrder, placedAt: mergedNormalized.placedAt })
         }
 
         // Collect driver info for auto-save.
@@ -277,30 +295,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     for (const c of customersToSave) {
       try {
-        const existingCustomer = await CustomerModel.findOne({ phone: c.phone, brandId: c.brandId }).select('name').lean() as { name?: string } | null
-        const shouldUpdateName = !existingCustomer || !hasMeaningfulCustomerName(existingCustomer.name)
-        const saved = await CustomerModel.findOneAndUpdate(
-          { phone: c.phone, brandId: c.brandId },
-          c.isNew
-            ? {
-                $set: { ...(shouldUpdateName ? { name: c.name } : {}), lastOrderAt: new Date() },
-                $inc: { orderCount: 1, totalSpend: c.total },
-                $setOnInsert: { points: 0, tier: 'bronze', status: 'active', name: c.name },
-              }
-            : {
-                $set: { ...(shouldUpdateName ? { name: c.name } : {}), lastOrderAt: new Date() },
-                $setOnInsert: { points: 0, tier: 'bronze', status: 'active', orderCount: 1, totalSpend: c.total, name: c.name },
-              },
-          { upsert: true, new: true }
-        )
-
-        if (saved) {
-          const newTier = calcCustomerTier(saved.totalSpend)
-          if (saved.tier !== newTier) {
-            await CustomerModel.findByIdAndUpdate(saved._id, { $set: { tier: newTier } })
-          }
+        const result = await upsertCustomerProfile({
+          phone: c.phone,
+          name: c.name,
+          brandId: c.brandId,
+          source: intg.provider,
+          placedAt: c.placedAt,
+          orderTotal: c.total,
+          isNewOrder: c.isNew,
+        })
+        if (!result.ok) {
+          errors.push(`customer ${c.phone}: ${result.error ?? 'save-failed'}`)
         }
-      } catch {
+      } catch (customerErr) {
+        errors.push(`customer ${c.phone}: ${customerErr instanceof Error ? customerErr.message : String(customerErr)}`)
         continue
       }
     }

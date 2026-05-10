@@ -1,5 +1,6 @@
 import { decryptJSON } from '@/lib/crypto'
 import { hasBeCancelSignal } from '@/lib/be-order-status'
+import { calcCustomerTier, upsertCustomerProfile } from '@/lib/customer-upsert'
 import { getAdapter } from '@/integrations/registry'
 import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
@@ -30,6 +31,8 @@ type StoredCustomer = {
   phone: string
   name: string
   brandId: string
+  source?: string
+  sources?: string[]
   points?: number
   totalSpend?: number
   orderCount?: number
@@ -47,13 +50,6 @@ type StoredDriver = {
   lastSeenAt?: Date | string
   updatedAt?: Date | string
   createdAt?: Date | string
-}
-
-function calcCustomerTier(totalSpend: number): 'bronze' | 'silver' | 'gold' | 'platinum' {
-  if (totalSpend >= 20_000_000) return 'platinum'
-  if (totalSpend >= 5_000_000) return 'gold'
-  if (totalSpend >= 1_000_000) return 'silver'
-  return 'bronze'
 }
 
 function parseDateValue(value: unknown) {
@@ -93,33 +89,17 @@ async function upsertCustomerFromOrder(order: StoredOrder) {
     return false
   }
 
-  const brandId = new mongoose.Types.ObjectId(rawBrandId)
+  const result = await upsertCustomerProfile({
+    phone,
+    name,
+    brandId: rawBrandId,
+    source: String(order.source ?? ''),
+    placedAt: parseDateValue(order.placedAt) ?? new Date(),
+    orderTotal: Number(order.total ?? 0),
+    isNewOrder: false,
+  })
 
-  const existingCustomer = await CustomerModel.findOne({ phone, brandId }).select('name').lean() as { name?: string } | null
-  const shouldUpdateName = !existingCustomer || !hasMeaningfulCustomerName(existingCustomer.name)
-
-  await CustomerModel.findOneAndUpdate(
-    { phone, brandId },
-    {
-      $set: {
-        ...(shouldUpdateName ? { name } : {}),
-        lastOrderAt: parseDateValue(order.placedAt) ?? new Date(),
-      },
-      $setOnInsert: {
-        phone,
-        brandId,
-        name,
-        points: 0,
-        totalSpend: Number(order.total ?? 0),
-        orderCount: 1,
-        tier: calcCustomerTier(Number(order.total ?? 0)),
-        status: 'active',
-      },
-    },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
-  )
-
-  return true
+  return result.ok
 }
 
 async function upsertDriverFromOrder(order: StoredOrder) {
@@ -494,6 +474,19 @@ async function backfillCustomersFromOrders(options?: {
   let scanned = 0
   let updated = 0
 
+  type CustomerAggregate = {
+    phone: string
+    brandId: string
+    name: string
+    totalSpend: number
+    orderCount: number
+    lastOrderAt?: Date
+    source?: string
+    sources: Set<string>
+  }
+
+  const aggregates = new Map<string, CustomerAggregate>()
+
   const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds }))
     .select('shortId source externalOrderId brandId customerName customerPhone total placedAt rawPayload')
     .lean()
@@ -510,28 +503,76 @@ async function backfillCustomersFromOrders(options?: {
     if (!brandId || !phone || !name || !hasMeaningfulPhone(phone) || !hasMeaningfulCustomerName(name)) continue
 
     scanned += 1
-    const existingCustomer = await CustomerModel.findOne({ phone, brandId }).select('name').lean() as { name?: string } | null
+    const key = `${brandId}:${phone}`
+    const placedAt = parseDateValue(order.placedAt)
+    const source = String(order.source ?? '').trim()
+    const aggregate = aggregates.get(key)
+
+    if (aggregate) {
+      aggregate.totalSpend += Number(order.total ?? 0)
+      aggregate.orderCount += 1
+      if ((!aggregate.name || !hasMeaningfulCustomerName(aggregate.name)) && hasMeaningfulCustomerName(name)) {
+        aggregate.name = name
+      }
+      if (placedAt && (!aggregate.lastOrderAt || placedAt > aggregate.lastOrderAt)) {
+        aggregate.lastOrderAt = placedAt
+      }
+      if (source) {
+        aggregate.source = source
+        aggregate.sources.add(source)
+      }
+      continue
+    }
+
+    aggregates.set(key, {
+      phone,
+      brandId,
+      name,
+      totalSpend: Number(order.total ?? 0),
+      orderCount: 1,
+      lastOrderAt: placedAt,
+      source: source || undefined,
+      sources: new Set(source ? [source] : []),
+    })
+  }
+
+  for (const aggregate of Array.from(aggregates.values())) {
+    const brandId = new mongoose.Types.ObjectId(aggregate.brandId)
+    const existingCustomer = await CustomerModel.findOne({ phone: aggregate.phone, brandId })
+      .select('name points totalSpend orderCount')
+      .lean() as { name?: string; points?: number; totalSpend?: number; orderCount?: number } | null
     const shouldUpdateName = !existingCustomer || !hasMeaningfulCustomerName(existingCustomer.name)
+    const nextTotalSpend = Math.max(Number(existingCustomer?.totalSpend ?? 0), aggregate.totalSpend)
+    const nextOrderCount = Math.max(Number(existingCustomer?.orderCount ?? 0), aggregate.orderCount)
+    const nextTier = calcCustomerTier(nextTotalSpend)
 
     await CustomerModel.updateOne(
-      { phone, brandId },
+      { phone: aggregate.phone, brandId },
       {
         $set: {
-          ...(shouldUpdateName ? { name } : {}),
-          lastOrderAt: parseDateValue(order.placedAt) ?? new Date(),
-        },
-        $setOnInsert: {
-          phone,
-          brandId,
-          name,
-          points: 0,
-          totalSpend: Number(order.total ?? 0),
-          orderCount: 1,
-          tier: calcCustomerTier(Number(order.total ?? 0)),
+          ...(shouldUpdateName ? { name: aggregate.name } : {}),
+          ...(aggregate.lastOrderAt ? { lastOrderAt: aggregate.lastOrderAt } : {}),
+          ...(aggregate.source ? { source: aggregate.source } : {}),
+          totalSpend: nextTotalSpend,
+          orderCount: nextOrderCount,
+          tier: nextTier,
           status: 'active',
         },
+        ...(aggregate.sources.size ? { $addToSet: { sources: { $each: Array.from(aggregate.sources) } } } : {}),
+        $setOnInsert: {
+          phone: aggregate.phone,
+          brandId,
+          name: aggregate.name,
+          points: Number(existingCustomer?.points ?? 0),
+          totalSpend: nextTotalSpend,
+          orderCount: nextOrderCount,
+          tier: nextTier,
+          status: 'active',
+          ...(aggregate.source ? { source: aggregate.source } : {}),
+          ...(aggregate.sources.size ? { sources: Array.from(aggregate.sources) } : {}),
+        },
       },
-      { upsert: true }
+      { upsert: true, setDefaultsOnInsert: true }
     )
     updated += 1
   }
@@ -592,6 +633,8 @@ async function repairCustomers() {
           phone: normalizedPhone,
           brandId,
           name: primary.name,
+          ...(primary.source ? { source: primary.source } : {}),
+          ...(primary.sources?.length ? { sources: primary.sources } : {}),
           totalSpend,
           orderCount,
           points,

@@ -10,6 +10,7 @@ import {
 import { useIntegrations, useCreateIntegration, useDeleteIntegration, useUpdateIntegration } from '@/hooks/use-data'
 import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
+import { getDefaultSessionRefreshMode } from '@/lib/session-refresh-mode'
 import { cn } from '@/lib/utils'
 
 const PROVIDERS = [
@@ -54,6 +55,7 @@ type Integ = {
   lastSyncAt?: string
   isActive?: boolean
   loginMode?: 'api' | 'auto'
+  sessionRefreshMode?: 'auto' | 'browser'
   loginUsername?: string
   sessionStatus?: 'none' | 'active' | 'expired' | 'error'
   sessionCapturedAt?: string
@@ -100,14 +102,18 @@ const TARGET_PROVIDER_COUNTS: Partial<Record<string, number>> = {
 }
 
 const PROVIDER_NOTES: Partial<Record<string, string>> = {
-  grab: 'Các account Grab đang dùng auto-login merchant portal để lấy đơn và sync lịch sử gần đây.',
-  be: 'Các account Be đang dùng auto-login merchant portal. Có thể login lại từng account ngay trong cột này.',
+  grab: 'Grab có thể relog từng account trong cột này. Chỉ bật Browser relog cho các account cần xử lý tay hoặc gặp captcha.',
+  be: 'Be ưu tiên relog qua browser. Có thể login lại từng account ngay trong cột này.',
   shopee: 'Shopee dùng flow số điện thoại + SMS OTP. Không lưu mật khẩu cho nhánh session này nữa.',
   xanh_sm: 'Giữ riêng một cột cho Xanh SM để sau này thêm account không bị trộn với Grab hoặc Be.',
 }
 
 function providerUsesSmsOtp(provider?: string | null) {
   return provider === 'shopee' || provider === 'xanh_sm'
+}
+
+function usesBrowserRelog(integ?: Pick<Integ, 'sessionRefreshMode'> | null) {
+  return integ?.sessionRefreshMode === 'browser'
 }
 
 async function readJsonSafely<T>(res: Response): Promise<JsonReadResult<T>> {
@@ -375,7 +381,7 @@ export default function IntegrationsPage() {
               : integ.sessionStatus === 'active'
               ? <><Wifi className="w-3 h-3 shrink-0" /><span>Session active{integ.sessionExpiresAt ? ` · hết hạn ${new Date(integ.sessionExpiresAt).toLocaleDateString('vi-VN')}` : ''}</span></>
               : integ.sessionStatus === 'expired'
-              ? <><Clock className="w-3 h-3 shrink-0" /><span>Session hết hạn – cần login lại</span></>
+              ? <><Clock className="w-3 h-3 shrink-0" /><span>{usesBrowserRelog(integ) ? 'Session hết hạn – relog bằng browser' : 'Session hết hạn – cần login lại'}</span></>
               : integ.sessionStatus === 'error'
               ? <><WifiOff className="w-3 h-3 shrink-0" /><span className="truncate">{integ.sessionError ?? 'Lỗi login'}</span></>
               : <><Clock className="w-3 h-3 shrink-0" /><span>Chưa có session</span></>}
@@ -412,7 +418,7 @@ export default function IntegrationsPage() {
               onClick={() => openAutoLogin(integ)}
               className="btn-outline btn-sm flex items-center gap-1 px-2 text-violet-600 border-violet-200 hover:bg-violet-50"
             >
-              <KeyRound className="w-3.5 h-3.5" /> Login
+              <KeyRound className="w-3.5 h-3.5" /> {usesBrowserRelog(integ) ? 'Login browser' : 'Login'}
             </button>
           ) : (
             <button
@@ -472,6 +478,7 @@ export default function IntegrationsPage() {
     const init: Record<string, string> = {
       __externalStoreId: integ.externalStoreId ?? '',
       __loginMode: integ.loginMode ?? 'api',
+      __sessionRefreshMode: integ.sessionRefreshMode ?? getDefaultSessionRefreshMode(integ.provider),
       __loginUsername: integ.loginUsername ?? '',
       __loginPassword: '',
     }
@@ -481,10 +488,11 @@ export default function IntegrationsPage() {
 
   const handleSaveSettings = async () => {
     if (!settingsId || !settingsInteg) return
-    const { __externalStoreId, __loginMode, __loginUsername, __loginPassword, ...credFields } = creds
+    const { __externalStoreId, __loginMode, __sessionRefreshMode, __loginUsername, __loginPassword, ...credFields } = creds
     const usesSmsOtp = providerUsesSmsOtp(settingsInteg.provider)
     const body: Record<string, unknown> = {}
     if (__loginMode) body.loginMode = __loginMode
+    if (__sessionRefreshMode) body.sessionRefreshMode = __sessionRefreshMode
     if (__externalStoreId?.trim()) body.externalStoreId = __externalStoreId.trim()
     if (__loginMode !== 'auto') {
       const credUpdate: Record<string, string> = {}
@@ -543,7 +551,7 @@ export default function IntegrationsPage() {
 
   const openAutoLogin = (integ: Integ) => {
     setAutoLoginId(integ._id)
-    setAutoLoginMode(providerUsesSmsOtp(integ.provider) ? 'otp' : 'auto')
+    setAutoLoginMode(providerUsesSmsOtp(integ.provider) ? 'otp' : usesBrowserRelog(integ) ? 'manual' : 'auto')
     setAutoLoginForm({ username: integ.loginUsername ?? '', password: '', otp: '' })
     setManualJwt('')
     setManualCookieString('')
@@ -1170,7 +1178,7 @@ export default function IntegrationsPage() {
 
               {creds.__loginMode === 'auto' && (
                 <div className="bg-violet-50 border border-violet-100 rounded-xl p-4 space-y-3">
-                  <p className="text-xs text-violet-700 font-medium">{providerUsesSmsOtp(settingsInteg.provider) ? 'Lưu số điện thoại để chạy flow SMS OTP' : 'Lưu thông tin đăng nhập để auto-refresh session'}</p>
+                  <p className="text-xs text-violet-700 font-medium">{providerUsesSmsOtp(settingsInteg.provider) ? 'Lưu số điện thoại để chạy flow SMS OTP' : 'Lưu thông tin đăng nhập để relog session khi cần'}</p>
                   <div>
                     <label className="label">{providerUsesSmsOtp(settingsInteg.provider) ? 'Số điện thoại đăng nhập' : 'Tài khoản (tên đăng nhập / Email)'}</label>
                     <input className="input w-full" type="text" placeholder={providerUsesSmsOtp(settingsInteg.provider) ? 'VD: 0901234567' : 'ooo.cashier.ds3'}
@@ -1186,9 +1194,34 @@ export default function IntegrationsPage() {
                         onChange={e => setCreds(p => ({ ...p, __loginPassword: e.target.value }))} />
                     </div>
                   )}
+                  {!providerUsesSmsOtp(settingsInteg.provider) && (
+                    <div>
+                      <label className="label">Cách relog session</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button onClick={() => setCreds(p => ({ ...p, __sessionRefreshMode: 'auto' }))}
+                          className={cn('p-3 rounded-xl border-2 text-sm font-medium transition-all text-left',
+                            (creds.__sessionRefreshMode ?? getDefaultSessionRefreshMode(settingsInteg.provider)) === 'auto'
+                              ? 'border-violet-400 bg-violet-100 text-violet-800'
+                              : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
+                          <div className="font-semibold">Headless auto</div>
+                          <div className="text-xs mt-0.5 opacity-75">Server tự relog nền</div>
+                        </button>
+                        <button onClick={() => setCreds(p => ({ ...p, __sessionRefreshMode: 'browser' }))}
+                          className={cn('p-3 rounded-xl border-2 text-sm font-medium transition-all text-left',
+                            (creds.__sessionRefreshMode ?? getDefaultSessionRefreshMode(settingsInteg.provider)) === 'browser'
+                              ? 'border-amber-400 bg-amber-50 text-amber-800'
+                              : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
+                          <div className="font-semibold">Browser relog</div>
+                          <div className="text-xs mt-0.5 opacity-75">Ưu tiên cho Be hoặc account cần relog tay</div>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <p className="text-xs text-violet-500">
                     {providerUsesSmsOtp(settingsInteg.provider)
                       ? 'Sau khi lưu số điện thoại → nhấn Login trên card để gửi OTP rồi xác nhận OTP.'
+                      : (creds.__sessionRefreshMode ?? getDefaultSessionRefreshMode(settingsInteg.provider)) === 'browser'
+                      ? 'Nếu chọn Browser relog, khi session hết hạn hãy dùng nút Login browser để mở flow đăng nhập tay và lưu lại session.'
                       : 'Sau khi lưu → nhấn nút Login trên card để chạy automation.'}
                   </p>
                 </div>

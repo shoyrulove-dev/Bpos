@@ -17,6 +17,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (res) return res
   await connectDB()
   const body = await req.json()
+  const current = await CustomerModel.findById(params.id).select('sources').lean() as { sources?: string[] } | null
   // Recalculate tier based on totalSpend
   if (body.totalSpend !== undefined) {
     const spend = body.totalSpend
@@ -24,6 +25,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     else if (spend >= 5_000_000) body.tier = 'gold'
     else if (spend >= 1_000_000) body.tier = 'silver'
     else body.tier = 'bronze'
+  }
+  if (body.source) {
+    body.sources = Array.from(new Set([...(current?.sources ?? []), String(body.source)]))
   }
   const c = await CustomerModel.findByIdAndUpdate(params.id, body, { new: true, runValidators: true }).lean()
   if (!c) return err('Không tìm thấy', 404)

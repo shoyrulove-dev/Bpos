@@ -1,5 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose'
 
+export type CustomerSource = 'grab' | 'be' | 'shopee' | 'xanh_sm' | 'internal' | 'other'
+
 export interface ICustomer extends Document {
   phone: string
   name: string
@@ -13,6 +15,8 @@ export interface ICustomer extends Document {
   note?: string
   status: 'active' | 'inactive'
   lastOrderAt?: Date
+  source?: CustomerSource
+  sources?: CustomerSource[]
 }
 
 const CustomerSchema = new Schema<ICustomer>({
@@ -27,10 +31,14 @@ const CustomerSchema = new Schema<ICustomer>({
   note:        { type: String },
   status:      { type: String, enum: ['active', 'inactive'], default: 'active' },
   lastOrderAt: { type: Date },
+  source:      { type: String, enum: ['grab', 'be', 'shopee', 'xanh_sm', 'internal', 'other'] },
+  sources:     [{ type: String, enum: ['grab', 'be', 'shopee', 'xanh_sm', 'internal', 'other'] }],
 }, { timestamps: true })
 
 CustomerSchema.index({ phone: 1, brandId: 1 }, { unique: true })
 CustomerSchema.index({ brandId: 1, tier: 1 })
 CustomerSchema.index({ totalSpend: -1 })
+CustomerSchema.index({ source: 1 })
+CustomerSchema.index({ sources: 1 })
 
 export default mongoose.models.Customer || mongoose.model<ICustomer>('Customer', CustomerSchema)

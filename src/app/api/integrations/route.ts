@@ -4,6 +4,7 @@ import IntegrationModel from '@/models/Integration'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { encrypt } from '@/lib/crypto'
 import { ensureChannelForIntegration } from '@/lib/channel-sync'
+import { getDefaultSessionRefreshMode } from '@/lib/session-refresh-mode'
 
 export async function GET(req: NextRequest) {
   const { res } = await requireAdmin(req)
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
   if (res) return res
   await connectDB()
   const body = await req.json()
-  const { provider, brandId, hubId, externalStoreId, externalStoreName, credentials, loginMode, loginUsername, loginPassword } = body
+  const { provider, brandId, hubId, externalStoreId, externalStoreName, credentials, loginMode, loginUsername, loginPassword, sessionRefreshMode } = body
   if (!provider || !brandId) return err('Thiếu thông tin bắt buộc')
   const integDoc: Record<string, unknown> = {
     provider, brandId, hubId, externalStoreId, externalStoreName,
@@ -36,6 +37,9 @@ export async function POST(req: NextRequest) {
   if (loginMode)    integDoc.loginMode    = loginMode
   if (loginUsername) integDoc.loginUsername = loginUsername
   if (loginPassword) integDoc.loginPassword = encrypt(String(loginPassword))
+  if (loginMode === 'auto' || loginUsername || loginPassword) {
+    integDoc.sessionRefreshMode = sessionRefreshMode || getDefaultSessionRefreshMode(provider)
+  }
   const integration = await IntegrationModel.create(integDoc)
   await ensureChannelForIntegration({
     provider: integration.provider,

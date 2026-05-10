@@ -31,10 +31,11 @@ export async function GET(req: NextRequest) {
   const drivers = await DriverModel.find(filter).sort({ lastSeenAt: -1 }).lean()
 
   if (exportCsv) {
-    const header = toCsvRow(['Tên tài xế', 'Số điện thoại', 'Sàn', 'Lần gần nhất'])
+    const header = toCsvRow(['Tên tài xế', 'Số điện thoại', 'Sàn', 'Số lần gặp', 'Lần gần nhất'])
     const rows = drivers.map(d => toCsvRow([
       d.name, d.phone,
       PLATFORM_LABELS[d.platform] ?? d.platform,
+      d.visitCount ?? 0,
       d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleDateString('vi-VN') : '',
     ]))
     const csv = [header, ...rows].join('\r\n')

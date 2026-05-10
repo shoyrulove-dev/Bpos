@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     : []
   const integrations = brandId
     ? await IntegrationModel.find({ brandId, ...(source ? { provider: source } : {}) })
-        .select('provider externalStoreId externalStoreName loginMode loginUsername sessionStatus sessionCapturedAt sessionExpiresAt sessionError sessionFailureCount automationRunning isActive lastSyncAt syncStatus syncError updatedAt')
+        .select('provider externalStoreId externalStoreName loginMode sessionRefreshMode loginUsername sessionStatus sessionCapturedAt sessionExpiresAt sessionError sessionFailureCount automationRunning isActive lastSyncAt syncStatus syncError updatedAt')
         .lean()
     : []
 

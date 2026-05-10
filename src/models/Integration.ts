@@ -18,6 +18,8 @@ export interface IIntegration extends Document {
   loginUsername?: string
   /** Merchant portal password. AES-256-GCM encrypted. */
   loginPassword?: string
+  /** How expired sessions should be re-established. */
+  sessionRefreshMode?: 'auto' | 'browser'
   /** Session cookies captured by Playwright. AES-256-GCM encrypted JSON (PlaywrightCookie[]). */
   sessionData?: string
   /** Lifecycle state of the stored session. */
@@ -54,6 +56,7 @@ const IntegrationSchema = new Schema<IIntegration>({
 
   loginUsername:     { type: String },
   loginPassword:     { type: String, select: false },
+  sessionRefreshMode:{ type: String, enum: ['auto', 'browser'], default: 'auto' },
   sessionData:       { type: String, select: false },
   sessionStatus:     { type: String, enum: ['none', 'active', 'expired', 'error'], default: 'none' },
   sessionCapturedAt: { type: Date },

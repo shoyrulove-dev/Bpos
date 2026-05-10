@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Search, Star, TrendingUp, Gift, Edit, Trash2, Loader2, Download } from 'lucide-react'
+import { Plus, Search, Star, Gift, Edit, Trash2, Loader2, Download } from 'lucide-react'
 import { useCustomers, useCreateCustomer, useUpdateCustomer, useDeleteCustomer } from '@/hooks/use-data'
 import { useDebounce } from '@/hooks/use-debounce'
-import { cn, formatCurrency, formatDate, LOYALTY_TIER_LABEL, LOYALTY_TIER_COLOR } from '@/lib/utils'
+import { CHANNEL_SOURCE_COLOR, CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, LOYALTY_TIER_LABEL, LOYALTY_TIER_COLOR } from '@/lib/utils'
 import type { Customer, LoyaltyTier } from '@/types'
 
 const TIER_ICONS: Record<LoyaltyTier, string> = {
@@ -21,11 +21,27 @@ const TIER_THRESHOLDS: { tier: LoyaltyTier; label: string; min: number }[] = [
   { tier: 'platinum', label: 'Bạch Kim', min: 10_000_000 },
 ]
 
-const emptyForm = { phone: '', name: '', email: '', brandId: '', note: '', points: '' }
+const SOURCE_OPTIONS = [
+  { value: '', label: 'Tất cả nguồn' },
+  { value: 'grab', label: 'GrabFood' },
+  { value: 'be', label: 'Be' },
+  { value: 'shopee', label: 'Shopee' },
+  { value: 'xanh_sm', label: 'Xanh SM' },
+  { value: 'internal', label: 'Nội bộ' },
+  { value: 'other', label: 'Khác' },
+]
+
+const emptyForm = { phone: '', name: '', email: '', brandId: '', source: '', note: '', points: '' }
+
+function getReturningCustomerLabel(orderCount: number) {
+  if (orderCount <= 1) return null
+  return `Khách quen x${orderCount}`
+}
 
 export default function CustomersPage() {
   const [search, setSearch] = useState('')
   const [tierFilter, setTierFilter] = useState('')
+  const [sourceFilter, setSourceFilter] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null)
   const [form, setForm] = useState<Record<string, unknown>>(emptyForm)
@@ -33,7 +49,7 @@ export default function CustomersPage() {
   const [addPointsValue, setAddPointsValue] = useState('')
 
   const dq = useDebounce(search)
-  const { data: rawCustomers = [], isLoading } = useCustomers({ q: dq, tier: tierFilter })
+  const { data: rawCustomers = [], isLoading } = useCustomers({ q: dq, tier: tierFilter, source: sourceFilter })
   const customers = rawCustomers as Customer[]
   const createMutation = useCreateCustomer()
   const updateMutation = useUpdateCustomer()
@@ -48,7 +64,7 @@ export default function CustomersPage() {
   const openCreate = () => { setEditCustomer(null); setForm(emptyForm); setShowForm(true) }
   const openEdit = (c: Customer) => {
     setEditCustomer(c)
-    setForm({ phone: c.phone, name: c.name, email: c.email || '', brandId: c.brandId, note: c.note || '', points: String(c.points) })
+    setForm({ phone: c.phone, name: c.name, email: c.email || '', brandId: c.brandId, source: c.source || '', note: c.note || '', points: String(c.points) })
     setShowForm(true)
   }
 
@@ -81,6 +97,7 @@ export default function CustomersPage() {
               const p = new URLSearchParams()
               if (dq) p.set('q', dq)
               if (tierFilter) p.set('tier', tierFilter)
+              if (sourceFilter) p.set('source', sourceFilter)
               p.set('export', 'csv')
               window.location.href = `/api/customers?${p.toString()}`
             }}
@@ -115,6 +132,9 @@ export default function CustomersPage() {
           <option value="">Tất cả hạng</option>
           {TIER_THRESHOLDS.map(t => <option key={t.tier} value={t.tier}>{t.label}</option>)}
         </select>
+        <select className="input w-40" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}>
+          {SOURCE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
       </div>
 
       <div className="card">
@@ -127,6 +147,7 @@ export default function CustomersPage() {
                 <tr>
                   <th>Khách hàng</th>
                   <th>Số điện thoại</th>
+                  <th>Nguồn</th>
                   <th>Hạng</th>
                   <th className="text-right">Điểm tích lũy</th>
                   <th className="text-right">Tổng chi tiêu</th>
@@ -137,7 +158,7 @@ export default function CustomersPage() {
               </thead>
               <tbody>
                 {customers.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center py-12 text-gray-400">Chưa có khách hàng</td></tr>
+                  <tr><td colSpan={9} className="text-center py-12 text-gray-400">Chưa có khách hàng</td></tr>
                 ) : customers.map(c => (
                   <tr key={c._id}>
                     <td>
@@ -148,10 +169,32 @@ export default function CustomersPage() {
                         <div>
                           <div className="font-medium text-gray-900 text-sm">{c.name}</div>
                           {c.email && <div className="text-xs text-gray-400">{c.email}</div>}
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {getReturningCustomerLabel(c.orderCount) && (
+                              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                                {getReturningCustomerLabel(c.orderCount)}
+                              </span>
+                            )}
+                            {c.note && (
+                              <span className="inline-flex max-w-[220px] items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-200 truncate">
+                                {c.note}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td className="font-mono text-sm text-gray-600">{c.phone}</td>
+                    <td>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(c.sources?.length ? c.sources : c.source ? [c.source] : []).map(source => (
+                          <span key={`${c._id}-${source}`} className={cn('badge', CHANNEL_SOURCE_COLOR[source] ?? 'bg-gray-100 text-gray-700')}>
+                            {CHANNEL_SOURCE_LABEL[source] ?? source}
+                          </span>
+                        ))}
+                        {!(c.sources?.length || c.source) && <span className="text-xs text-gray-400">Chưa rõ</span>}
+                      </div>
+                    </td>
                     <td>
                       <span className={cn('badge', LOYALTY_TIER_COLOR[c.tier])}>
                         {TIER_ICONS[c.tier]} {LOYALTY_TIER_LABEL[c.tier]}
@@ -205,6 +248,12 @@ export default function CustomersPage() {
               <div>
                 <label className="label">Email</label>
                 <input type="email" className="input" value={String(form.email || '')} onChange={e => setForm({ ...form, email: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Nguồn khách</label>
+                <select className="input" value={String(form.source || '')} onChange={e => setForm({ ...form, source: e.target.value })}>
+                  {SOURCE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

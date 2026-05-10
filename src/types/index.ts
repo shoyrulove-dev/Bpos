@@ -447,6 +447,8 @@ export interface Customer {
   email?: string
   brandId: string
   brandName?: string
+  source?: string
+  sources?: string[]
   points: number
   totalSpend: number
   orderCount: number

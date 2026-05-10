@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Search, Truck, Loader2, Download } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Search, Truck, Loader2, Download, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useDebounce } from '@/hooks/use-debounce'
 import { formatDate } from '@/lib/utils'
@@ -27,7 +27,13 @@ interface Driver {
   name: string
   phone: string
   platform: string
+  visitCount: number
   lastSeenAt: string
+}
+
+function getReturningDriverLabel(visitCount: number) {
+  if (visitCount <= 1) return null
+  return `Tài xế quen x${visitCount}`
 }
 
 const PLATFORM_OPTIONS = [
@@ -38,9 +44,13 @@ const PLATFORM_OPTIONS = [
   { value: 'xanh_sm', label: 'Xanh SM' },
 ]
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 200, 500]
+
 export default function DriversPage() {
   const [search, setSearch] = useState('')
   const [platformFilter, setPlatformFilter] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const dq = useDebounce(search)
 
   const params = new URLSearchParams()
@@ -61,6 +71,55 @@ export default function DriversPage() {
     acc[d.platform] = (acc[d.platform] ?? 0) + 1
     return acc
   }, {} as Record<string, number>)
+
+  useEffect(() => {
+    setPage(1)
+  }, [dq, platformFilter, pageSize])
+
+  const totalPages = Math.max(1, Math.ceil(drivers.length / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const paginatedDrivers = drivers.slice((safePage - 1) * pageSize, safePage * pageSize)
+  const startItem = drivers.length === 0 ? 0 : (safePage - 1) * pageSize + 1
+  const endItem = Math.min(drivers.length, safePage * pageSize)
+
+  const renderPagination = (position: 'top' | 'bottom') => (
+    <div className={`flex flex-col gap-3 border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${position === 'top' ? 'border-b' : 'border-t'}`}>
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        <span>Hiển thị</span>
+        <select
+          className="input h-9 w-24"
+          value={pageSize}
+          onChange={event => setPageSize(Number(event.target.value))}
+        >
+          {PAGE_SIZE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+        </select>
+        <span>dòng</span>
+        <span className="text-gray-400">|</span>
+        <span>{startItem}-{endItem} / {drivers.length}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setPage(current => Math.max(1, current - 1))}
+          disabled={safePage <= 1}
+          className="btn-outline h-9 px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <ChevronLeft className="w-4 h-4" /> Trước
+        </button>
+        <div className="min-w-[88px] text-center text-sm font-medium text-gray-600">
+          Trang {safePage}/{totalPages}
+        </div>
+        <button
+          type="button"
+          onClick={() => setPage(current => Math.min(totalPages, current + 1))}
+          disabled={safePage >= totalPages}
+          className="btn-outline h-9 px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Sau <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="space-y-5">
@@ -123,30 +182,41 @@ export default function DriversPage() {
         </div>
       ) : (
         <div className="card overflow-hidden">
+          {renderPagination('top')}
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Tên tài xế</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Số điện thoại</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Sàn</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Số lần gặp</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Lần gần nhất</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {drivers.map((driver) => (
+              {paginatedDrivers.map((driver) => (
                 <tr key={driver._id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-gray-900">{driver.name}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-gray-900">{driver.name}</div>
+                    {getReturningDriverLabel(driver.visitCount) && (
+                      <div className="mt-1 inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 ring-1 ring-sky-200">
+                        {getReturningDriverLabel(driver.visitCount)}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-gray-600">{driver.phone}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${PLATFORM_COLORS[driver.platform] ?? 'bg-gray-100 text-gray-600 ring-gray-200'}`}>
                       {PLATFORM_LABELS[driver.platform] ?? driver.platform}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-700">{driver.visitCount ?? 0}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{driver.lastSeenAt ? formatDate(driver.lastSeenAt) : '–'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {renderPagination('bottom')}
         </div>
       )}
     </div>

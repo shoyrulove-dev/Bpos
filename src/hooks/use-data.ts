@@ -263,11 +263,12 @@ export function useCloseShift() {
 }
 
 // ---- Customers (Loyalty) ----
-export function useCustomers(params?: { q?: string; tier?: string; brandId?: string }) {
+export function useCustomers(params?: { q?: string; tier?: string; brandId?: string; source?: string }) {
   const sp = new URLSearchParams()
   if (params?.q) sp.set('q', params.q)
   if (params?.tier) sp.set('tier', params.tier)
   if (params?.brandId) sp.set('brandId', params.brandId)
+  if (params?.source) sp.set('source', params.source)
   return useQuery({ queryKey: ['customers', params], queryFn: () => fetchJSON(`/api/customers?${sp}`) })
 }
 

@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
   const filter = ids.length ? { _id: { $in: ids } } : { provider: 'grab', isActive: true }
   const integrations = await IntegrationModel.find(filter)
-    .select('provider externalStoreId externalStoreName loginMode loginUsername sessionStatus sessionCapturedAt sessionExpiresAt sessionError sessionFailureCount automationRunning isActive lastSyncAt syncStatus syncError updatedAt')
+    .select('provider externalStoreId externalStoreName loginMode sessionRefreshMode loginUsername sessionStatus sessionCapturedAt sessionExpiresAt sessionError sessionFailureCount automationRunning isActive lastSyncAt syncStatus syncError updatedAt')
     .lean()
 
   return NextResponse.json({ ok: true, count: integrations.length, integrations })

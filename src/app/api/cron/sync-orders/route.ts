@@ -6,22 +6,15 @@ import SyncLogModel from '@/models/SyncLog'
 import { getAdapter } from '@/integrations/registry'
 import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/automation-session'
 import { requestAutomationLogin } from '@/lib/automation-login'
+import { upsertCustomerProfile } from '@/lib/customer-upsert'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
 import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone } from '@/lib/order-financials'
-import CustomerModel from '@/models/Customer'
 import DriverModel from '@/models/Driver'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeOrdersByExternalOrderId, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
 import { buildSessionFailureUpdate, buildSessionSuccessUpdate } from '@/lib/session-health'
 import type { NormalizedOrder, Order } from '@/types'
 import type { SessionData } from '@/integrations/types'
-
-function calcCustomerTier(totalSpend: number): 'bronze' | 'silver' | 'gold' | 'platinum' {
-  if (totalSpend >= 20_000_000) return 'platinum'
-  if (totalSpend >= 5_000_000) return 'gold'
-  if (totalSpend >= 1_000_000) return 'silver'
-  return 'bronze'
-}
 
 const CRON_SECRET = process.env.CRON_SECRET
 const AUTOMATION_URL = process.env.AUTOMATION_SERVICE_URL ?? ''
@@ -32,6 +25,10 @@ type AutomationRefreshResult = {
   orders: NormalizedOrder[]
 }
 
+function usesBrowserRelog(integration: { sessionRefreshMode?: string }) {
+  return integration.sessionRefreshMode === 'browser'
+}
+
 async function refreshSessionIfPossible(integration: {
   _id: string
   provider: string
@@ -39,8 +36,10 @@ async function refreshSessionIfPossible(integration: {
   externalStoreName?: string
   loginUsername?: string
   loginPassword?: string
+  sessionRefreshMode?: 'auto' | 'browser'
   sessionFailureCount?: number
 }, options?: { includeOrders?: boolean }): Promise<AutomationRefreshResult | null> {
+  if (usesBrowserRelog(integration)) return null
   if (!AUTOMATION_URL || !integration.loginUsername || !integration.loginPassword) return null
 
   const { serviceRes, data } = await requestAutomationLogin({
@@ -116,6 +115,7 @@ export async function GET(req: NextRequest) {
       loginMode?: 'api' | 'auto'
       loginUsername?: string
       loginPassword?: string
+      sessionRefreshMode?: 'auto' | 'browser'
       sessionData?: string
       sessionStatus?: string
       sessionFailureCount?: number
@@ -142,8 +142,18 @@ export async function GET(req: NextRequest) {
         let refreshed: AutomationRefreshResult | null = null
         let session = intg.sessionData ? decryptJSON(intg.sessionData) as SessionData : null
         const isExpired = intg.sessionExpiresAt ? new Date(intg.sessionExpiresAt) < new Date() : false
+        const browserRelog = usesBrowserRelog(intg)
 
         if (!session || isExpired) {
+          if (browserRelog) {
+            await IntegrationModel.findByIdAndUpdate(intg._id, buildSessionFailureUpdate({
+              provider: intg.provider,
+              currentFailureCount: intg.sessionFailureCount,
+              errorMessage: 'Session hết hạn – dùng Login trình duyệt để đăng nhập lại',
+              fallbackStatus: 'expired',
+            }))
+            throw new Error('Session hết hạn – dùng Login trình duyệt để đăng nhập lại')
+          }
           refreshed = await refreshSessionIfPossible(intg, { includeOrders: shouldFetchLiveOrders })
           session = refreshed?.session ?? null
           if (!session) {
@@ -163,6 +173,15 @@ export async function GET(req: NextRequest) {
           result = refreshed.orders
         }
         if (result === null) {
+          if (browserRelog) {
+            await IntegrationModel.findByIdAndUpdate(intg._id, buildSessionFailureUpdate({
+              provider: intg.provider,
+              currentFailureCount: intg.sessionFailureCount,
+              errorMessage: 'Session không còn hợp lệ – dùng Login trình duyệt để đăng nhập lại',
+              fallbackStatus: 'expired',
+            }))
+            throw new Error('Session không còn hợp lệ – dùng Login trình duyệt để đăng nhập lại')
+          }
           refreshed = await refreshSessionIfPossible(intg, { includeOrders: shouldFetchLiveOrders })
           session = refreshed?.session ?? null
           if (!session) {
@@ -228,8 +247,9 @@ export async function GET(req: NextRequest) {
         existingOrders.map((order) => [String(order.externalOrderId ?? ''), order])
       )
 
-      const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean }> = []
+      const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean; placedAt?: string | Date }> = []
       const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean }> = []
+      const customerSaveErrors: string[] = []
 
       for (const normalized of orders) {
         if (!normalized.externalOrderId) continue
@@ -260,7 +280,7 @@ export async function GET(req: NextRequest) {
           const cName = getDisplayCustomerName(customerOrder) ?? mergedNormalized.customerName?.trim()
           const cPhone = getDisplayCustomerPhone(customerOrder) || mergedNormalized.customerPhone?.trim()
           if (cName && cPhone && hasMeaningfulCustomerName(cName) && hasMeaningfulPhone(cPhone)) {
-            customersToSave.push({ name: cName, phone: cPhone, brandId: String(intg.brandId), total: mergedNormalized.total ?? 0, isNew: isNewOrder })
+            customersToSave.push({ name: cName, phone: cPhone, brandId: String(intg.brandId), total: mergedNormalized.total ?? 0, isNew: isNewOrder, placedAt: mergedNormalized.placedAt })
           }
 
           // Collect driver info for auto-save.
@@ -280,29 +300,25 @@ export async function GET(req: NextRequest) {
       // Auto-save customers — new orders increment stats and recalculate tier
       for (const c of customersToSave) {
         try {
-          const existingCustomer = await CustomerModel.findOne({ phone: c.phone, brandId: c.brandId }).select('name').lean() as { name?: string } | null
-          const shouldUpdateName = !existingCustomer || !hasMeaningfulCustomerName(existingCustomer.name)
-          const saved = await CustomerModel.findOneAndUpdate(
-            { phone: c.phone, brandId: c.brandId },
-            c.isNew
-              ? {
-                  $set: { ...(shouldUpdateName ? { name: c.name } : {}), lastOrderAt: new Date() },
-                  $inc: { orderCount: 1, totalSpend: c.total },
-                  $setOnInsert: { points: 0, tier: 'bronze', status: 'active', name: c.name },
-                }
-              : {
-                  $set: { ...(shouldUpdateName ? { name: c.name } : {}), lastOrderAt: new Date() },
-                  $setOnInsert: { points: 0, tier: 'bronze', status: 'active', orderCount: 1, totalSpend: c.total, name: c.name },
-                },
-            { upsert: true, new: true }
-          )
-          if (saved) {
-            const newTier = calcCustomerTier(saved.totalSpend)
-            if (saved.tier !== newTier) {
-              await CustomerModel.findByIdAndUpdate(saved._id, { $set: { tier: newTier } })
-            }
+          const result = await upsertCustomerProfile({
+            phone: c.phone,
+            name: c.name,
+            brandId: c.brandId,
+            source: intg.provider,
+            placedAt: c.placedAt,
+            orderTotal: c.total,
+            isNewOrder: c.isNew,
+          })
+          if (!result.ok) {
+            customerSaveErrors.push(`customer ${c.phone}: ${result.error ?? 'save-failed'}`)
           }
-        } catch { /* skip */ }
+        } catch (customerErr) {
+          customerSaveErrors.push(`customer ${c.phone}: ${customerErr instanceof Error ? customerErr.message : String(customerErr)}`)
+        }
+      }
+
+      if (customerSaveErrors.length) {
+        throw new Error(customerSaveErrors[0])
       }
 
       // Auto-save drivers — new orders increment visitCount

@@ -16,6 +16,10 @@ const AUTOMATION_URL    = process.env.AUTOMATION_SERVICE_URL ?? ''
 const AUTOMATION_SECRET = process.env.AUTOMATION_SECRET ?? ''
 const SESSION_REFRESH_BATCH_SIZE = Math.max(1, Number(process.env.SESSION_REFRESH_BATCH_SIZE ?? 2))
 
+function usesBrowserRelog(integration: { sessionRefreshMode?: string }) {
+  return integration.sessionRefreshMode === 'browser'
+}
+
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret) {
@@ -45,6 +49,7 @@ export async function GET(req: NextRequest) {
     loginMode:         'auto',
     isActive:          true,
     automationRunning: false,
+    sessionRefreshMode: { $ne: 'browser' },
     $or: [
       { sessionStatus: 'expired' },
       { sessionStatus: 'error' },
@@ -67,6 +72,11 @@ export async function GET(req: NextRequest) {
   for (const integ of integrations) {
     const username = integ.loginUsername
     const password = integ.loginPassword ? decrypt(integ.loginPassword) : null
+
+    if (usesBrowserRelog(integ)) {
+      results.push({ id: String(integ._id), provider: integ.provider, success: false, error: 'Browser relog enabled' })
+      continue
+    }
 
     if (!username || !password) {
       results.push({ id: String(integ._id), provider: integ.provider, success: false, error: 'Thiếu credentials' })
