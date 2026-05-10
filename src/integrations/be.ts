@@ -403,15 +403,19 @@ export class BeAdapter implements PlatformAdapter {
 
     // Be API uses integer status codes — check multiple possible field names (merchant portal may use order_status / current_status)
     const statusInt = Number(raw.status ?? raw.order_status ?? raw.current_status ?? raw.state ?? raw.order_state ?? -1)
+    // Trust fetch_type bucket first — orders in active tabs (in_progress/on_delivery/pending) can NEVER be cancelled
+    const ACTIVE_FETCH_TYPES = new Set(['in_progress', 'on_delivery', 'pending'])
+    const isActiveBucket = fetchType ? ACTIVE_FETCH_TYPES.has(fetchType) : false
     let orderStatus: OrderStatus = (fetchType ? STATUS_BY_FETCH[fetchType] : undefined) ?? 'waiting_confirm'
-    // Don't let a completed status integer override an explicitly cancelled fetch bucket
-    if ((statusInt === 21 || statusInt === 20) && fetchType !== 'cancelled') orderStatus = 'completed'
-    // Broad cancelled detection: 99/100 (partner), 3-10 (merchant portal cancel reasons)
-    const CANCELLED_INTS = new Set([3, 4, 5, 6, 7, 8, 9, 10, 99, 100])
-    if (CANCELLED_INTS.has(statusInt)) orderStatus = 'cancelled'
-    // Check explicit cancellation fields in raw payload (merchant API may include these)
-    const hasCancelField = this.hasCancelSignal(raw)
-    if (hasCancelField) orderStatus = 'cancelled'
+    if (!isActiveBucket) {
+      // Only apply cancel/complete detection for history buckets (previous, cancelled) or unknown fetchType
+      if ((statusInt === 21 || statusInt === 20) && fetchType !== 'cancelled') orderStatus = 'completed'
+      // Broad cancelled detection: 99/100 (partner), 3-10 (merchant portal cancel reasons)
+      const CANCELLED_INTS = new Set([3, 4, 5, 6, 7, 8, 9, 10, 99, 100])
+      if (CANCELLED_INTS.has(statusInt)) orderStatus = 'cancelled'
+      // Check explicit cancellation fields in raw payload (merchant API may include these)
+      if (this.hasCancelSignal(raw)) orderStatus = 'cancelled'
+    }
 
     const total    = Number(raw.order_amount ?? raw.originial_amount ?? raw.original_amount ?? raw.sub_total ?? raw.subtotal ?? raw.total_amount ?? raw.final_amount ?? 0)
     const original = Number(raw.originial_amount ?? raw.original_amount ?? raw.sub_total ?? raw.subtotal ?? raw.order_amount ?? raw.net_order_amount ?? total)
