@@ -4,6 +4,8 @@ import OrderModel from '@/models/Order'
 import HubModel from '@/models/Hub'
 import { ok, requireAuth } from '@/lib/api-helpers'
 import { resolveDateRange } from '@/lib/date-range'
+import { getActualReceived } from '@/lib/order-financials'
+import type { Order } from '@/types'
 
 export async function GET(req: NextRequest) {
   const { res } = await requireAuth(req)
@@ -25,13 +27,14 @@ export async function GET(req: NextRequest) {
     status: { $ne: 'cancelled' },
   }
   if (brandId) orderFilter.brandId = brandId
-  const orders = await OrderModel.find(orderFilter).select('hubId total discount platformFee status').lean()
+  const orders = await OrderModel.find(orderFilter).select('hubId source total discount platformFee rawPayload status').lean()
 
   const rows = hubs.map(h => {
     const hOrders = orders.filter(o => String(o.hubId) === String(h._id))
     const revenue = hOrders.reduce((s, o) => s + (o.total || 0), 0)
     const discount = hOrders.reduce((s, o) => s + (o.discount || 0), 0)
     const platformFee = hOrders.reduce((s, o) => s + (o.platformFee || 0), 0)
+    const netRevenue = hOrders.reduce((s, o) => s + getActualReceived(o as unknown as Order), 0)
     return {
       _id: h._id,
       code: h.code,
@@ -43,7 +46,7 @@ export async function GET(req: NextRequest) {
       revenue,
       discount,
       platformFee,
-      netRevenue: revenue - discount - platformFee,
+      netRevenue,
     }
   }).sort((a, b) => b.revenue - a.revenue)
 
@@ -52,7 +55,9 @@ export async function GET(req: NextRequest) {
     totalOrders: orders.length,
     revenue: orders.reduce((s, o) => s + (o.total || 0), 0),
     totalRevenue: orders.reduce((s, o) => s + (o.total || 0), 0),
-    totalNetRevenue: orders.reduce((s, o) => s + ((o.total || 0) - (o.discount || 0) - (o.platformFee || 0)), 0),
+    totalDiscount: orders.reduce((s, o) => s + (o.discount || 0), 0),
+    totalPlatformFee: orders.reduce((s, o) => s + (o.platformFee || 0), 0),
+    totalNetRevenue: orders.reduce((s, o) => s + getActualReceived(o as unknown as Order), 0),
   }
 
   return ok({ rows, summary })

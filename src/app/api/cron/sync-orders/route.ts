@@ -332,11 +332,10 @@ export async function GET(req: NextRequest) {
               ? {
                   $set: { ...(shouldUpdateName ? { name: d.name } : {}), lastSeenAt: new Date() },
                   $inc: { visitCount: 1 },
-                  $setOnInsert: { name: d.name },
                 }
               : {
                   $set: { ...(shouldUpdateName ? { name: d.name } : {}), lastSeenAt: new Date() },
-                  $setOnInsert: { visitCount: 1, name: d.name },
+                  $setOnInsert: { visitCount: 1 },
                 },
             { upsert: true }
           )

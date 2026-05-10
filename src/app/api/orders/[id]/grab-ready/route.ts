@@ -89,13 +89,15 @@ function buildGrabSessionContext(session: SessionData, storeId: string) {
   if (!cookieHeader) return null
 
   const { extraHeaders, discoveredStoreId } = enrichGrabSessionExtraHeaders(session, storeId)
-  const token = extraHeaders['x-grab-token'] ?? extraHeaders['Authorization'] ?? ''
 
   const forwardedHeaders = Object.fromEntries(
     Object.entries(extraHeaders).filter(([key, value]) => {
       if (!value) return false
       const normalizedKey = key.toLowerCase()
-      return normalizedKey !== 'x-grab-orders-api' && normalizedKey !== 'x-grab-stores'
+      return normalizedKey !== 'x-grab-orders-api'
+        && normalizedKey !== 'x-grab-stores'
+        && normalizedKey !== 'authorization'
+        && normalizedKey !== 'x-grab-token'
     })
   )
 
@@ -115,10 +117,6 @@ function buildGrabSessionContext(session: SessionData, storeId: string) {
     'Sec-Fetch-Dest': 'empty',
     requestsource: 'troyPortal',
     merchantid: discoveredStoreId,
-  }
-
-  if (token && !token.startsWith('x-grab')) {
-    baseHeaders.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`
   }
 
   return { baseHeaders, discoveredStoreId }

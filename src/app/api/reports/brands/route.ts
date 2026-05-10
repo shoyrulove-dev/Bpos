@@ -4,6 +4,8 @@ import OrderModel from '@/models/Order'
 import BrandModel from '@/models/Brand'
 import { ok, requireAuth } from '@/lib/api-helpers'
 import { resolveDateRange } from '@/lib/date-range'
+import { getActualReceived } from '@/lib/order-financials'
+import type { Order } from '@/types'
 
 export async function GET(req: NextRequest) {
   const { res } = await requireAuth(req)
@@ -20,13 +22,14 @@ export async function GET(req: NextRequest) {
       ...(to ? { $lte: to } : {}),
     },
     status: { $ne: 'cancelled' },
-  }).select('brandId total discount platformFee status').lean()
+  }).select('brandId source total discount platformFee rawPayload status').lean()
 
   const rows = brands.map(b => {
     const bOrders = orders.filter(o => String(o.brandId) === String(b._id))
     const revenue = bOrders.reduce((s, o) => s + (o.total || 0), 0)
     const discount = bOrders.reduce((s, o) => s + (o.discount || 0), 0)
     const platformFee = bOrders.reduce((s, o) => s + (o.platformFee || 0), 0)
+    const netRevenue = bOrders.reduce((s, o) => s + getActualReceived(o as unknown as Order), 0)
     return {
       _id: b._id,
       name: b.name,
@@ -36,7 +39,7 @@ export async function GET(req: NextRequest) {
       revenue,
       discount,
       platformFee,
-      netRevenue: revenue - discount - platformFee,
+      netRevenue,
     }
   }).sort((a, b) => b.revenue - a.revenue)
 
@@ -46,7 +49,8 @@ export async function GET(req: NextRequest) {
     revenue: orders.reduce((s, o) => s + (o.total || 0), 0),
     totalRevenue: orders.reduce((s, o) => s + (o.total || 0), 0),
     totalDiscount: orders.reduce((s, o) => s + (o.discount || 0), 0),
-    totalNetRevenue: orders.reduce((s, o) => s + ((o.total || 0) - (o.discount || 0) - (o.platformFee || 0)), 0),
+    totalPlatformFee: orders.reduce((s, o) => s + (o.platformFee || 0), 0),
+    totalNetRevenue: orders.reduce((s, o) => s + getActualReceived(o as unknown as Order), 0),
   }
 
   return ok({ rows, summary })

@@ -115,12 +115,14 @@ async function upsertDriverFromOrder(order: StoredOrder) {
     { phone, platform: String(order.source) },
     {
       $set: {
-        phone,
-        platform: String(order.source),
         name,
         lastSeenAt: new Date(),
       },
-      $inc: { visitCount: 1 },
+      $setOnInsert: {
+        phone,
+        platform: String(order.source),
+        visitCount: 1,
+      },
     },
     { upsert: true }
   )
@@ -448,12 +450,14 @@ async function backfillDriversFromOrders(options?: {
       { phone, platform: String(order.source) },
       {
         $set: {
-          phone,
-          platform: String(order.source),
           name,
           lastSeenAt: new Date(),
         },
-        $inc: { visitCount: 1 },
+        $setOnInsert: {
+          phone,
+          platform: String(order.source),
+          visitCount: 1,
+        },
       },
       { upsert: true }
     )
@@ -562,14 +566,7 @@ async function backfillCustomersFromOrders(options?: {
         $setOnInsert: {
           phone: aggregate.phone,
           brandId,
-          name: aggregate.name,
           points: Number(existingCustomer?.points ?? 0),
-          totalSpend: nextTotalSpend,
-          orderCount: nextOrderCount,
-          tier: nextTier,
-          status: 'active',
-          ...(aggregate.source ? { source: aggregate.source } : {}),
-          ...(aggregate.sources.size ? { sources: Array.from(aggregate.sources) } : {}),
         },
       },
       { upsert: true, setDefaultsOnInsert: true }

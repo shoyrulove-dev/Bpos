@@ -14,6 +14,48 @@ const LAUNCH_ARGS = [
   '--disable-web-security',
 ]
 
+function randomBetween(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min
+}
+
+async function humanPause(page, minMs = 90, maxMs = 240) {
+  await page.waitForTimeout(randomBetween(minMs, maxMs))
+}
+
+async function humanClick(page, locator) {
+  await locator.scrollIntoViewIfNeeded().catch(() => null)
+
+  const box = await locator.boundingBox().catch(() => null)
+  if (box) {
+    const targetX = box.x + Math.min(Math.max(10, box.width / 2), Math.max(10, box.width - 10))
+    const targetY = box.y + Math.min(Math.max(10, box.height / 2), Math.max(10, box.height - 10))
+    await page.mouse.move(targetX, targetY, { steps: randomBetween(8, 18) }).catch(() => null)
+    await humanPause(page, 60, 160)
+  }
+
+  await locator.click({ delay: randomBetween(40, 120) }).catch(async () => {
+    await locator.focus().catch(() => null)
+  })
+  await humanPause(page, 80, 180)
+}
+
+async function humanType(page, locator, value) {
+  await humanClick(page, locator)
+  await locator.press('Control+A').catch(() => null)
+  await humanPause(page, 40, 120)
+  await locator.press('Backspace').catch(() => null)
+  await humanPause(page, 80, 160)
+
+  for (const character of String(value || '')) {
+    await page.keyboard.type(character, { delay: randomBetween(70, 180) })
+    if (Math.random() < 0.18) {
+      await humanPause(page, 120, 260)
+    }
+  }
+
+  await humanPause(page, 180, 360)
+}
+
 function mapGrabStatus(rawStatus) {
   const statusMap = {
     PENDING: 'waiting_confirm',
@@ -371,8 +413,10 @@ async function loginGrab({ username, password, otp, pendingSession, preferredSto
       page = pendingSession.page
       capturedApis = Array.isArray(pendingSession.capturedApis) ? pendingSession.capturedApis : []
     } else {
+      const headless = process.env.GRAB_AUTOMATION_HEADLESS !== 'false'
+
       browser = await chromium.launch({
-        headless: true,
+        headless,
         args: LAUNCH_ARGS,
         timeout: 30000,
       })
@@ -382,6 +426,18 @@ async function loginGrab({ username, password, otp, pendingSession, preferredSto
         viewport: { width: 1280, height: 900 },
         locale: 'vi-VN',
         timezoneId: 'Asia/Ho_Chi_Minh',
+      })
+
+      await context.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined })
+        Object.defineProperty(navigator, 'languages', { get: () => ['vi-VN', 'vi', 'en-US', 'en'] })
+        Object.defineProperty(navigator, 'platform', { get: () => 'Win32' })
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4] })
+
+        const chromeLike = { runtime: {} }
+        Object.defineProperty(window, 'chrome', {
+          get: () => chromeLike,
+        })
       })
 
       await context.route('**/*', async route => {
@@ -454,13 +510,12 @@ async function loginGrab({ username, password, otp, pendingSession, preferredSto
       }
 
       if (accountInput) {
-        await accountInput.fill(username)
-        await page.waitForTimeout(500)
+        await humanType(page, accountInput, username)
 
         const continueButton = await waitForEnabledLocator(page, nextSelectors, 5000)
         if (continueButton) {
-          await continueButton.click()
-          await page.waitForTimeout(2000)
+          await humanClick(page, continueButton)
+          await humanPause(page, 1200, 2400)
         }
 
         let passwordInput = await getFirstVisibleLocator(page, passwordSelectors)
@@ -506,7 +561,7 @@ async function loginGrab({ username, password, otp, pendingSession, preferredSto
           return { success: false, error: 'Khong tim thay o mat khau Grab (url: ' + page.url() + ')' }
         }
 
-        await passwordInput.fill(password)
+        await humanType(page, passwordInput, password)
 
         const submitButton = await getFirstVisibleLocator(
           page,
@@ -514,8 +569,8 @@ async function loginGrab({ username, password, otp, pendingSession, preferredSto
         )
         if (submitButton) {
           const enabledSubmitButton = await waitForEnabledLocator(page, submitSelectors, 5000)
-          await (enabledSubmitButton || submitButton).click()
-          await page.waitForTimeout(5000)
+          await humanClick(page, enabledSubmitButton || submitButton)
+          await humanPause(page, 3200, 5400)
         } else if (!(await hasAuthenticatedShell(page))) {
           console.log('[grab-worker] submit button not found', JSON.stringify({
             username,
@@ -537,9 +592,12 @@ async function loginGrab({ username, password, otp, pendingSession, preferredSto
               _pendingSession: { browser, context, page, capturedApis },
             }
           }
-          await otpInput.fill(otp)
-          await page.click('button[type="submit"]')
-          await page.waitForTimeout(5000)
+          await humanType(page, otpInput, otp)
+          const otpSubmit = await getFirstVisibleLocator(page, 'button[type="submit"], button:has-text("Verify"), button:has-text("Continue"), button:has-text("Tiếp")')
+          if (otpSubmit) {
+            await humanClick(page, otpSubmit)
+          }
+          await humanPause(page, 3200, 5200)
         }
       }
 

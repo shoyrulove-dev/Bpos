@@ -29,6 +29,48 @@ export class GrabAutomation implements PlatformAutomation {
   provider = 'grab' as const
   sessionTtlSeconds = SESSION_TTL
 
+  private randomBetween(min: number, max: number) {
+    return Math.floor(Math.random() * (max - min + 1)) + min
+  }
+
+  private async humanPause(page: import('playwright').Page, minMs = 90, maxMs = 240) {
+    await page.waitForTimeout(this.randomBetween(minMs, maxMs))
+  }
+
+  private async humanClick(page: import('playwright').Page, locator: import('playwright').Locator) {
+    await locator.scrollIntoViewIfNeeded().catch(() => null)
+
+    const box = await locator.boundingBox().catch(() => null)
+    if (box) {
+      const targetX = box.x + Math.min(Math.max(10, box.width / 2), Math.max(10, box.width - 10))
+      const targetY = box.y + Math.min(Math.max(10, box.height / 2), Math.max(10, box.height - 10))
+      await page.mouse.move(targetX, targetY, { steps: this.randomBetween(8, 18) }).catch(() => null)
+      await this.humanPause(page, 60, 160)
+    }
+
+    await locator.click({ delay: this.randomBetween(40, 120) }).catch(async () => {
+      await locator.focus().catch(() => null)
+    })
+    await this.humanPause(page, 80, 180)
+  }
+
+  private async humanType(page: import('playwright').Page, locator: import('playwright').Locator, value: string) {
+    await this.humanClick(page, locator)
+    await locator.press('Control+A').catch(() => null)
+    await this.humanPause(page, 40, 120)
+    await locator.press('Backspace').catch(() => null)
+    await this.humanPause(page, 80, 160)
+
+    for (const character of value) {
+      await page.keyboard.type(character, { delay: this.randomBetween(70, 180) })
+      if (Math.random() < 0.18) {
+        await this.humanPause(page, 120, 260)
+      }
+    }
+
+    await this.humanPause(page, 180, 360)
+  }
+
   private async getFirstVisibleLocator(page: import('playwright').Page, selectors: string) {
     const locator = page.locator(selectors)
     const count = await locator.count()
@@ -126,9 +168,10 @@ export class GrabAutomation implements PlatformAutomation {
     let browser: import('playwright').Browser | null = null
     try {
       const { chromium } = await import('playwright')
+      const headless = process.env.GRAB_AUTOMATION_HEADLESS !== 'false'
 
       browser = await chromium.launch({
-        headless: true,
+        headless,
         args: [
           '--no-sandbox', '--disable-setuid-sandbox',
           '--disable-blink-features=AutomationControlled',
@@ -141,6 +184,18 @@ export class GrabAutomation implements PlatformAutomation {
         viewport: { width: 1280, height: 900 },
         locale: 'vi-VN',
         timezoneId: 'Asia/Ho_Chi_Minh',
+      })
+
+      await context.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined })
+        Object.defineProperty(navigator, 'languages', { get: () => ['vi-VN', 'vi', 'en-US', 'en'] })
+        Object.defineProperty(navigator, 'platform', { get: () => 'Win32' })
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4] })
+
+        const chromeLike = { runtime: {} }
+        Object.defineProperty(window, 'chrome', {
+          get: () => chromeLike,
+        })
       })
 
       // ── Intercept XHR to capture the orders API endpoint + token ───────────
@@ -210,13 +265,12 @@ export class GrabAutomation implements PlatformAutomation {
       }
 
       if (accountInput) {
-        await accountInput.fill(credentials.username)
-        await page.waitForTimeout(500)
+        await this.humanType(page, accountInput, credentials.username)
 
         const continueButton = await this.waitForEnabledLocator(page, nextSelectors, 5_000)
         if (continueButton) {
-          await continueButton.click()
-          await page.waitForTimeout(2000)
+          await this.humanClick(page, continueButton)
+          await this.humanPause(page, 1200, 2400)
         }
 
         let passwordInput = await this.getFirstVisibleLocator(page, passwordSelectors)
@@ -257,7 +311,7 @@ export class GrabAutomation implements PlatformAutomation {
           return { success: false, error: `Không tìm thấy ô mật khẩu Grab (url: ${page.url()})` }
         }
 
-        await passwordInput.fill(credentials.password)
+        await this.humanType(page, passwordInput, credentials.password)
 
         const submitButton = await this.getFirstVisibleLocator(
           page,
@@ -266,23 +320,29 @@ export class GrabAutomation implements PlatformAutomation {
         if (submitButton) {
           const enabledSubmitButton = await this.waitForEnabledLocator(page, submitSelectors, 5_000)
           const targetSubmitButton = enabledSubmitButton ?? submitButton
-          await targetSubmitButton.click()
-          await page.waitForTimeout(5000)
+          await this.humanClick(page, targetSubmitButton)
+          await this.humanPause(page, 3200, 5400)
         } else if (!(await this.hasAuthenticatedShell(page))) {
           await browser.close()
           return { success: false, error: `Không tìm thấy nút đăng nhập Grab (url: ${page.url()})` }
         }
 
-        const otpInput = await page.$('input[placeholder*="code" i], input[placeholder*="OTP" i], input[name*="otp" i], input[maxlength="6"]')
+        const otpInput = await this.getFirstVisibleLocator(
+          page,
+          'input[placeholder*="code" i], input[placeholder*="OTP" i], input[name*="otp" i], input[maxlength="6"]'
+        )
         if (otpInput) {
           if (!credentials.otp) {
             const otpTarget = await page.textContent('[class*="phone"], [class*="email"], [class*="sent"]').catch(() => null)
             await browser.close()
             return { success: false, requiresOtp: true, otpTarget: otpTarget?.trim() ?? credentials.username }
           }
-          await otpInput.fill(credentials.otp)
-          await page.click('button[type="submit"]')
-          await page.waitForTimeout(5000)
+          await this.humanType(page, otpInput, credentials.otp)
+          const otpSubmit = await this.getFirstVisibleLocator(page, 'button[type="submit"], button:has-text("Verify"), button:has-text("Continue"), button:has-text("Tiếp")')
+          if (otpSubmit) {
+            await this.humanClick(page, otpSubmit)
+          }
+          await this.humanPause(page, 3200, 5200)
         }
       }
 

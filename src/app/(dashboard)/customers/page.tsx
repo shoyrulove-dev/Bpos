@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { Plus, Search, Star, Gift, Edit, Trash2, Loader2, Download } from 'lucide-react'
 import { useCustomers, useCreateCustomer, useUpdateCustomer, useDeleteCustomer } from '@/hooks/use-data'
 import { useDebounce } from '@/hooks/use-debounce'
-import { CHANNEL_SOURCE_COLOR, CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, LOYALTY_TIER_LABEL, LOYALTY_TIER_COLOR } from '@/lib/utils'
+import { cn, formatCurrency, formatDate, LOYALTY_TIER_LABEL, LOYALTY_TIER_COLOR } from '@/lib/utils'
+import { PlatformBadge } from '@/components/ui/PlatformIcon'
 import type { Customer, LoyaltyTier } from '@/types'
 
 const TIER_ICONS: Record<LoyaltyTier, string> = {
@@ -188,9 +189,7 @@ export default function CustomersPage() {
                     <td>
                       <div className="flex flex-wrap gap-1.5">
                         {(c.sources?.length ? c.sources : c.source ? [c.source] : []).map(source => (
-                          <span key={`${c._id}-${source}`} className={cn('badge', CHANNEL_SOURCE_COLOR[source] ?? 'bg-gray-100 text-gray-700')}>
-                            {CHANNEL_SOURCE_LABEL[source] ?? source}
-                          </span>
+                          <PlatformBadge key={`${c._id}-${source}`} source={source} size="sm" />
                         ))}
                         {!(c.sources?.length || c.source) && <span className="text-xs text-gray-400">Chưa rõ</span>}
                       </div>

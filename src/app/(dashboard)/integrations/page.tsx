@@ -12,6 +12,7 @@ import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
 import { getDefaultSessionRefreshMode } from '@/lib/session-refresh-mode'
 import { cn } from '@/lib/utils'
+import { PlatformIcon } from '@/components/ui/PlatformIcon'
 
 const PROVIDERS = [
   { value: 'grab',     label: 'GrabFood',    color: 'bg-green-100 text-green-700' },
@@ -188,6 +189,131 @@ const PLATFORM_GUIDES: Record<string, { steps: string[]; link: string; knownStor
   },
 }
 
+// ─── Platform account credentials (login reference) ──────────────────────────
+// Dùng để nhớ tài khoản đăng nhập tay khi cần. Mật khẩu hiện ***  theo mặc định.
+const PLATFORM_ACCOUNTS: {
+  brand: string
+  hub: string
+  provider: string
+  username: string
+  password: string
+  note?: string
+}[] = [
+  // BDT - 3B
+  { brand: 'BDT', hub: '3B',   provider: 'grab',    username: 'ketoan@takogroup.com.vn',            password: 'Bdt2026@#' },
+  { brand: 'BDT', hub: '3B',   provider: 'be',      username: 'luonghung.sg@gmail.com',             password: 'Hung1712@' },
+  { brand: 'BDT', hub: '3B',   provider: 'shopee',  username: '0869693909',                         password: 'Hungchoidanh1712' },
+  { brand: 'BDT', hub: '3B',   provider: 'xanh_sm', username: '0393655295',                         password: 'OTP', note: 'Đăng nhập OTP' },
+  // BDT - Ò Ó O
+  { brand: 'BDT', hub: 'Ò Ó O', provider: 'grab',   username: 'ooo.cashier.ds3',                    password: 'Nexdor@123' },
+  { brand: 'BDT', hub: 'Ò Ó O', provider: 'be',     username: 'deliveryapp+ooohub30day@nexdor.tech', password: 'Be@99372' },
+  { brand: 'BDT', hub: 'Ò Ó O', provider: 'shopee', username: '0393655295',                         password: 'Trung2002(OTP)' },
+  // BDT - ĐMX
+  { brand: 'BDT', hub: 'ĐMX',  provider: 'grab',    username: 'dmx.nexdor.bdt',                     password: 'Nexdor@123' },
+  { brand: 'BDT', hub: 'ĐMX',  provider: 'be',      username: 'deliveryapp+dmmbdt@nexdor.tech',      password: 'Be@99347' },
+  // 30B - 3B
+  { brand: '30B', hub: '3B',   provider: 'grab',    username: '1ketoan@takogroup.com.vn',            password: 'Bdt2026@' },
+  { brand: '30B', hub: '3B',   provider: 'be',      username: 'ketoan@takogroup.com.vn',             password: 'Bdt2026@' },
+  { brand: '30B', hub: '3B',   provider: 'shopee',  username: '0393655295',                         password: 'Trung2002' },
+  // 30B - Ò Ó O
+  { brand: '30B', hub: 'Ò Ó O', provider: 'grab',   username: 'ooo.tech.ds33',                      password: 'Nexdor@123' },
+  { brand: '30B', hub: 'Ò Ó O', provider: 'be',     username: 'deliveryapp+ooods3@nexdor.tech',      password: 'Be@99379' },
+]
+
+function PlatformAccountsSection() {
+  const [revealed, setRevealed] = useState<Set<number>>(new Set())
+  const [showSection, setShowSection] = useState(false)
+  const [filterBrand, setFilterBrand] = useState('')
+  const [filterProvider, setFilterProvider] = useState('')
+
+  const toggle = (idx: number) =>
+    setRevealed(prev => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx); else next.add(idx)
+      return next
+    })
+
+  const filtered = PLATFORM_ACCOUNTS.filter(a =>
+    (!filterBrand || a.brand === filterBrand) &&
+    (!filterProvider || a.provider === filterProvider)
+  )
+
+  const brands = [...new Set(PLATFORM_ACCOUNTS.map(a => a.brand))]
+  const providers = [...new Set(PLATFORM_ACCOUNTS.map(a => a.provider))]
+
+  return (
+    <div className="rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <button
+        onClick={() => setShowSection(v => !v)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <KeyRound className="w-5 h-5 text-gray-400" />
+          <div className="text-left">
+            <p className="font-semibold text-gray-900 text-sm">Tài khoản đăng nhập sàn</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {PLATFORM_ACCOUNTS.length} tài khoản · Grab, Be, Shopee, Xanh SM · Click để xem
+            </p>
+          </div>
+        </div>
+        <span className="text-xs text-gray-400">{showSection ? '▲ Thu gọn' : '▼ Mở rộng'}</span>
+      </button>
+
+      {showSection && (
+        <div className="px-5 pb-5 space-y-3 border-t border-gray-100">
+          {/* Filter bar */}
+          <div className="flex gap-2 pt-3 flex-wrap">
+            <select className="input text-sm w-28 h-8" value={filterBrand} onChange={e => setFilterBrand(e.target.value)}>
+              <option value="">Tất cả brand</option>
+              {brands.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <select className="input text-sm w-36 h-8" value={filterProvider} onChange={e => setFilterProvider(e.target.value)}>
+              <option value="">Tất cả sàn</option>
+              {providers.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            {revealed.size > 0 && (
+              <button onClick={() => setRevealed(new Set())} className="btn-ghost text-xs h-8 px-3 text-red-500">
+                Ẩn tất cả
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+            {filtered.map((acc, rawIdx) => {
+              const idx = PLATFORM_ACCOUNTS.indexOf(acc)
+              const show = revealed.has(idx)
+              return (
+                <div key={idx} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                  <PlatformIcon source={acc.provider} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="text-xs font-bold text-gray-700">{acc.brand}</span>
+                      <span className="text-xs text-gray-400">·</span>
+                      <span className="text-xs text-gray-500">{acc.hub}</span>
+                      {acc.note && <span className="text-[10px] text-amber-600 bg-amber-50 rounded px-1">{acc.note}</span>}
+                    </div>
+                    <p className="text-xs font-mono text-gray-700 truncate">{acc.username}</p>
+                    <p className="text-xs font-mono text-gray-500 tracking-widest">
+                      {show ? acc.password : '••••••••'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggle(idx)}
+                    className="shrink-0 text-xs text-gray-400 hover:text-gray-700 px-1.5 py-1 rounded hover:bg-gray-200 transition-colors"
+                    title={show ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  >
+                    {show ? '🙈' : '👁'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function IntegrationsPage() {
   const { data: session } = useSession()
   const isAdmin = (session?.user as { role?: string })?.role === 'admin'
@@ -312,14 +438,11 @@ export default function IntegrationsPage() {
       <div key={integ._id} className={cn('rounded-2xl border border-gray-200 bg-white p-4 flex flex-col gap-3 shadow-sm', integ.isActive === false && 'opacity-60')}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
-              <ShoppingBag className="w-5 h-5 text-gray-500" />
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+              <PlatformIcon source={integ.provider} size="lg" />
             </div>
             <div className="min-w-0">
-              <span className={cn('badge text-xs', prov?.color ?? 'badge-gray')}>
-                {prov?.label ?? integ.provider}
-              </span>
-              <p className="mt-1 text-sm font-medium text-gray-900 truncate">
+              <p className="mt-0 text-sm font-medium text-gray-900 truncate">
                 {integ.externalStoreName || integ.externalStoreId || 'Chưa cấu hình cửa hàng'}
               </p>
               <p className="text-xs text-gray-400 truncate">
@@ -817,8 +940,11 @@ export default function IntegrationsPage() {
                     : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                 )}
               >
-                <span className={cn('badge text-xs', active ? 'bg-white/15 text-white' : section.color)}>{section.label}</span>
-                <span>{section.integrations.length}{section.target ? `/${section.target}` : ''}</span>
+                <PlatformIcon source={section.value} size="sm" />
+                <span className="font-semibold">{section.label}</span>
+                <span className={cn('text-xs', active ? 'text-white/70' : 'text-gray-400')}>
+                  {section.integrations.length}{section.target ? `/${section.target}` : ''}
+                </span>
               </button>
             )
           })}
@@ -826,12 +952,14 @@ export default function IntegrationsPage() {
 
         <section key={activeProviderSection.value} className="flex flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <span className={cn('badge text-xs', activeProviderSection.color)}>{activeProviderSection.label}</span>
-              <h2 className="mt-2 text-lg font-semibold text-gray-900">
-                {activeProviderSection.integrations.length} kết nối{activeProviderSection.target ? ` / ${activeProviderSection.target}` : ''}
-              </h2>
-              <p className="mt-1 text-sm text-gray-500">{activeProviderSection.note}</p>
+            <div className="flex items-center gap-3 min-w-0">
+              <PlatformIcon source={activeProviderSection.value} size="xl" />
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {activeProviderSection.label} &middot; {activeProviderSection.integrations.length} kết nối{activeProviderSection.target ? ` / ${activeProviderSection.target}` : ''}
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">{activeProviderSection.note}</p>
+              </div>
             </div>
             <button onClick={() => openCreateModal(activeProviderSection.value)} className="btn-outline btn-sm shrink-0">
               <Plus className="w-4 h-4" /> Thêm
@@ -1020,6 +1148,9 @@ export default function IntegrationsPage() {
           </div>
         )
       })()}
+
+      {/* ═══ SECTION: Tài khoản đăng nhập sàn ═════════════════════════════ */}
+      <PlatformAccountsSection />
 
       {/* ═══ MODAL: Quick Test ══════════════════════════════════════════════ */}
       {showQt && (

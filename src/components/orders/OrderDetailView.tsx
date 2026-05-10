@@ -5,7 +5,8 @@ import { ArrowLeft, Loader2, MapPin, Phone, Printer, RefreshCw, TicketPercent, T
 import { useOrder } from '@/hooks/use-orders-channels'
 import { getActualReceived as getSettlementActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown, getGrabMoneyBreakdown as getSettlementGrabMoneyBreakdown } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
-import { CHANNEL_SOURCE_COLOR, CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, PAYMENT_METHOD_LABEL } from '@/lib/utils'
+import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, PAYMENT_METHOD_LABEL } from '@/lib/utils'
+import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import type { Order } from '@/types'
 
 function openPrintWindow(url: string) {
@@ -449,7 +450,7 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className={cn('badge', ORDER_STATUS_COLOR[order.status])}>{ORDER_STATUS_LABEL[order.status]}</span>
-              <span className={cn('badge', CHANNEL_SOURCE_COLOR[order.source])}>{CHANNEL_SOURCE_LABEL[order.source]}</span>
+              <PlatformIcon source={order.source} size="md" />
             </div>
             <h1 className="mt-1 text-2xl font-semibold leading-none text-gray-950">{displayOrderCode || order.shortId}</h1>
             <p className="mt-0.5 font-mono text-xs text-gray-500">{longOrderCode}</p>
@@ -644,7 +645,7 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className={cn('badge', ORDER_STATUS_COLOR[order.status])}>{ORDER_STATUS_LABEL[order.status]}</span>
-              <span className={cn('badge', CHANNEL_SOURCE_COLOR[order.source])}>{CHANNEL_SOURCE_LABEL[order.source]}</span>
+              <PlatformIcon source={order.source} size="md" />
             </div>
             <h1 className="mt-1 text-2xl font-semibold leading-none text-gray-950">{displayOrderCode || order.shortId}</h1>
             <p className="mt-0.5 font-mono text-xs text-gray-500">Ref code: {order.externalOrderId}</p>
@@ -790,7 +791,7 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className={cn('badge', ORDER_STATUS_COLOR[order.status])}>{ORDER_STATUS_LABEL[order.status]}</span>
-              <span className={cn('badge', CHANNEL_SOURCE_COLOR[order.source])}>{CHANNEL_SOURCE_LABEL[order.source]}</span>
+              <PlatformIcon source={order.source} size="md" />
             </div>
             <h1 className="mt-1 text-2xl font-semibold leading-none text-gray-950">{displayOrderCode || order.shortId}</h1>
             {showExternalReference && <p className="mt-0.5 font-mono text-xs text-gray-500">Ref code: {order.externalOrderId}</p>}

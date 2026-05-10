@@ -7,7 +7,7 @@ import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn } from '@/lib/utils'
-import { CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
+import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import type { Channel } from '@/types'
 
 const MARKETPLACE_TABS = [
@@ -163,9 +163,7 @@ export default function ChannelsPage() {
             <div className="flex items-start justify-between mb-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className={cn('badge', CHANNEL_SOURCE_COLOR[channel.source])}>
-                    {CHANNEL_SOURCE_LABEL[channel.source]}
-                  </span>
+                  <PlatformIcon source={channel.source} size="sm" />
                   <span className={cn('badge', channel.status === 'active' ? 'badge-green' : 'badge-red')}>
                     {channel.status === 'active' ? 'Hoạt động' : 'Ngừng'}
                   </span>
@@ -216,9 +214,7 @@ export default function ChannelsPage() {
             {otherChannels.map((channel) => (
               <div key={channel._id} className="rounded-2xl border border-gray-200 p-4">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className={cn('badge', CHANNEL_SOURCE_COLOR[channel.source])}>
-                    {CHANNEL_SOURCE_LABEL[channel.source]}
-                  </span>
+                  <PlatformIcon source={channel.source} size="sm" />
                   <span className={cn('badge', channel.status === 'active' ? 'badge-green' : 'badge-red')}>
                     {channel.status === 'active' ? 'Hoạt động' : 'Ngừng'}
                   </span>
