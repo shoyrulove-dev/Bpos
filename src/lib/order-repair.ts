@@ -1044,7 +1044,15 @@ export async function runOrderRepair(options?: {
   const detailBackfill = await backfillOrderDetails(days, providers, scopedExternalOrderIds, shortIds)
   const orders = await repairStoredOrders(providers, { externalOrderIds, shortIds, driverPhone, forceCancelledOrderIds, forceCompletedShortIds })
   const customerBackfill = await backfillCustomersFromOrders({ providers, externalOrderIds, shortIds })
-  const customerRepair = isScopedRepair ? null : await repairCustomers()
+  let customerRepair: Awaited<ReturnType<typeof repairCustomers>> | null = null
+  let customerRepairError: string | null = null
+  if (!isScopedRepair) {
+    try {
+      customerRepair = await repairCustomers()
+    } catch (error) {
+      customerRepairError = error instanceof Error ? error.message : String(error)
+    }
+  }
   const customers = customerRepair
     ? {
         scanned: customerRepair.scanned + customerBackfill.scanned,
@@ -1052,9 +1060,18 @@ export async function runOrderRepair(options?: {
         removed: customerRepair.removed,
       }
     : customerBackfill
-  const drivers = isScopedRepair
-    ? await backfillDriversFromOrders({ providers, externalOrderIds, shortIds, driverPhone })
-    : await repairDrivers()
+  let drivers: Awaited<ReturnType<typeof repairDrivers>> | Awaited<ReturnType<typeof backfillDriversFromOrders>>
+  let driverRepairError: string | null = null
+  try {
+    drivers = isScopedRepair
+      ? await backfillDriversFromOrders({ providers, externalOrderIds, shortIds, driverPhone })
+      : await repairDrivers()
+  } catch (error) {
+    driverRepairError = error instanceof Error ? error.message : String(error)
+    drivers = isScopedRepair
+      ? { scanned: 0, updated: 0 }
+      : { scanned: 0, updated: 0, removed: 0 }
+  }
 
   return {
     ok: true,
@@ -1071,6 +1088,10 @@ export async function runOrderRepair(options?: {
     orders,
     customers,
     drivers,
+    errors: {
+      ...(customerRepairError ? { customers: customerRepairError } : {}),
+      ...(driverRepairError ? { drivers: driverRepairError } : {}),
+    },
   }
 }
 
