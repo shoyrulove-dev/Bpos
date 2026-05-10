@@ -504,6 +504,7 @@ async function repairStoredOrders(
 ) {
   let scanned = 0
   let updated = 0
+  let failed = 0
 
   const orderIdSet = options?.externalOrderIds?.length ? new Set(options.externalOrderIds) : null
   const shortIdSet = options?.shortIds?.length ? new Set(options.shortIds) : null
@@ -523,144 +524,146 @@ async function repairStoredOrders(
     if (driverPhone && getDisplayDriverPhone(order as unknown as Order) !== driverPhone) continue
     scanned += 1
 
-    await upsertCustomerFromOrder(order)
-    await upsertDriverFromOrder(order)
+    try {
+      await upsertCustomerFromOrder(order)
+      await upsertDriverFromOrder(order)
 
-    const nextCustomerName = getDisplayCustomerName(order as unknown as Order) || undefined
-    const nextCustomerPhone = getDisplayCustomerPhone(order as unknown as Order) || undefined
-    const nextDriverName = getDisplayDriverName(order as unknown as Order) || undefined
-    const nextDriverPhone = getDisplayDriverPhone(order as unknown as Order) || undefined
-    const financialBreakdown = getFinancialBreakdown(order as unknown as Order)
+      const nextCustomerName = getDisplayCustomerName(order as unknown as Order) || undefined
+      const nextCustomerPhone = getDisplayCustomerPhone(order as unknown as Order) || undefined
+      const nextDriverName = getDisplayDriverName(order as unknown as Order) || undefined
+      const nextDriverPhone = getDisplayDriverPhone(order as unknown as Order) || undefined
+      const financialBreakdown = getFinancialBreakdown(order as unknown as Order)
 
-    const set: Record<string, unknown> = {}
-    const unset: Record<string, ''> = {}
+      const set: Record<string, unknown> = {}
+      const unset: Record<string, ''> = {}
 
-    if (nextCustomerName && !hasMeaningfulCustomerName(order.customerName)) {
-      set.customerName = nextCustomerName
-    }
-
-    if (nextCustomerPhone && !hasMeaningfulPhone(order.customerPhone)) {
-      set.customerPhone = nextCustomerPhone
-    }
-
-    const currentDriverInfo = order.driverInfo ?? {}
-    const nextDriverInfo = {
-      ...currentDriverInfo,
-      ...(nextDriverName && !hasMeaningfulDriverName(currentDriverInfo.name) ? { name: nextDriverName } : {}),
-      ...(nextDriverPhone && !hasMeaningfulPhone(currentDriverInfo.phone) ? { phone: nextDriverPhone } : {}),
-    }
-    if (Object.keys(nextDriverInfo).some((key) => nextDriverInfo[key as keyof typeof nextDriverInfo] !== currentDriverInfo[key as keyof typeof currentDriverInfo])) {
-      set.driverInfo = {
-        ...nextDriverInfo,
+      if (nextCustomerName && !hasMeaningfulCustomerName(order.customerName)) {
+        set.customerName = nextCustomerName
       }
-    }
 
-    if (financialBreakdown) {
-      const nextDiscount = Number(financialBreakdown.productDiscount ?? 0) + Number(financialBreakdown.orderDiscount ?? 0)
+      if (nextCustomerPhone && !hasMeaningfulPhone(order.customerPhone)) {
+        set.customerPhone = nextCustomerPhone
+      }
 
-      if (!sameNumber(order.subtotal, financialBreakdown.subtotal)) set.subtotal = Number(financialBreakdown.subtotal ?? 0)
-      if (!sameNumber(order.discount, nextDiscount)) set.discount = nextDiscount
-      if (!sameNumber(order.total, financialBreakdown.revenueAfterPromotion)) set.total = Number(financialBreakdown.revenueAfterPromotion ?? 0)
-      if (!sameNumber(order.platformFee, financialBreakdown.platformFee)) set.platformFee = Number(financialBreakdown.platformFee ?? 0)
-    }
+      const currentDriverInfo = order.driverInfo ?? {}
+      const nextDriverInfo = {
+        ...currentDriverInfo,
+        ...(nextDriverName && !hasMeaningfulDriverName(currentDriverInfo.name) ? { name: nextDriverName } : {}),
+        ...(nextDriverPhone && !hasMeaningfulPhone(currentDriverInfo.phone) ? { phone: nextDriverPhone } : {}),
+      }
+      if (Object.keys(nextDriverInfo).some((key) => nextDriverInfo[key as keyof typeof nextDriverInfo] !== currentDriverInfo[key as keyof typeof currentDriverInfo])) {
+        set.driverInfo = {
+          ...nextDriverInfo,
+        }
+      }
 
-    if (order.source === 'be' && order.rawPayload && hasBeCancelSignal(order.rawPayload) && order.status !== 'cancelled') {
-      set.status = 'cancelled'
-      set.cancelReason = String(
-        order.rawPayload.cancel_reason
-        ?? order.rawPayload.status_reason
-        ?? order.rawPayload.driver_cancel_reason
-        ?? order.rawPayload.restaurant_cancel_reason
-        ?? order.rawPayload.customer_cancel_reason
-        ?? order.rawPayload.cancel_note
-        ?? order.cancelReason
-        ?? 'Đơn đã hủy'
-      )
-      set.cancelledAt = parseDateValue(
-        order.rawPayload.cancelled_at
-        ?? order.rawPayload.cancel_time
-        ?? order.rawPayload.cancel_date
-        ?? order.cancelledAt
-        ?? order.rawPayload.updatedAt
-      ) ?? new Date()
-      unset.deliveredAt = ''
-    }
+      if (financialBreakdown) {
+        const nextDiscount = Number(financialBreakdown.productDiscount ?? 0) + Number(financialBreakdown.orderDiscount ?? 0)
 
-    // Grab: if rawPayload shows DELIVERED/COMPLETED/BILL_PAID but DB status is still
-    // waiting_confirm/waiting_pickup/delivering, repair the status.
-    if (order.source === 'grab' && order.rawPayload && ['waiting_confirm', 'waiting_pickup', 'delivering'].includes(order.status)) {
-      const rawGrabStatus = String(
-        order.rawPayload.deliveryStatus
-        ?? order.rawPayload.orderState
-        ?? order.rawPayload.status
-        ?? order.rawPayload.orderStatus
-        ?? order.rawPayload.state
-        ?? ''
-      ).toUpperCase()
-      const GRAB_COMPLETED = new Set(['DELIVERED', 'COMPLETED', 'BILL_PAID'])
-      const GRAB_CANCELLED = new Set(['CANCELLED', 'CANCELLED_MAX', 'CANCELLED_BY_MERCHANT', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_DRIVER', 'FAILED', 'REFUNDED'])
-      if (GRAB_COMPLETED.has(rawGrabStatus)) {
-        set.status = 'completed'
-        set.deliveredAt = parseDateValue(
-          order.rawPayload.deliveredAt
-          ?? order.rawPayload.completedAt
-          ?? order.rawPayload.updatedAt
-          ?? order.deliveredAt
-        ) ?? new Date()
-        unset.cancelledAt = ''
-        unset.cancelReason = ''
-      } else if (GRAB_CANCELLED.has(rawGrabStatus) && order.status !== 'cancelled') {
+        if (!sameNumber(order.subtotal, financialBreakdown.subtotal)) set.subtotal = Number(financialBreakdown.subtotal ?? 0)
+        if (!sameNumber(order.discount, nextDiscount)) set.discount = nextDiscount
+        if (!sameNumber(order.total, financialBreakdown.revenueAfterPromotion)) set.total = Number(financialBreakdown.revenueAfterPromotion ?? 0)
+        if (!sameNumber(order.platformFee, financialBreakdown.platformFee)) set.platformFee = Number(financialBreakdown.platformFee ?? 0)
+      }
+
+      if (order.source === 'be' && order.rawPayload && hasBeCancelSignal(order.rawPayload) && order.status !== 'cancelled') {
         set.status = 'cancelled'
-        set.cancelReason = String(order.rawPayload.cancelReason ?? order.rawPayload.cancel_reason ?? order.cancelReason ?? 'Đơn đã hủy')
+        set.cancelReason = String(
+          order.rawPayload.cancel_reason
+          ?? order.rawPayload.status_reason
+          ?? order.rawPayload.driver_cancel_reason
+          ?? order.rawPayload.restaurant_cancel_reason
+          ?? order.rawPayload.customer_cancel_reason
+          ?? order.rawPayload.cancel_note
+          ?? order.cancelReason
+          ?? 'Đơn đã hủy'
+        )
         set.cancelledAt = parseDateValue(
-          order.rawPayload.cancelledAt
+          order.rawPayload.cancelled_at
           ?? order.rawPayload.cancel_time
-          ?? order.rawPayload.updatedAt
+          ?? order.rawPayload.cancel_date
           ?? order.cancelledAt
+          ?? order.rawPayload.updatedAt
         ) ?? new Date()
         unset.deliveredAt = ''
       }
-    }
 
-    if (forceCancelledOrderIdSet?.has(String(order.externalOrderId ?? '')) && order.status !== 'cancelled') {
-      set.status = 'cancelled'
-      set.cancelReason = String(order.cancelReason ?? order.rawPayload?.cancel_reason ?? order.rawPayload?.status_reason ?? 'BE xác nhận đơn đã hủy')
-      set.cancelledAt = parseDateValue(
-        order.rawPayload?.cancelled_at
-        ?? order.rawPayload?.cancel_time
-        ?? order.rawPayload?.cancel_date
-        ?? order.cancelledAt
-        ?? order.rawPayload?.updatedAt
-        ?? order.updatedAt
-      ) ?? new Date()
-      unset.deliveredAt = ''
-    }
-
-    if (forceCompletedShortIdSet?.has(String(order.shortId ?? '')) && order.status !== 'completed') {
-      set.status = 'completed'
-      set.deliveredAt = parseDateValue(
-        order.rawPayload?.deliveredAt
-        ?? order.rawPayload?.completedAt
-        ?? order.rawPayload?.updatedAt
-        ?? order.updatedAt
-      ) ?? new Date()
-      unset.cancelledAt = ''
-      unset.cancelReason = ''
-    }
-
-    if (!Object.keys(set).length && !Object.keys(unset).length) continue
-
-    await OrderModel.updateOne(
-      { _id: order._id },
-      {
-        ...(Object.keys(set).length ? { $set: set } : {}),
-        ...(Object.keys(unset).length ? { $unset: unset } : {}),
+      if (order.source === 'grab' && order.rawPayload && ['waiting_confirm', 'waiting_pickup', 'delivering'].includes(order.status)) {
+        const rawGrabStatus = String(
+          order.rawPayload.deliveryStatus
+          ?? order.rawPayload.orderState
+          ?? order.rawPayload.status
+          ?? order.rawPayload.orderStatus
+          ?? order.rawPayload.state
+          ?? ''
+        ).toUpperCase()
+        const GRAB_COMPLETED = new Set(['DELIVERED', 'COMPLETED', 'BILL_PAID'])
+        const GRAB_CANCELLED = new Set(['CANCELLED', 'CANCELLED_MAX', 'CANCELLED_BY_MERCHANT', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_DRIVER', 'FAILED', 'REFUNDED'])
+        if (GRAB_COMPLETED.has(rawGrabStatus)) {
+          set.status = 'completed'
+          set.deliveredAt = parseDateValue(
+            order.rawPayload.deliveredAt
+            ?? order.rawPayload.completedAt
+            ?? order.rawPayload.updatedAt
+            ?? order.deliveredAt
+          ) ?? new Date()
+          unset.cancelledAt = ''
+          unset.cancelReason = ''
+        } else if (GRAB_CANCELLED.has(rawGrabStatus) && order.status !== 'cancelled') {
+          set.status = 'cancelled'
+          set.cancelReason = String(order.rawPayload.cancelReason ?? order.rawPayload.cancel_reason ?? order.cancelReason ?? 'Đơn đã hủy')
+          set.cancelledAt = parseDateValue(
+            order.rawPayload.cancelledAt
+            ?? order.rawPayload.cancel_time
+            ?? order.rawPayload.updatedAt
+            ?? order.cancelledAt
+          ) ?? new Date()
+          unset.deliveredAt = ''
+        }
       }
-    )
-    updated += 1
+
+      if (forceCancelledOrderIdSet?.has(String(order.externalOrderId ?? '')) && order.status !== 'cancelled') {
+        set.status = 'cancelled'
+        set.cancelReason = String(order.cancelReason ?? order.rawPayload?.cancel_reason ?? order.rawPayload?.status_reason ?? 'BE xác nhận đơn đã hủy')
+        set.cancelledAt = parseDateValue(
+          order.rawPayload?.cancelled_at
+          ?? order.rawPayload?.cancel_time
+          ?? order.rawPayload?.cancel_date
+          ?? order.cancelledAt
+          ?? order.rawPayload?.updatedAt
+          ?? order.updatedAt
+        ) ?? new Date()
+        unset.deliveredAt = ''
+      }
+
+      if (forceCompletedShortIdSet?.has(String(order.shortId ?? '')) && order.status !== 'completed') {
+        set.status = 'completed'
+        set.deliveredAt = parseDateValue(
+          order.rawPayload?.deliveredAt
+          ?? order.rawPayload?.completedAt
+          ?? order.rawPayload?.updatedAt
+          ?? order.updatedAt
+        ) ?? new Date()
+        unset.cancelledAt = ''
+        unset.cancelReason = ''
+      }
+
+      if (!Object.keys(set).length && !Object.keys(unset).length) continue
+
+      await OrderModel.updateOne(
+        { _id: order._id },
+        {
+          ...(Object.keys(set).length ? { $set: set } : {}),
+          ...(Object.keys(unset).length ? { $unset: unset } : {}),
+        }
+      )
+      updated += 1
+    } catch {
+      failed += 1
+    }
   }
 
-  return { scanned, updated }
+  return { scanned, updated, failed }
 }
 
 async function backfillDriversFromOrders(options?: {
@@ -800,7 +803,7 @@ async function backfillCustomersFromOrders(options?: {
     const nextOrderCount = Math.max(Number(existingCustomer?.orderCount ?? 0), aggregate.orderCount)
     const nextTier = calcCustomerTier(nextTotalSpend)
 
-    await CustomerModel.updateOne(
+    const updateResult = await CustomerModel.updateOne(
       { phone: aggregate.phone, brandId },
       {
         $set: {
@@ -812,15 +815,21 @@ async function backfillCustomersFromOrders(options?: {
           tier: nextTier,
           status: 'active',
         },
-        ...(aggregate.sources.size ? { $addToSet: { sources: { $each: Array.from(aggregate.sources) } } } : {}),
         $setOnInsert: {
           phone: aggregate.phone,
           brandId,
           points: Number(existingCustomer?.points ?? 0),
         },
       },
-      { upsert: true, setDefaultsOnInsert: true }
+      { upsert: true }
     )
+
+    if (updateResult.acknowledged && aggregate.sources.size) {
+      await CustomerModel.updateOne(
+        { phone: aggregate.phone, brandId },
+        { $addToSet: { sources: { $each: Array.from(aggregate.sources) } } }
+      ).catch(() => {})
+    }
     updated += 1
   }
 
