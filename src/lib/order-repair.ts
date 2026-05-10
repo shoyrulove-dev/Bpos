@@ -83,6 +83,68 @@ function buildScopedOrderQuery(options: {
   return query
 }
 
+async function upsertCustomerFromOrder(order: StoredOrder) {
+  const phone = getDisplayCustomerPhone(order as unknown as Order) || undefined
+  const name = getDisplayCustomerName(order as unknown as Order) || undefined
+  const brandId = String(order.brandId ?? '').trim()
+
+  if (!brandId || !phone || !name || !hasMeaningfulPhone(phone) || !hasMeaningfulCustomerName(name)) {
+    return false
+  }
+
+  const existingCustomer = await CustomerModel.findOne({ phone, brandId }).select('name').lean() as { name?: string } | null
+  const shouldUpdateName = !existingCustomer || !hasMeaningfulCustomerName(existingCustomer.name)
+
+  await CustomerModel.updateOne(
+    { phone, brandId },
+    {
+      $set: {
+        ...(shouldUpdateName ? { name } : {}),
+        lastOrderAt: parseDateValue(order.placedAt) ?? new Date(),
+      },
+      $setOnInsert: {
+        phone,
+        brandId,
+        name,
+        points: 0,
+        totalSpend: Number(order.total ?? 0),
+        orderCount: 1,
+        tier: calcCustomerTier(Number(order.total ?? 0)),
+        status: 'active',
+      },
+    },
+    { upsert: true }
+  )
+
+  return true
+}
+
+async function upsertDriverFromOrder(order: StoredOrder) {
+  const phone = getDisplayDriverPhone(order as unknown as Order) || undefined
+  if (!phone || !hasMeaningfulPhone(phone)) return false
+
+  const displayName = getDisplayDriverName(order as unknown as Order) || undefined
+  const name = displayName && hasMeaningfulDriverName(displayName)
+    ? displayName
+    : `(Tài xế ${String(order.source ?? '').trim() || 'platform'})`
+
+  await DriverModel.updateOne(
+    { phone, platform: String(order.source) },
+    {
+      $set: {
+        phone,
+        platform: String(order.source),
+        name,
+        lastSeenAt: new Date(),
+      },
+      $inc: { visitCount: 1 },
+    },
+    { upsert: true }
+  )
+
+  return true
+}
+
 async function upsertHistoricalOrders(days: number, providers: string[], targetExternalOrderIds?: string[]) {
   const integrations = await IntegrationModel.find({ isActive: true, provider: { $in: providers } })
     .select('+credentials +sessionData')
@@ -225,6 +287,9 @@ async function repairStoredOrders(
     if (shortIdSet && !shortIdSet.has(String(order.shortId ?? ''))) continue
     if (driverPhone && getDisplayDriverPhone(order as unknown as Order) !== driverPhone) continue
     scanned += 1
+
+    await upsertCustomerFromOrder(order)
+    await upsertDriverFromOrder(order)
 
     const nextCustomerName = getDisplayCustomerName(order as unknown as Order) || undefined
     const nextCustomerPhone = getDisplayCustomerPhone(order as unknown as Order) || undefined
