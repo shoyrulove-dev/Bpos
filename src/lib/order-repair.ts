@@ -87,13 +87,13 @@ function buildScopedOrderQuery(options: {
 async function upsertCustomerFromOrder(order: StoredOrder) {
   const phone = getDisplayCustomerPhone(order as unknown as Order) || undefined
   const name = getDisplayCustomerName(order as unknown as Order) || undefined
-  const brandIdText = String(order.brandId ?? '').trim()
+  const rawBrandId = order.brandId
 
-  if (!brandIdText || !mongoose.Types.ObjectId.isValid(brandIdText) || !phone || !name || !hasMeaningfulPhone(phone) || !hasMeaningfulCustomerName(name)) {
+  if (!mongoose.isValidObjectId(rawBrandId) || !phone || !name || !hasMeaningfulPhone(phone) || !hasMeaningfulCustomerName(name)) {
     return false
   }
 
-  const brandId = new mongoose.Types.ObjectId(brandIdText)
+  const brandId = new mongoose.Types.ObjectId(rawBrandId)
 
   const existingCustomer = await CustomerModel.findOne({ phone, brandId }).select('name').lean() as { name?: string } | null
   const shouldUpdateName = !existingCustomer || !hasMeaningfulCustomerName(existingCustomer.name)
