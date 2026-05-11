@@ -1104,8 +1104,8 @@ export async function runOrderRepair(options?: {
   } catch (error) {
     driverRepairError = error instanceof Error ? error.message : String(error)
     drivers = isScopedRepair
-      ? { scanned: 0, updated: 0 }
-      : { scanned: 0, updated: 0, removed: 0 }
+      ? { scanned: 0, updated: 0, failed: 1, removed: 0, scoped: true }
+      : { scanned: 0, updated: 0, failed: 1, removed: 0 }
   }
 
   return {
