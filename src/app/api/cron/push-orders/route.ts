@@ -5,10 +5,10 @@ import OrderModel from '@/models/Order'
 import SyncLogModel from '@/models/SyncLog'
 import { getAdapter } from '@/integrations/registry'
 import { decryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { buildOrderUpsert, getComparableDriverName, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import { upsertCustomerProfile } from '@/lib/customer-upsert'
-import { getDisplayCustomerName, getDisplayCustomerPhone } from '@/lib/order-financials'
-import { hasMeaningfulCustomerName, hasMeaningfulPhone } from '@/lib/order-upsert'
+import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone } from '@/lib/order-financials'
+import DriverModel from '@/models/Driver'
 import { buildSessionStoreId } from '@/lib/realtime-order-sync'
 import type { NormalizedOrder, Order } from '@/types'
 import type { SessionData } from '@/integrations/types'
@@ -215,6 +215,7 @@ export async function POST(req: NextRequest) {
   let upserted = 0
   let updated = 0
   const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean; placedAt?: string | Date }> = []
+  const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean }> = []
   const historyCount = intg.provider === 'grab' ? countGrabHistoryOrders(rawOrders) : 0
   const activeCount = Math.max(rawOrders.length - historyCount, 0)
   const rawDebugIds = rawOrders.map(getRawDebugId)
@@ -260,6 +261,14 @@ export async function POST(req: NextRequest) {
           placedAt: merged.placedAt,
         })
       }
+
+      // Collect driver info — same strategy as sync-orders
+      const dNameRaw = getDisplayDriverName(orderDoc) ?? merged.driverInfo?.name?.trim()
+      const dPhone = getDisplayDriverPhone(orderDoc) || merged.driverInfo?.phone?.trim()
+      const dName = (dNameRaw && hasMeaningfulDriverName(dNameRaw)) ? dNameRaw : (dPhone && hasMeaningfulPhone(dPhone) ? `(Tài xế ${intg.provider})` : undefined)
+      if (dName && dPhone && hasMeaningfulPhone(dPhone)) {
+        driversToSave.push({ name: dName, phone: dPhone, platform: intg.provider, isNew })
+      }
     } catch { /* skip individual order errors */ }
   }
 
@@ -275,6 +284,24 @@ export async function POST(req: NextRequest) {
         orderTotal: c.total,
         isNewOrder: c.isNew,
       })
+    } catch { /* skip */ }
+  }
+
+  // Auto-save drivers — mirrors sync-orders logic
+  for (const d of driversToSave) {
+    try {
+      const existingDriver = await DriverModel.findOne({ phone: d.phone, platform: d.platform }).select('name').lean() as { name?: string } | null
+      const shouldUpdateName = !existingDriver || !hasMeaningfulDriverName(existingDriver.name) || isDriverNamePlaceholder(existingDriver.name)
+      const existingNameKey = getComparableDriverName(existingDriver?.name)
+      const incomingNameKey = getComparableDriverName(d.name)
+      if (existingDriver && existingNameKey && (!incomingNameKey || existingNameKey !== incomingNameKey)) continue
+      await DriverModel.findOneAndUpdate(
+        { phone: d.phone, platform: d.platform },
+        d.isNew
+          ? { $set: { ...(shouldUpdateName ? { name: d.name } : {}), lastSeenAt: new Date() }, $inc: { visitCount: 1 } }
+          : { $set: { ...(shouldUpdateName ? { name: d.name } : {}), lastSeenAt: new Date() }, $setOnInsert: { visitCount: 1 } },
+        { upsert: true },
+      )
     } catch { /* skip */ }
   }
 
