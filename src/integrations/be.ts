@@ -397,28 +397,48 @@ export class BeAdapter implements PlatformAdapter {
       : Array.isArray(raw.items)
       ? raw.items as Record<string, unknown>[]
       : []
+
     const items: OrderItem[] = orderItems.map((i) => {
       const quantity = Math.max(1, Number(i.quantity ?? i.item_quantity ?? 1))
-      const customizeJson = String(i.customize_json ?? '').trim()
+
+      // Parse customizations — BE returns customize_json (partner API) or customize_object (merchant gateway)
+      // Both may be a JSON array: [{ name: "GroupName", options: [{ name: "...", price: 0 }] }]
       let customizationLines: string[] = []
 
-      if (customizeJson) {
+      type BeCustomizeGroup = { name?: string; options?: Array<{ name?: string; quantity?: number; price?: number }> }
+      const parseCustomizeGroups = (src: string): BeCustomizeGroup[] | null => {
+        const trimmed = src.trim()
+        if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) return null
         try {
-          const groups = JSON.parse(customizeJson) as Array<{ options?: Array<{ name?: string; quantity?: number; price?: number }> }>
-          customizationLines = groups.flatMap((group) =>
-            (group.options ?? []).map((option) => {
-              const quantityText = option.quantity && option.quantity > 1 ? `${option.quantity} x ` : ''
-              const priceText = typeof option.price === 'number' && option.price > 0 ? ` (+${option.price})` : ''
-              return `${quantityText}${option.name ?? ''}${priceText}`.trim()
-            })
-          ).filter(Boolean)
-        } catch {
-          customizationLines = []
-        }
+          const parsed = JSON.parse(trimmed)
+          return Array.isArray(parsed) ? parsed : null
+        } catch { return null }
       }
 
-      if (!customizationLines.length && typeof i.customize_object === 'string' && i.customize_object.trim()) {
-        customizationLines = i.customize_object.split(/[:,]/).map((part) => part.trim()).filter(Boolean)
+      const buildLines = (groups: BeCustomizeGroup[]) =>
+        groups.flatMap((group) =>
+          (group.options ?? []).map((option) => {
+            const groupLabel = group.name ? `${String(group.name).trim()}: ` : ''
+            const qty = option.quantity && option.quantity > 1 ? `${option.quantity} x ` : ''
+            const price = typeof option.price === 'number' && option.price > 0 ? ` (+${option.price.toLocaleString('vi-VN')}đ)` : ''
+            return `${groupLabel}${qty}${String(option.name ?? '').trim()}${price}`.trim()
+          })
+        ).filter(Boolean)
+
+      const jsonSrc = String(i.customize_json ?? '').trim() || String(i.customize_object ?? '').trim()
+      if (jsonSrc) {
+        const groups = parseCustomizeGroups(jsonSrc)
+        if (groups) customizationLines = buildLines(groups)
+      }
+
+      // Text fallback: "GroupA: Option1 | GroupB: Option2" or comma-separated
+      if (!customizationLines.length) {
+        const text = String(i.customize_object ?? i.customize_json ?? '').trim()
+        if (text) {
+          // Try pipe separator first (more reliable than comma because group names may contain commas)
+          const parts = text.includes('|') ? text.split('|') : text.split(',')
+          customizationLines = parts.map((p) => p.trim()).filter(Boolean)
+        }
       }
 
       const noteParts = Array.from(new Set([
@@ -426,11 +446,16 @@ export class BeAdapter implements PlatformAdapter {
         ...customizationLines,
       ].filter(Boolean)))
 
+      // unit_price is per-item; amount is total for this line item (quantity * unit_price)
+      const unitPrice = Number(i.unit_price ?? i.uint_price ?? i.item_price ?? 0)
+      const lineTotal = Number(i.amount ?? i.original_amount ?? 0)
+      const computedUnitPrice = unitPrice > 0 ? unitPrice : (lineTotal > 0 ? Math.round(lineTotal / quantity) : 0)
+
       return {
         name:     String(i.item_name ?? i.name ?? ''),
         quantity,
-        price:    Math.round(Number(i.amount ?? i.original_amount ?? i.item_price ?? i.unit_price ?? i.uint_price ?? 0) / quantity),
-        total:    Number(i.amount ?? i.original_amount ?? 0),
+        price:    computedUnitPrice,
+        total:    lineTotal || computedUnitPrice * quantity,
         note:     noteParts.join(' | ') || undefined,
       }
     })
@@ -451,20 +476,41 @@ export class BeAdapter implements PlatformAdapter {
       if (this.hasCancelSignal(raw)) orderStatus = 'cancelled'
     }
 
-    const total    = Number(raw.order_amount ?? raw.originial_amount ?? raw.original_amount ?? raw.sub_total ?? raw.subtotal ?? raw.total_amount ?? raw.final_amount ?? 0)
-    const original = Number(raw.originial_amount ?? raw.original_amount ?? raw.sub_total ?? raw.subtotal ?? raw.order_amount ?? raw.net_order_amount ?? total)
+    // BE price breakdown (merchant perspective):
+    //   order_amount / sub_total = food value (what customer pays for food)
+    //   jugnoo_commission        = platform fee deducted from merchant
+    //   net_order_amount         = what merchant actually receives
+    //   total_amount             = food + delivery fee (customer total) — do NOT use as order total
+    const total = Number(
+      raw.order_amount ?? raw.originial_amount ?? raw.original_amount
+      ?? raw.sub_total ?? raw.subtotal ?? raw.final_amount ?? 0
+    )
+    const original = Number(
+      raw.originial_amount ?? raw.original_amount
+      ?? raw.sub_total ?? raw.subtotal ?? raw.order_amount ?? total
+    )
     const discount = original > total ? original - total : 0
-    const actualReceived = Number(raw.net_order_amount ?? raw.received_amount ?? raw.merchant_receivable ?? total)
-    const platformFee = Number(raw.jugnoo_commission ?? raw.merchant_pays ?? (actualReceived > 0 ? Math.max(0, total - actualReceived) : 0))
+
+    // Platform fee: jugnoo_commission is BE's name for the merchant commission
+    const actualReceived = Number(raw.net_order_amount ?? raw.received_amount ?? raw.merchant_receivable ?? 0)
+    const platformFee = Number(
+      raw.jugnoo_commission
+      ?? (actualReceived > 0 && total > actualReceived ? total - actualReceived : undefined)
+      ?? 0
+    )
+
     const deliveredAt = String(
       raw.delivered_at ?? raw.completed_at ?? raw.completedAt ?? raw.finished_at ?? raw.updated_at ?? raw.updatedAt ?? ''
     ) || undefined
+
+    const driverName = String(raw.driver_name ?? '').trim()
+    const driverPhone = normalizeCompactPhone(String(raw.driver_phone_no ?? raw.driver_contact ?? ''))
 
     return {
       source:          'be',
       externalOrderId: String(raw.order_id ?? ''),
       externalStoreId: String(raw.restaurant_id ?? raw.store_id ?? ''),
-      customerName:    String(raw.customer_name    ?? 'Khách hàng'),
+      customerName:    String(raw.customer_name ?? 'Khách hàng'),
       customerPhone:   normalizeCompactPhone(String(raw.customer_phone_no ?? raw.receiver_phone_no ?? '')),
       items,
       subtotal:        original,
@@ -477,10 +523,7 @@ export class BeAdapter implements PlatformAdapter {
         note:    String(raw.delivery_note ?? raw.note ?? raw.customer_note ?? raw.special_instruction ?? raw.remark ?? '') || undefined,
         estimatedTime: String(raw.to_be_delivered_at ?? raw.estimated_delivery_time ?? raw.promised_delivery_time ?? '') || undefined,
       },
-      driverInfo: {
-        name:  String(raw.driver_name     ?? ''),
-        phone: normalizeCompactPhone(String(raw.driver_phone_no ?? '')),
-      },
+      driverInfo: (driverName || driverPhone) ? { name: driverName, phone: driverPhone } : undefined,
       orderStatus,
       placedAt:   String(raw.created_at ?? raw.ordered_at ?? new Date().toISOString()),
       deliveredAt: orderStatus === 'completed' ? deliveredAt : undefined,
