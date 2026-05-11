@@ -55,7 +55,7 @@ function summarizeIds(values: Array<string | undefined>, limit = 10) {
 }
 
 function countGrabHistoryOrders(rawOrders: unknown[]) {
-  return rawOrders.reduce((count, rawOrder) => {
+  return rawOrders.reduce<number>((count, rawOrder) => {
     const pageType = String(getRecord(rawOrder)?._pageType ?? '').trim()
     return GRAB_HISTORY_PAGE_TYPES.has(pageType) ? count + 1 : count
   }, 0)
