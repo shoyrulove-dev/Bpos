@@ -2,10 +2,10 @@
 
 import Link from 'next/link'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, ExternalLink, Loader2, Plus, Printer, RefreshCw, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, Plus, Printer, RefreshCw, Search } from 'lucide-react'
 import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
-import { useMarkGrabOrderReady, useOrders } from '@/hooks/use-orders-channels'
+import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { getActualReceived, getDisplayCustomerPhone, getDisplayDriverPhone } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
@@ -120,8 +120,6 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10)
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [markingReadyOrderId, setMarkingReadyOrderId] = useState<string | null>(null)
-
   const dq = useDebounce(search)
   const pollingEnabled = page === 1 && !dq && !statusFilter && !sourceFilter
   const { data, isLoading, refetch, isRefetching } = useOrders({
@@ -136,7 +134,7 @@ export default function OrdersPage() {
   })
   const ordersData = data as OrdersResponse | undefined
   const orders: Order[] = ordersData?.orders ?? []
-  const markGrabOrderReady = useMarkGrabOrderReady()
+
 
   useEffect(() => {
     setPage(1)
@@ -167,23 +165,6 @@ export default function OrdersPage() {
     if (fromDate) sp.set('fromDate', fromDate)
     if (toDate) sp.set('toDate', toDate)
     openWindow(`/api/orders/export?${sp.toString()}`)
-  }
-
-  const handleMarkGrabOrderReady = async (order: Order, grabPortalOrderUrl: string) => {
-    if (markingReadyOrderId) return
-
-    setMarkingReadyOrderId(order._id)
-    try {
-      await markGrabOrderReady.mutateAsync(order._id)
-      await refetch()
-      window.alert(`Đã gửi thao tác Sẵn sàng lên Grab cho đơn ${getOrderDisplayCode(order)}.`)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể đánh dấu đơn hàng sẵn sàng trên Grab'
-      const shouldOpenGrab = window.confirm(`${message}\n\nBạn có muốn mở đúng trang đơn Grab để thao tác tay không?`)
-      if (shouldOpenGrab) openWindow(grabPortalOrderUrl)
-    } finally {
-      setMarkingReadyOrderId(null)
-    }
   }
 
   return (
@@ -249,9 +230,6 @@ export default function OrdersPage() {
               const actualReceived = getActualReceived(order)
               const locationLabel = [order.brandName, order.hubName].filter(Boolean).join(' - ')
               const showNewBadge = isOrderNew(order)
-              const grabPortalOrderUrl = order.status === 'waiting_pickup' ? buildGrabPortalOrderUrl(order) : null
-              const isMarkingReady = markingReadyOrderId === order._id
-
               return (
                 <article key={order._id} className="rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm">
                   {/* Header row */}
@@ -295,18 +273,7 @@ export default function OrdersPage() {
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={() => openWindow(buildReceiptPrintUrl(order._id, { autoprint: true, paperSize: '80mm' }))} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In Đơn</button>
                       <button type="button" onClick={() => openWindow(buildReceiptPrintUrl(order._id, { autoprint: true, paperSize: '58mm' }))} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In phiếu tem</button>
-                      {grabPortalOrderUrl && (
-                        <button
-                          type="button"
-                          onClick={() => handleMarkGrabOrderReady(order, grabPortalOrderUrl)}
-                          disabled={isMarkingReady}
-                          className="inline-flex items-center gap-2 rounded-full bg-[#ffbf1b] px-4 py-2 text-sm font-semibold text-[#3e2d00] transition hover:bg-[#efb100] disabled:cursor-not-allowed disabled:opacity-70"
-                          title="Gửi đúng thao tác Sẵn sàng lên Grab"
-                        >
-                          {isMarkingReady ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}
-                          {isMarkingReady ? 'Đang báo sẵn sàng...' : 'Đánh dấu đơn hàng sẵn sàng'}
-                        </button>
-                      )}
+
                     </div>
                   </div>
                 </article>

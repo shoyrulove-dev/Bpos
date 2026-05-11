@@ -294,6 +294,20 @@ function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
   }
 
   if (hasGrabActiveStatusSignal(normalized) && normalized.orderStatus !== 'cancelled') {
+    // Nếu có timestamp hoàn thành, ưu tiên completed hơn active signal
+    // (tránh trường hợp Grab giữ status cũ như READY_FOR_PICKUP nhưng đơn đã giao xong)
+    const hasCompletionTimestamp = Boolean(
+      parseDateValue(normalized.deliveredAt)
+      || parseDateValue(rawPayload.deliveredAt)
+      || parseDateValue(rawPayload.delivered_at)
+      || parseDateValue(rawPayload.completedAt)
+      || parseDateValue(rawPayload.completed_at)
+      || parseDateValue(rawPayload.deliveryCompletedAt)
+      || parseDateValue(rawPayload.delivered_time)
+      || nestedTimes.deliveredAt
+      || nestedTimes.completedAt
+    )
+    if (hasCompletionTimestamp) return 'completed'
     return normalized.orderStatus === 'delivering' ? 'delivering' : 'waiting_pickup'
   }
 

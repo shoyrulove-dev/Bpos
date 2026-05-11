@@ -146,16 +146,29 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
 
   if (pageStage === 'cancelled') return 'cancelled'
 
+  // Check completion TRƯỚC khi check pageStage === 'ready', để tránh downgrade
+  // đơn đã hoàn thành (có completedAt/deliveredAt) xuống waiting_pickup
+  if (secondarySignals.some((value) => value.includes('complete') || value.includes('deliver') || value.includes('history') || value.includes('past') || value.includes('terminate'))) {
+    return 'completed'
+  }
+
+  if (
+    hasGrabDateValue(raw.completedAt)
+    || hasGrabDateValue(raw.deliveredAt)
+    || hasGrabDateValue(raw.deliveryCompletedAt)
+    || hasGrabDateValue(raw.delivered_time)
+    || hasGrabDateValue(times?.completedAt)
+    || hasGrabDateValue(times?.deliveredAt)
+  ) {
+    return 'completed'
+  }
+
   if (pageStage === 'upcoming') return 'pre_order'
 
   if (pageStage === 'ready') {
     return secondarySignals.some((value) => value.includes('collect') || value.includes('delivery') || value.includes('picking_up'))
       ? 'delivering'
       : 'waiting_pickup'
-  }
-
-  if (secondarySignals.some((value) => value.includes('complete') || value.includes('deliver') || value.includes('history') || value.includes('past') || value.includes('terminate'))) {
-    return 'completed'
   }
 
   if (['preparing', 'upcoming', 'ready'].includes(pageStage) && (mappedStatus === 'waiting_confirm' || mappedStatus === 'waiting_pickup' || mappedStatus === 'delivering' || mappedStatus === 'pre_order') && secondarySignals.some((value) => (
@@ -173,17 +186,6 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
 
   if (raw.cancelCode || hasGrabDateValue(raw.cancelledAt) || hasGrabDateValue(raw.canceledAt) || hasGrabDateValue(times?.cancelledAt)) {
     return 'cancelled'
-  }
-
-  if (
-    hasGrabDateValue(raw.completedAt)
-    || hasGrabDateValue(raw.deliveredAt)
-    || hasGrabDateValue(raw.deliveryCompletedAt)
-    || hasGrabDateValue(raw.delivered_time)
-    || hasGrabDateValue(times?.completedAt)
-    || hasGrabDateValue(times?.deliveredAt)
-  ) {
-    return 'completed'
   }
 
   return mappedStatus
