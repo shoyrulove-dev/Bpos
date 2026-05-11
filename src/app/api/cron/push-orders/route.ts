@@ -11,6 +11,55 @@ import { hasMeaningfulCustomerName, hasMeaningfulPhone } from '@/lib/order-upser
 import type { NormalizedOrder, Order } from '@/types'
 
 const CRON_SECRET = process.env.CRON_SECRET
+const GRAB_HISTORY_PAGE_TYPES = new Set(['Completed', 'CompletedV2', 'History', 'Past', 'PastOrders', 'Delivered', 'Cancelled'])
+
+function getRecord(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+}
+
+function getRawOrderId(raw: unknown) {
+  const record = getRecord(raw)
+  if (!record) return undefined
+
+  const value = record.orderID ?? record.orderId ?? record.ID ?? record.id
+  const normalized = String(value ?? '').trim()
+  return normalized || undefined
+}
+
+function getRawDebugId(raw: unknown) {
+  const record = getRecord(raw)
+  if (!record) return undefined
+
+  const value = record.displayID
+    ?? record.displayId
+    ?? record.bookingCode
+    ?? record.booking_code
+    ?? record.orderCode
+    ?? record.orderDisplayId
+    ?? record.merchantOrderID
+    ?? record.merchantOrderId
+    ?? record.shortId
+    ?? record.shortID
+    ?? record.orderID
+    ?? record.orderId
+
+  const normalized = String(value ?? '').trim()
+  return normalized || undefined
+}
+
+function summarizeIds(values: Array<string | undefined>, limit = 10) {
+  const deduped = Array.from(new Set(values.filter((value): value is string => Boolean(value))))
+  return deduped.length ? deduped.slice(0, limit).join(',') : '-'
+}
+
+function countGrabHistoryOrders(rawOrders: unknown[]) {
+  return rawOrders.reduce((count, rawOrder) => {
+    const pageType = String(getRecord(rawOrder)?._pageType ?? '').trim()
+    return GRAB_HISTORY_PAGE_TYPES.has(pageType) ? count + 1 : count
+  }, 0)
+}
 
 /**
  * POST /api/cron/push-orders
@@ -106,6 +155,11 @@ export async function POST(req: NextRequest) {
   let upserted = 0
   let updated = 0
   const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean; placedAt?: string | Date }> = []
+  const historyCount = intg.provider === 'grab' ? countGrabHistoryOrders(rawOrders) : 0
+  const activeCount = Math.max(rawOrders.length - historyCount, 0)
+  const rawDebugIds = rawOrders.map(getRawDebugId)
+  const rawOrderIds = rawOrders.map(getRawOrderId)
+  const normalizedIds = normalized.map((order) => order.externalOrderId)
 
   for (const norm of normalized) {
     if (!norm.externalOrderId) continue
@@ -178,7 +232,7 @@ export async function POST(req: NextRequest) {
   await SyncLogModel.create({
     type: 'order',
     status: 'success',
-    content: `[browser-push][${intg.provider}] +${upserted} mới, ${updated} cập nhật (${Date.now() - startedAt}ms) [${source}]`,
+    content: `[browser-push][${intg.provider}][integration:${integrationId}][store:${intg.externalStoreId ?? '-'}][raw:${rawOrders.length} normalized:${normalized.length} active:${activeCount} history:${historyCount}][rawDebugIds:${summarizeIds(rawDebugIds)}][rawOrderIds:${summarizeIds(rawOrderIds)}][normalizedIds:${summarizeIds(normalizedIds)}] +${upserted} mới, ${updated} cập nhật (${Date.now() - startedAt}ms) [${source}]`,
     source: intg.provider,
     brandId: intg.brandId,
   })
