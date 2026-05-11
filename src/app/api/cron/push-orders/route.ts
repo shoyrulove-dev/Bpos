@@ -4,11 +4,14 @@ import IntegrationModel from '@/models/Integration'
 import OrderModel from '@/models/Order'
 import SyncLogModel from '@/models/SyncLog'
 import { getAdapter } from '@/integrations/registry'
+import { decryptJSON } from '@/lib/crypto'
 import { buildOrderUpsert, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import { upsertCustomerProfile } from '@/lib/customer-upsert'
 import { getDisplayCustomerName, getDisplayCustomerPhone } from '@/lib/order-financials'
 import { hasMeaningfulCustomerName, hasMeaningfulPhone } from '@/lib/order-upsert'
+import { buildSessionStoreId } from '@/lib/realtime-order-sync'
 import type { NormalizedOrder, Order } from '@/types'
+import type { SessionData } from '@/integrations/types'
 
 const CRON_SECRET = process.env.CRON_SECRET
 const GRAB_HISTORY_PAGE_TYPES = new Set(['Completed', 'CompletedV2', 'History', 'Past', 'PastOrders', 'Delivered', 'Cancelled'])
@@ -59,6 +62,15 @@ function countGrabHistoryOrders(rawOrders: unknown[]) {
     const pageType = String(getRecord(rawOrder)?._pageType ?? '').trim()
     return GRAB_HISTORY_PAGE_TYPES.has(pageType) ? count + 1 : count
   }, 0)
+}
+
+function needsGrabSessionDetailEnrichment(order: NormalizedOrder) {
+  if (order.source !== 'grab') return false
+
+  return !hasMeaningfulPhone(order.customerPhone)
+    || !hasMeaningfulPhone(order.driverInfo?.phone)
+    || !order.items.length
+    || order.items.some((item) => Number(item.price ?? 0) <= 0 || Number(item.total ?? 0) <= 0)
 }
 
 /**
@@ -138,7 +150,7 @@ export async function POST(req: NextRequest) {
 
   // Normalize raw orders using the provider adapter
   // Pass _fetchType if present so BE adapter can map status correctly
-  const normalized: NormalizedOrder[] = rawOrders
+  let normalized: NormalizedOrder[] = rawOrders
     .filter((o) => o !== null && typeof o === 'object' && !Array.isArray(o))
     .map((o) => {
       try {
@@ -150,6 +162,45 @@ export async function POST(req: NextRequest) {
       }
     })
     .filter((o): o is NormalizedOrder => o !== null && Boolean(o.externalOrderId))
+
+  if (source === 'browser-scraper' && intg.provider === 'grab' && adapter.fetchOrderDetailWithSession) {
+    const sessionData = typeof intgDoc.sessionData === 'string' ? intgDoc.sessionData : ''
+
+    if (sessionData) {
+      try {
+        const session = decryptJSON<SessionData>(sessionData)
+        const storeId = buildSessionStoreId(intg.externalStoreId, session)
+        const detailCandidates = normalized.filter(needsGrabSessionDetailEnrichment)
+
+        if (storeId && detailCandidates.length) {
+          const detailMap = new Map<string, NormalizedOrder>()
+
+          for (let index = 0; index < detailCandidates.length; index += 5) {
+            const batch = detailCandidates.slice(index, index + 5)
+            const details = await Promise.all(batch.map(async (order) => {
+              try {
+                return await adapter.fetchOrderDetailWithSession!(String(order.externalOrderId), session, storeId)
+              } catch {
+                return null
+              }
+            }))
+
+            for (const detail of details) {
+              if (!detail?.externalOrderId) continue
+              detailMap.set(detail.externalOrderId, detail)
+            }
+          }
+
+          normalized = normalized.map((order) => {
+            const detail = detailMap.get(String(order.externalOrderId ?? ''))
+            return detail ? mergeNormalizedOrderPreservingDetail(order, detail) : order
+          })
+        }
+      } catch {
+        // Fall back to the browser-pushed summary payload when stored session detail fetch fails.
+      }
+    }
+  }
 
   // Fetch existing orders for merge
   const externalIds = normalized.map((o) => o.externalOrderId).filter(Boolean)

@@ -82,6 +82,7 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
     raw.status,
     raw.orderStatus,
     raw.state,
+    raw._pageType,
     raw.deliveryTaskpoolStatus,
     raw.preparationTaskpoolStatus,
     raw.fulfillmentStatus,
@@ -97,6 +98,18 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
 
   if (secondarySignals.some((value) => value.includes('complete') || value.includes('deliver') || value.includes('history') || value.includes('past') || value.includes('terminate'))) {
     return 'completed'
+  }
+
+  if ((mappedStatus === 'waiting_pickup' || mappedStatus === 'delivering') && secondarySignals.some((value) => (
+    value.includes('prepare')
+    || value.includes('ready')
+    || value.includes('upcoming')
+    || value.includes('pickup')
+    || value.includes('accepted')
+    || value.includes('allocat')
+    || value.includes('execut')
+  ))) {
+    return mappedStatus
   }
 
   if (raw.cancelCode || hasGrabDateValue(raw.cancelledAt) || hasGrabDateValue(raw.canceledAt) || hasGrabDateValue(times?.cancelledAt)) {
