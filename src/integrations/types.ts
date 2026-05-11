@@ -63,6 +63,9 @@ export interface PlatformAdapter {
   /** Fetch single order detail using official API credentials. */
   fetchOrderDetail(externalOrderId: string, config: AdapterConfig): Promise<NormalizedOrder | null>
 
+  /** Fetch single order detail using a captured browser session when supported. */
+  fetchOrderDetailWithSession?(externalOrderId: string, session: SessionData, storeId: string): Promise<NormalizedOrder | null>
+
   /** Normalize a raw platform order object into NormalizedOrder. */
   normalizeOrder(raw: Record<string, unknown>, fetchType?: string): NormalizedOrder
 

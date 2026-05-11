@@ -43,7 +43,7 @@ export class BeAdapter implements PlatformAdapter {
     return hasBeCancelSignal(raw)
   }
 
-  private async fetchOrderDetailWithSession(
+  private async fetchOrderDetailRawWithSession(
     accessToken: string,
     merchantContext: { merchantId: number; userId: number },
     restaurantId: number,
@@ -94,7 +94,7 @@ export class BeAdapter implements PlatformAdapter {
       const batch = orderIds.slice(index, index + 5)
       const details = await Promise.all(batch.map(async (orderId) => {
         try {
-          return await this.fetchOrderDetailWithSession(accessToken, merchantContext, restaurantId, orderId)
+          return await this.fetchOrderDetailRawWithSession(accessToken, merchantContext, restaurantId, orderId)
         } catch {
           return null
         }
@@ -524,6 +524,27 @@ export class BeAdapter implements PlatformAdapter {
     } catch {
       return null
     }
+  }
+
+  async fetchOrderDetailWithSession(orderId: string, session: SessionData, restaurantId: string): Promise<NormalizedOrder | null> {
+    const accessToken = this.getSessionAccessToken(session)
+    if (!accessToken) return null
+
+    const sessionRestaurant = await this.resolveSessionRestaurant(accessToken, restaurantId)
+    if (!sessionRestaurant) return null
+
+    const detail = await this.fetchOrderDetailRawWithSession(
+      accessToken,
+      sessionRestaurant.merchantContext,
+      sessionRestaurant.restaurantId,
+      orderId,
+    )
+    if (!detail) return null
+
+    const normalized = this.normalizeOrder(detail, 'previous')
+    return this.hasCancelSignal(detail)
+      ? { ...normalized, orderStatus: 'cancelled' as const }
+      : normalized
   }
 
   async fetchHistoricalOrdersWithSession(session: SessionData, restaurantId: string, _options?: { days?: number }): Promise<NormalizedOrder[] | null> {

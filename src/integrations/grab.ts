@@ -873,6 +873,17 @@ export class GrabAdapter implements PlatformAdapter {
     return []  // all endpoints failed – treat as empty (browser scraper handles real orders)
   }
 
+  async fetchOrderDetailWithSession(orderId: string, session: SessionData, storeId: string): Promise<NormalizedOrder | null> {
+    const context = this.buildGrabSessionContext(session, storeId)
+    if (!context) return null
+
+    return this.fetchPortalOrderDetailWithSession(
+      { orderID: orderId, orderId, merchantID: context.discoveredStoreId },
+      context.baseHeaders,
+      context.discoveredStoreId
+    )
+  }
+
   async fetchHistoricalOrdersWithSession(
     session: SessionData,
     storeId: string,

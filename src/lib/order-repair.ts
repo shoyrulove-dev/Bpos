@@ -444,7 +444,7 @@ async function backfillOrderDetails(days: number, providers: string[], externalO
   }
 
   const integrations = await IntegrationModel.find({ isActive: true, provider: { $in: providers } })
-    .select('+credentials brandId hubId provider externalStoreId loginMode')
+    .select('+credentials +sessionData brandId hubId provider externalStoreId loginMode')
     .lean()
 
   let refreshed = 0
@@ -458,19 +458,41 @@ async function backfillOrderDetails(days: number, providers: string[], externalO
       continue
     }
 
-    if (integration.loginMode === 'auto') {
-      skipped += 1
-      continue
-    }
-
     const adapter = getAdapter(String(integration.provider ?? ''))
-    if (!adapter?.fetchOrderDetail || !order.externalOrderId) {
+    if (!order.externalOrderId) {
       skipped += 1
       continue
     }
 
     try {
-      const normalized = await adapter.fetchOrderDetail(String(order.externalOrderId), buildAdapterConfigFromIntegration(integration))
+      let normalized: NormalizedOrder | null = null
+
+      if (integration.loginMode === 'auto') {
+        const sessionData = (integration as { sessionData?: string }).sessionData
+        if (!sessionData || !adapter?.fetchOrderDetailWithSession) {
+          skipped += 1
+          continue
+        }
+
+        const session = decryptJSON<SessionData>(sessionData)
+        const storeId = buildSessionStoreId(
+          order.externalStoreId || integration.externalStoreId,
+          session,
+        )
+        if (!storeId) {
+          skipped += 1
+          continue
+        }
+
+        normalized = await adapter.fetchOrderDetailWithSession(String(order.externalOrderId), session, storeId)
+      } else {
+        if (!adapter?.fetchOrderDetail) {
+          skipped += 1
+          continue
+        }
+        normalized = await adapter.fetchOrderDetail(String(order.externalOrderId), buildAdapterConfigFromIntegration(integration))
+      }
+
       if (!normalized?.externalOrderId) {
         skipped += 1
         continue
@@ -1003,9 +1025,13 @@ async function repairDrivers() {
         return latest
       }, undefined)
 
-      if (duplicates.length) {
-        await DriverModel.deleteMany({ _id: { $in: duplicates.map((item: StoredDriver) => item._id) } })
-        removed += duplicates.length
+      const persistedDuplicateIds = duplicates
+        .map((item: StoredDriver) => String(item._id))
+        .filter((id) => !id.startsWith('order:') && mongoose.isValidObjectId(id))
+
+      if (persistedDuplicateIds.length) {
+        await DriverModel.deleteMany({ _id: { $in: persistedDuplicateIds } })
+        removed += persistedDuplicateIds.length
       }
 
       if (String(primary._id).startsWith('order:')) {
