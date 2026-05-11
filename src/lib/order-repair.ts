@@ -11,7 +11,7 @@ import IntegrationModel from '@/models/Integration'
 import OrderModel from '@/models/Order'
 import CustomerModel from '@/models/Customer'
 import DriverModel from '@/models/Driver'
-import type { SessionData } from '@/integrations/types'
+import type { AdapterConfig, SessionData } from '@/integrations/types'
 import type { NormalizedOrder, Order } from '@/types'
 
 type StoredOrder = Order & {
@@ -366,7 +366,7 @@ function needsOrderDetailBackfill(order: StoredOrder) {
 function buildAdapterConfigFromIntegration(integration: {
   externalStoreId?: string
   credentials?: unknown
-}) {
+}): AdapterConfig {
   const rawCreds = integration.credentials as unknown
   const credObj: Record<string, unknown> =
     rawCreds instanceof Map
@@ -375,11 +375,17 @@ function buildAdapterConfigFromIntegration(integration: {
       ? rawCreds as Record<string, unknown>
       : {}
 
+  const asOptionalString = (value: unknown) => {
+    if (value == null) return undefined
+    const normalized = String(value).trim()
+    return normalized ? normalized : undefined
+  }
+
   return {
     ...credObj,
-    storeId: credObj.storeId ?? credObj.merchantId ?? credObj.restaurantId ?? integration.externalStoreId,
-    merchantId: credObj.merchantId ?? credObj.storeId ?? integration.externalStoreId,
-    restaurantId: credObj.restaurantId ?? credObj.storeId ?? integration.externalStoreId,
+    storeId: asOptionalString(credObj.storeId ?? credObj.merchantId ?? credObj.restaurantId ?? integration.externalStoreId),
+    merchantId: asOptionalString(credObj.merchantId ?? credObj.storeId ?? integration.externalStoreId),
+    restaurantId: asOptionalString(credObj.restaurantId ?? credObj.storeId ?? integration.externalStoreId),
   }
 }
 
