@@ -52,8 +52,13 @@ type Integ = {
   externalStoreId?: string
   externalStoreName?: string
   syncStatus?: string
+  appSyncStatus?: string
   syncError?: string
   lastSyncAt?: string
+  appLastSyncAt?: string
+  scraperSyncStatus?: 'success' | 'error' | 'pending'
+  scraperLastSyncAt?: string
+  scraperSyncSource?: string
   isActive?: boolean
   loginMode?: 'api' | 'auto'
   sessionRefreshMode?: 'auto' | 'browser'
@@ -433,6 +438,9 @@ export default function IntegrationsPage() {
     const sr = syncResults[integ._id]
     const isPendingSetup = integ.isActive === false
     const supportsSessionLogin = SESSION_LOGIN_PROVIDERS.includes(integ.provider)
+    const isExternalScraperManaged = integ.loginMode === 'auto' && (integ.provider === 'grab' || integ.provider === 'be')
+    const displayedSyncStatus = isExternalScraperManaged ? (integ.scraperSyncStatus ?? 'pending') : integ.syncStatus
+    const displayedSyncAt = isExternalScraperManaged ? integ.scraperLastSyncAt : integ.lastSyncAt
 
     return (
       <div key={integ._id} className={cn('rounded-2xl border border-gray-200 bg-white p-4 flex flex-col gap-3 shadow-sm', integ.isActive === false && 'opacity-60')}>
@@ -466,20 +474,34 @@ export default function IntegrationsPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <span className={cn('badge badge-sm',
               isPendingSetup ? 'badge-gray' :
-              integ.syncStatus === 'success' ? 'badge-green' :
-              integ.syncStatus === 'error' ? 'badge-red' :
-              integ.syncStatus === 'syncing' ? 'badge-blue' : 'badge-gray')}>
+              displayedSyncStatus === 'success' ? 'badge-green' :
+              displayedSyncStatus === 'error' ? 'badge-red' :
+              displayedSyncStatus === 'syncing' ? 'badge-blue' : 'badge-gray')}>
               {isPendingSetup ? 'Chờ cấu hình' :
-               integ.syncStatus === 'success' ? 'Đồng bộ OK' :
-               integ.syncStatus === 'error' ? 'Lỗi đồng bộ' :
-               integ.syncStatus === 'syncing' ? 'Đang sync…' : 'Chưa đồng bộ'}
+               isExternalScraperManaged
+                 ? displayedSyncStatus === 'success' ? 'Scraper OK'
+                 : displayedSyncStatus === 'error' ? 'Scraper stale'
+                 : 'Chờ scraper'
+                 : displayedSyncStatus === 'success' ? 'Đồng bộ OK'
+                 : displayedSyncStatus === 'error' ? 'Lỗi đồng bộ'
+                 : displayedSyncStatus === 'syncing' ? 'Đang sync…' : 'Chưa đồng bộ'}
             </span>
-            {integ.lastSyncAt && (
-              <span className="text-xs text-gray-400" title={new Date(integ.lastSyncAt).toLocaleString('vi-VN')}>
-                {timeAgo(integ.lastSyncAt)}
+            {displayedSyncAt && (
+              <span className="text-xs text-gray-400" title={new Date(displayedSyncAt).toLocaleString('vi-VN')}>
+                {timeAgo(displayedSyncAt)}
               </span>
             )}
           </div>
+          {isExternalScraperManaged && (
+            <p className="text-xs text-amber-700">
+              Trạng thái trên là heartbeat từ scraper ngoài app; sync API nền không còn đại diện cho daemon scraper.
+            </p>
+          )}
+          {isExternalScraperManaged && integ.appLastSyncAt && (
+            <p className="text-xs text-gray-400" title={new Date(integ.appLastSyncAt).toLocaleString('vi-VN')}>
+              API nền: {integ.appSyncStatus === 'success' ? 'OK' : integ.appSyncStatus === 'error' ? 'lỗi' : integ.appSyncStatus ?? 'n/a'} · {timeAgo(integ.appLastSyncAt)}
+            </p>
+          )}
         </div>
 
         {isPendingSetup && (

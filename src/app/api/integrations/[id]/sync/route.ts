@@ -28,6 +28,10 @@ type AutomationRefreshResult = {
 function usesBrowserRelog(integration: { sessionRefreshMode?: string }) {
   return integration.sessionRefreshMode === 'browser'
 }
+
+function usesExternalOrderSync(integration: { provider?: string; loginMode?: 'api' | 'auto' }) {
+  return integration.loginMode === 'auto' && (integration.provider === 'grab' || integration.provider === 'be')
+}
 async function refreshSessionIfPossible(integration: {
   _id: string
   provider: string
@@ -117,6 +121,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   if (!intg.isActive) return err('Tích hợp đang bị tắt', 400)
+  if (usesExternalOrderSync(intg)) {
+    return err('Grab/BE auto đang dùng external scraper để ingest order; không chạy sync API tay ở đây', 409)
+  }
 
   const adapter = getAdapter(intg.provider)
   if (!adapter) return err(`Không hỗ trợ provider: ${intg.provider}`, 400)

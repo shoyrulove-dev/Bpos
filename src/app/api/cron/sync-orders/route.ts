@@ -29,6 +29,10 @@ function usesBrowserRelog(integration: { sessionRefreshMode?: string }) {
   return integration.sessionRefreshMode === 'browser'
 }
 
+function usesExternalOrderSync(integration: { provider?: string; loginMode?: 'api' | 'auto' }) {
+  return integration.loginMode === 'auto' && (integration.provider === 'grab' || integration.provider === 'be')
+}
+
 async function refreshSessionIfPossible(integration: {
   _id: string
   provider: string
@@ -125,6 +129,17 @@ export async function GET(req: NextRequest) {
 
     const adapter = getAdapter(intg.provider)
     if (!adapter) continue
+
+    if (usesExternalOrderSync(intg)) {
+      results.push({
+        id: String(intg._id),
+        provider: intg.provider,
+        upserted: 0,
+        updated: 0,
+        error: 'Skipped: external scraper manages order ingestion',
+      })
+      continue
+    }
 
     const startedAt = Date.now()
     let upserted = 0
