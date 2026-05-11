@@ -10,7 +10,7 @@ import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/aut
 import { requestAutomationLogin } from '@/lib/automation-login'
 import { upsertCustomerProfile } from '@/lib/customer-upsert'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { buildOrderUpsert, getComparableDriverName, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone } from '@/lib/order-financials'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeOrdersByExternalOrderId, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
 import { buildSessionFailureUpdate, buildSessionSuccessUpdate } from '@/lib/session-health'
@@ -324,6 +324,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       try {
         const existingDriver = await DriverModel.findOne({ phone: d.phone, platform: d.platform }).select('name').lean() as { name?: string } | null
         const shouldUpdateName = !existingDriver || !hasMeaningfulDriverName(existingDriver.name) || isDriverNamePlaceholder(existingDriver.name)
+        const existingNameKey = getComparableDriverName(existingDriver?.name)
+        const incomingNameKey = getComparableDriverName(d.name)
+
+        if (existingDriver && existingNameKey && (!incomingNameKey || existingNameKey !== incomingNameKey)) {
+          continue
+        }
+
         await DriverModel.findOneAndUpdate(
           { phone: d.phone, platform: d.platform },
           d.isNew

@@ -2,7 +2,7 @@ import { decryptJSON } from '@/lib/crypto'
 import { hasBeCancelSignal } from '@/lib/be-order-status'
 import { calcCustomerTier, upsertCustomerProfile } from '@/lib/customer-upsert'
 import { getAdapter } from '@/integrations/registry'
-import { buildOrderUpsert, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { buildOrderUpsert, getComparableDriverName, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
 import { buildSessionStoreId } from '@/lib/realtime-order-sync'
 import { normalizeCompactPhone } from '@/lib/phone'
@@ -78,6 +78,7 @@ function buildScopedOrderQuery(options: {
   providers: string[]
   externalOrderIds?: string[]
   shortIds?: string[]
+  externalStoreIds?: string[]
 }) {
   const query: Record<string, unknown> = { source: { $in: options.providers } }
 
@@ -87,6 +88,10 @@ function buildScopedOrderQuery(options: {
 
   if (options.shortIds?.length) {
     query.shortId = { $in: options.shortIds }
+  }
+
+  if (options.externalStoreIds?.length) {
+    query.externalStoreId = { $in: options.externalStoreIds }
   }
 
   return query
@@ -142,8 +147,12 @@ async function upsertDriverFromOrder(order: StoredOrder) {
   return true
 }
 
-async function upsertHistoricalOrders(days: number, providers: string[], targetExternalOrderIds?: string[]) {
-  const integrations = await IntegrationModel.find({ isActive: true, provider: { $in: providers } })
+async function upsertHistoricalOrders(days: number, providers: string[], targetExternalOrderIds?: string[], externalStoreIds?: string[]) {
+  const integrations = await IntegrationModel.find({
+    isActive: true,
+    provider: { $in: providers },
+    ...(externalStoreIds?.length ? { externalStoreId: { $in: externalStoreIds } } : {}),
+  })
     .select('+credentials +sessionData')
     .lean()
 
@@ -254,12 +263,12 @@ async function upsertHistoricalOrders(days: number, providers: string[], targetE
   return summary
 }
 
-async function resolveScopedExternalOrderIds(providers: string[], externalOrderIds?: string[], shortIds?: string[]) {
+async function resolveScopedExternalOrderIds(providers: string[], externalOrderIds?: string[], shortIds?: string[], externalStoreIds?: string[]) {
   const resolved = new Set((externalOrderIds ?? []).map((value) => value.trim()).filter(Boolean))
 
   if (!shortIds?.length) return Array.from(resolved)
 
-  const scopedOrders = await OrderModel.find(buildScopedOrderQuery({ providers, shortIds }))
+  const scopedOrders = await OrderModel.find(buildScopedOrderQuery({ providers, shortIds, externalStoreIds }))
     .select('externalOrderId')
     .lean()
 
@@ -284,7 +293,23 @@ function hasGrabDetailedItems(rawPayload?: Record<string, unknown>) {
     ? itemInfo.items
     : []
 
-  return rawItems.length > 0
+  return rawItems.some((item) => {
+    const itemRecord = getRecord(item)
+    const fare = getRecord(itemRecord?.fare)
+
+    return Boolean(
+      (typeof itemRecord?.note === 'string' && itemRecord.note.trim())
+      || (typeof itemRecord?.remark === 'string' && itemRecord.remark.trim())
+      || (typeof itemRecord?.specialInstruction === 'string' && itemRecord.specialInstruction.trim())
+      || (typeof itemRecord?.specialInstructions === 'string' && itemRecord.specialInstructions.trim())
+      || (Array.isArray(itemRecord?.modifiers) && itemRecord.modifiers.length)
+      || (Array.isArray(itemRecord?.addons) && itemRecord.addons.length)
+      || (Array.isArray(itemRecord?.options) && itemRecord.options.length)
+      || (Array.isArray(itemRecord?.discountInfo) && itemRecord.discountInfo.length)
+      || Number(itemRecord?.price ?? itemRecord?.itemPrice ?? itemRecord?.totalPrice ?? itemRecord?.subtotal ?? itemRecord?.total ?? 0) > 0
+      || Number(fare?.priceFloat ?? fare?.amount ?? fare?.price ?? 0) > 0
+    )
+  })
 }
 
 function hasBeDetailedItems(rawPayload?: Record<string, unknown>) {
@@ -345,12 +370,35 @@ function hasDeliveredAtSignal(rawPayload?: Record<string, unknown>) {
   )
 }
 
+function getGrabStoredPageStage(rawPayload?: Record<string, unknown>) {
+  const raw = getRecord(rawPayload)
+  const explicitStage = String(raw?._pageStage ?? '').trim().toLowerCase()
+  if (explicitStage) return explicitStage
+
+  const pageType = String(raw?._pageType ?? raw?.pageType ?? '').trim().toLowerCase()
+  if (pageType.includes('cancel')) return 'cancelled'
+  if (pageType.includes('complete') || pageType.includes('deliver')) return 'completed'
+  if (pageType.includes('history') || pageType.includes('past') || pageType.includes('all')) return 'history'
+  if (pageType.includes('ready')) return 'ready'
+  if (pageType.includes('upcoming')) return 'upcoming'
+  if (pageType.includes('prepar')) return 'preparing'
+
+  const rawStatus = String(raw?.deliveryStatus ?? raw?.orderState ?? raw?.status ?? raw?.orderStatus ?? raw?.state ?? '').trim().toLowerCase()
+  if (rawStatus.includes('cancel')) return 'cancelled'
+  if (rawStatus.includes('complete') || rawStatus.includes('deliver')) return 'completed'
+  if (rawStatus.includes('ready')) return 'ready'
+  if (rawStatus.includes('upcoming') || rawStatus.includes('schedule')) return 'upcoming'
+  return 'preparing'
+}
+
 function needsOrderDetailBackfill(order: StoredOrder) {
   if (!['grab', 'be'].includes(String(order.source ?? ''))) return false
   if (!order.externalOrderId) return false
 
   const rawPayload = getRecord(order.rawPayload)
   const missingDeliveredAt = order.status === 'completed' && !order.deliveredAt && !hasDeliveredAtSignal(rawPayload)
+  const missingCustomerPhone = order.source === 'grab' && !hasMeaningfulPhone(getDisplayCustomerPhone(order as unknown as Order))
+  const missingDriverPhone = order.source === 'grab' && !hasMeaningfulPhone(getDisplayDriverPhone(order as unknown as Order))
   const missingItemDetail = order.source === 'grab'
     ? !hasGrabDetailedItems(rawPayload)
     : !hasBeDetailedItems(rawPayload)
@@ -360,7 +408,7 @@ function needsOrderDetailBackfill(order: StoredOrder) {
       : !hasBePromotionDetail(rawPayload)
   )
 
-  return missingDeliveredAt || missingItemDetail || missingPromotionDetail
+  return missingDeliveredAt || missingCustomerPhone || missingDriverPhone || missingItemDetail || missingPromotionDetail
 }
 
 function buildAdapterConfigFromIntegration(integration: {
@@ -419,13 +467,13 @@ function pickIntegrationForOrder<T extends { provider: string; brandId?: unknown
   return sameProvider[0]
 }
 
-async function backfillOrderDetails(days: number, providers: string[], externalOrderIds?: string[], shortIds?: string[]) {
-  const resolvedExternalOrderIds = await resolveScopedExternalOrderIds(providers, externalOrderIds, shortIds)
-  const isScoped = Boolean(resolvedExternalOrderIds.length || shortIds?.length)
+async function backfillOrderDetails(days: number, providers: string[], externalOrderIds?: string[], shortIds?: string[], externalStoreIds?: string[]) {
+  const resolvedExternalOrderIds = await resolveScopedExternalOrderIds(providers, externalOrderIds, shortIds, externalStoreIds)
+  const isScoped = Boolean(resolvedExternalOrderIds.length || shortIds?.length || externalStoreIds?.length)
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 
   const query: Record<string, unknown> = isScoped
-    ? buildScopedOrderQuery({ providers, externalOrderIds: resolvedExternalOrderIds, shortIds })
+    ? buildScopedOrderQuery({ providers, externalOrderIds: resolvedExternalOrderIds, shortIds, externalStoreIds })
     : {
         source: { $in: providers },
         placedAt: { $gte: cutoff },
@@ -526,6 +574,7 @@ async function repairStoredOrders(
     externalOrderIds?: string[]
     shortIds?: string[]
     driverPhone?: string
+    externalStoreIds?: string[]
     forceCancelledOrderIds?: string[]
     forceCompletedShortIds?: string[]
   }
@@ -540,7 +589,7 @@ async function repairStoredOrders(
   const forceCancelledOrderIdSet = options?.forceCancelledOrderIds?.length ? new Set(options.forceCancelledOrderIds) : null
   const forceCompletedShortIdSet = options?.forceCompletedShortIds?.length ? new Set(options.forceCompletedShortIds) : null
 
-  const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds }))
+  const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds, externalStoreIds: options?.externalStoreIds }))
     .select('shortId source externalOrderId brandId customerName customerPhone driverInfo subtotal discount total platformFee status cancelReason placedAt cancelledAt deliveredAt updatedAt rawPayload')
     .lean()
     .cursor()
@@ -617,6 +666,7 @@ async function repairStoredOrders(
       }
 
       if (order.source === 'grab' && order.rawPayload && ['waiting_confirm', 'waiting_pickup', 'delivering'].includes(order.status)) {
+        const grabPageStage = getGrabStoredPageStage(order.rawPayload)
         const rawGrabStatus = String(
           order.rawPayload.deliveryStatus
           ?? order.rawPayload.orderState
@@ -627,17 +677,7 @@ async function repairStoredOrders(
         ).toUpperCase()
         const GRAB_COMPLETED = new Set(['DELIVERED', 'COMPLETED', 'BILL_PAID'])
         const GRAB_CANCELLED = new Set(['CANCELLED', 'CANCELLED_MAX', 'CANCELLED_BY_MERCHANT', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_DRIVER', 'FAILED', 'REFUNDED'])
-        if (GRAB_COMPLETED.has(rawGrabStatus)) {
-          set.status = 'completed'
-          set.deliveredAt = parseDateValue(
-            order.rawPayload.deliveredAt
-            ?? order.rawPayload.completedAt
-            ?? order.rawPayload.updatedAt
-            ?? order.deliveredAt
-          ) ?? new Date()
-          unset.cancelledAt = ''
-          unset.cancelReason = ''
-        } else if (GRAB_CANCELLED.has(rawGrabStatus) && order.status !== 'cancelled') {
+        if (grabPageStage === 'cancelled' || GRAB_CANCELLED.has(rawGrabStatus)) {
           set.status = 'cancelled'
           set.cancelReason = String(order.rawPayload.cancelReason ?? order.rawPayload.cancel_reason ?? order.cancelReason ?? 'Đơn đã hủy')
           set.cancelledAt = parseDateValue(
@@ -647,6 +687,16 @@ async function repairStoredOrders(
             ?? order.cancelledAt
           ) ?? new Date()
           unset.deliveredAt = ''
+        } else if (grabPageStage === 'completed' || (grabPageStage === 'history' && (GRAB_COMPLETED.has(rawGrabStatus) || hasDeliveredAtSignal(order.rawPayload))) || GRAB_COMPLETED.has(rawGrabStatus)) {
+          set.status = 'completed'
+          set.deliveredAt = parseDateValue(
+            order.rawPayload.deliveredAt
+            ?? order.rawPayload.completedAt
+            ?? order.rawPayload.updatedAt
+            ?? order.deliveredAt
+          ) ?? new Date()
+          unset.cancelledAt = ''
+          unset.cancelReason = ''
         }
       }
 
@@ -699,6 +749,7 @@ async function backfillDriversFromOrders(options?: {
   externalOrderIds?: string[]
   shortIds?: string[]
   driverPhone?: string
+  externalStoreIds?: string[]
 }) {
   const providers = (options?.providers?.length ? options.providers : ['be', 'grab']).map((value) => value.trim()).filter(Boolean)
   const orderIdSet = options?.externalOrderIds?.length ? new Set(options.externalOrderIds) : null
@@ -708,7 +759,7 @@ async function backfillDriversFromOrders(options?: {
   let updated = 0
   let failed = 0
 
-  const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds }))
+  const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds, externalStoreIds: options?.externalStoreIds }))
     .select('shortId source externalOrderId driverInfo rawPayload')
     .lean()
     .cursor()
@@ -757,6 +808,7 @@ async function backfillCustomersFromOrders(options?: {
   providers?: string[]
   externalOrderIds?: string[]
   shortIds?: string[]
+  externalStoreIds?: string[]
 }) {
   const providers = (options?.providers?.length ? options.providers : ['be', 'grab']).map((value) => value.trim()).filter(Boolean)
   const orderIdSet = options?.externalOrderIds?.length ? new Set(options.externalOrderIds) : null
@@ -778,7 +830,7 @@ async function backfillCustomersFromOrders(options?: {
 
   const aggregates = new Map<string, CustomerAggregate>()
 
-  const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds }))
+  const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds, externalStoreIds: options?.externalStoreIds }))
     .select('shortId source externalOrderId brandId customerName customerPhone total placedAt rawPayload')
     .lean()
     .cursor()
@@ -1016,9 +1068,16 @@ async function repairDrivers() {
         ?? group.find((item: StoredDriver) => hasMeaningfulDriverName(item.name) && !isDriverNamePlaceholder(item.name))
         ?? group.find((item: StoredDriver) => isDriverNamePlaceholder(item.name))
         ?? group[0]
+      const primaryNameKey = getComparableDriverName(primary.name)
+      const matchingGroup = group.filter((item: StoredDriver) => {
+        const itemNameKey = getComparableDriverName(item.name)
+        if (!primaryNameKey) return !itemNameKey
+        return itemNameKey === primaryNameKey
+      })
+      const countedGroup = matchingGroup.length ? matchingGroup : [primary]
       const duplicates = group.filter((item: StoredDriver) => String(item._id) !== String(primary._id))
-      const visitCount = group.reduce((sum: number, item: StoredDriver) => sum + Number(item.visitCount ?? 0), 0)
-      const lastSeenAt = group.reduce((latest: Date | undefined, item: StoredDriver) => {
+      const visitCount = countedGroup.reduce((sum: number, item: StoredDriver) => sum + Number(item.visitCount ?? 0), 0)
+      const lastSeenAt = countedGroup.reduce((latest: Date | undefined, item: StoredDriver) => {
         const current = parseDateValue(item.lastSeenAt)
         if (!current) return latest
         if (!latest || current > latest) return current
@@ -1042,9 +1101,9 @@ async function repairDrivers() {
               phone: normalizedPhone,
               platform,
               name: primary.name,
+              visitCount,
               ...(lastSeenAt ? { lastSeenAt } : {}),
             },
-            $inc: { visitCount },
           },
           { upsert: true }
         )
@@ -1078,6 +1137,7 @@ export async function runOrderRepair(options?: {
   externalOrderIds?: string[]
   shortIds?: string[]
   driverPhone?: string
+  externalStoreIds?: string[]
   forceCancelledOrderIds?: string[]
   forceCompletedShortIds?: string[]
 }) {
@@ -1087,13 +1147,14 @@ export async function runOrderRepair(options?: {
   const externalOrderIds = (options?.externalOrderIds ?? []).map((value) => value.trim()).filter(Boolean)
   const shortIds = (options?.shortIds ?? []).map((value) => value.trim()).filter(Boolean)
   const driverPhone = normalizeCompactPhone(options?.driverPhone)
+  const externalStoreIds = (options?.externalStoreIds ?? []).map((value) => value.trim()).filter(Boolean)
   const forceCancelledOrderIds = (options?.forceCancelledOrderIds ?? []).map((value) => value.trim()).filter(Boolean)
   const forceCompletedShortIds = (options?.forceCompletedShortIds ?? []).map((value) => value.trim()).filter(Boolean)
-  const isScopedRepair = Boolean(externalOrderIds.length || shortIds.length || driverPhone)
-  const scopedExternalOrderIds = await resolveScopedExternalOrderIds(providers, externalOrderIds, shortIds)
+  const isScopedRepair = Boolean(externalOrderIds.length || shortIds.length || driverPhone || externalStoreIds.length)
+  const scopedExternalOrderIds = await resolveScopedExternalOrderIds(providers, externalOrderIds, shortIds, externalStoreIds)
 
   const historical = includeHistorical
-    ? await upsertHistoricalOrders(days, providers, scopedExternalOrderIds.length ? scopedExternalOrderIds : undefined)
+    ? await upsertHistoricalOrders(days, providers, scopedExternalOrderIds.length ? scopedExternalOrderIds : undefined, externalStoreIds)
     : {
         integrations: 0,
         fetched: 0,
@@ -1102,9 +1163,9 @@ export async function runOrderRepair(options?: {
         failed: 0,
         skipped: true,
       }
-  const detailBackfill = await backfillOrderDetails(days, providers, scopedExternalOrderIds, shortIds)
-  const orders = await repairStoredOrders(providers, { externalOrderIds, shortIds, driverPhone, forceCancelledOrderIds, forceCompletedShortIds })
-  const customerBackfill = await backfillCustomersFromOrders({ providers, externalOrderIds, shortIds })
+  const detailBackfill = await backfillOrderDetails(days, providers, scopedExternalOrderIds, shortIds, externalStoreIds)
+  const orders = await repairStoredOrders(providers, { externalOrderIds, shortIds, driverPhone, externalStoreIds, forceCancelledOrderIds, forceCompletedShortIds })
+  const customerBackfill = await backfillCustomersFromOrders({ providers, externalOrderIds, shortIds, externalStoreIds })
   let customerRepair: Awaited<ReturnType<typeof repairCustomers>> | null = null
   let customerRepairError: string | null = null
   if (!isScopedRepair) {
@@ -1125,7 +1186,7 @@ export async function runOrderRepair(options?: {
   let driverRepairError: string | null = null
   try {
     drivers = isScopedRepair
-      ? await backfillDriversFromOrders({ providers, externalOrderIds, shortIds, driverPhone })
+      ? await backfillDriversFromOrders({ providers, externalOrderIds, shortIds, driverPhone, externalStoreIds })
       : await repairDrivers()
   } catch (error) {
     driverRepairError = error instanceof Error ? error.message : String(error)

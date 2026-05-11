@@ -35,7 +35,9 @@ export async function GET(req: NextRequest) {
   const filter: Record<string, unknown> = andClauses.length <= 1
     ? (andClauses[0] ?? {})
     : { $and: andClauses }
-  const customers = await CustomerModel.find(filter).sort({ totalSpend: -1 }).lean()
+  const customers = await CustomerModel.find(filter)
+    .sort({ lastOrderAt: -1, updatedAt: -1, createdAt: -1, totalSpend: -1 })
+    .lean()
 
   if (exportCsv) {
     const header = toCsvRow(['Tên', 'Số điện thoại', 'Nguồn', 'Email', 'Hạng', 'Điểm tích lũy', 'Tổng chi tiêu', 'Số đơn', 'Đơn cuối'])

@@ -2,18 +2,125 @@ import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import OrderModel from '@/models/Order'
+import { getDisplayCustomerPhone, getDisplayDriverPhone } from '@/lib/order-financials'
+import { hasMeaningfulPhone } from '@/lib/order-upsert'
+import type { Order } from '@/types'
 
 const CRON_SECRET = process.env.CRON_SECRET
+
+function getRecord(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+}
+
+function hasGrabDetailedItems(rawPayload?: Record<string, unknown>) {
+  const raw = getRecord(rawPayload)
+  const itemInfo = getRecord(raw?.itemInfo)
+  const rawItems = Array.isArray(raw?.items)
+    ? raw.items
+    : Array.isArray(raw?.orderItems)
+    ? raw.orderItems
+    : Array.isArray(raw?.lineItems)
+    ? raw.lineItems
+    : Array.isArray(itemInfo?.items)
+    ? itemInfo.items
+    : []
+
+  return rawItems.some((item) => {
+    const itemRecord = getRecord(item)
+    const fare = getRecord(itemRecord?.fare)
+
+    return Boolean(
+      (typeof itemRecord?.note === 'string' && itemRecord.note.trim())
+      || (typeof itemRecord?.remark === 'string' && itemRecord.remark.trim())
+      || (typeof itemRecord?.specialInstruction === 'string' && itemRecord.specialInstruction.trim())
+      || (typeof itemRecord?.specialInstructions === 'string' && itemRecord.specialInstructions.trim())
+      || (Array.isArray(itemRecord?.modifiers) && itemRecord.modifiers.length)
+      || (Array.isArray(itemRecord?.addons) && itemRecord.addons.length)
+      || (Array.isArray(itemRecord?.options) && itemRecord.options.length)
+      || (Array.isArray(itemRecord?.discountInfo) && itemRecord.discountInfo.length)
+      || Number(itemRecord?.price ?? itemRecord?.itemPrice ?? itemRecord?.totalPrice ?? itemRecord?.subtotal ?? itemRecord?.total ?? 0) > 0
+      || Number(fare?.priceFloat ?? fare?.amount ?? fare?.price ?? 0) > 0
+    )
+  })
+}
+
+function hasGrabPromotionDetail(rawPayload?: Record<string, unknown>) {
+  const raw = getRecord(rawPayload)
+  const itemInfo = getRecord(raw?.itemInfo)
+  const voucherInfo = getRecord(raw?.voucherInfo)
+  const rawItems = Array.isArray(raw?.items)
+    ? raw.items
+    : Array.isArray(raw?.orderItems)
+    ? raw.orderItems
+    : Array.isArray(raw?.lineItems)
+    ? raw.lineItems
+    : Array.isArray(itemInfo?.items)
+    ? itemInfo.items
+    : []
+
+  return Boolean(
+    (Array.isArray(raw?.orderLevelDiscounts) && raw.orderLevelDiscounts.length)
+    || (Array.isArray(voucherInfo?.vouchers) && voucherInfo.vouchers.length)
+    || (Array.isArray(voucherInfo?.discounts) && voucherInfo.discounts.length)
+    || rawItems.some((item) => Array.isArray(getRecord(item)?.discountInfo) && (getRecord(item)?.discountInfo as unknown[]).length > 0)
+  )
+}
+
+function parseDateValue(value: unknown) {
+  if (!value) return undefined
+  const date = new Date(String(value))
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
+function hasDeliveredAtSignal(rawPayload?: Record<string, unknown>) {
+  const raw = getRecord(rawPayload)
+  const times = getRecord(raw?.times)
+
+  return Boolean(
+    parseDateValue(raw?.deliveredAt)
+    || parseDateValue(raw?.delivered_at)
+    || parseDateValue(raw?.completedAt)
+    || parseDateValue(raw?.completed_at)
+    || parseDateValue(raw?.deliveryCompletedAt)
+    || parseDateValue(raw?.delivered_time)
+    || parseDateValue(raw?.finished_at)
+    || parseDateValue(raw?.updatedAt)
+    || parseDateValue(raw?.updated_at)
+    || parseDateValue(times?.deliveredAt)
+    || parseDateValue(times?.completedAt)
+  )
+}
+
+function getGrabStoredPageStage(rawPayload?: Record<string, unknown>) {
+  const raw = getRecord(rawPayload)
+  const explicitStage = String(raw?._pageStage ?? '').trim().toLowerCase()
+  if (explicitStage) return explicitStage
+
+  const pageType = String(raw?._pageType ?? raw?.pageType ?? '').trim().toLowerCase()
+  if (pageType.includes('cancel')) return 'cancelled'
+  if (pageType.includes('complete') || pageType.includes('deliver')) return 'completed'
+  if (pageType.includes('history') || pageType.includes('past') || pageType.includes('all')) return 'history'
+  if (pageType.includes('ready')) return 'ready'
+  if (pageType.includes('upcoming')) return 'upcoming'
+  if (pageType.includes('prepar')) return 'preparing'
+
+  const rawStatus = String(raw?.deliveryStatus ?? raw?.orderState ?? raw?.status ?? raw?.orderStatus ?? raw?.state ?? '').trim().toLowerCase()
+  if (rawStatus.includes('cancel')) return 'cancelled'
+  if (rawStatus.includes('complete') || rawStatus.includes('deliver')) return 'completed'
+  if (rawStatus.includes('ready')) return 'ready'
+  if (rawStatus.includes('upcoming') || rawStatus.includes('schedule')) return 'upcoming'
+  return 'preparing'
+}
 
 /**
  * GET /api/cron/missing-phones?integrationId=xxx&days=14&limit=30
  *
- * Returns recent Grab orders (for this integration's storeId) that are missing
- * customerPhone OR driverInfo.phone, so the scraper can backfill them by fetching
- * the Grab portal detail page.
- *
- * Only driver phone is reliably recoverable from history (Grab hides customer phone
- * after order completes). Both are attempted anyway.
+ * Returns recent Grab orders for this integration that still need browser-side
+ * detail backfill: active customer phone, driver phone, item/note detail, promo
+ * detail, or terminal timestamps. The scraper uses the order detail page from the
+ * real browser session because Vercel-side Grab history/detail fetch is unreliable.
  */
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
@@ -41,58 +148,83 @@ export async function GET(req: NextRequest) {
 
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
   const storeId = intg.externalStoreId
-  type MissingPhoneOrder = { externalOrderId?: string; externalStoreId?: string; rawPayload?: Record<string, unknown> }
-
-  // Query orders missing either customer or driver phone
-  // Filter by externalStoreId (set on new orders) or fall back to matching storeId in rawPayload
-  const missingPhoneFilter = {
-    $or: [
-      { customerPhone: { $exists: false } },
-      { customerPhone: null },
-      { customerPhone: '' },
-      { 'driverInfo.phone': { $exists: false } },
-      { 'driverInfo.phone': null },
-      { 'driverInfo.phone': '' },
-    ],
+  type GrabBackfillCandidate = {
+    externalOrderId?: string
+    externalStoreId?: string
+    rawPayload?: Record<string, unknown>
+    customerPhone?: string
+    driverInfo?: { phone?: string }
+    status?: string
+    deliveredAt?: string | Date
+    discount?: number
   }
 
   const baseQuery = {
     source: 'grab',
     placedAt: { $gte: cutoff },
     status: { $nin: ['draft'] },   // skip draft
-    ...missingPhoneFilter,
   }
 
-  // Try by externalStoreId first (fast, indexed), then fallback by brandId
-  let orders: MissingPhoneOrder[] = []
+  let orders: GrabBackfillCandidate[] = []
 
   if (storeId) {
     orders = await OrderModel.find({ ...baseQuery, externalStoreId: storeId })
-      .select('externalOrderId externalStoreId rawPayload')
+      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status deliveredAt discount')
       .sort({ placedAt: -1 })
-      .limit(limit)
-      .lean() as MissingPhoneOrder[]
+      .limit(limit * 8)
+      .lean() as GrabBackfillCandidate[]
   }
 
-  // If we got nothing by storeId (old orders without externalStoreId), try rawPayload.merchantID
   if (orders.length === 0 && storeId) {
     orders = await OrderModel.find({ ...baseQuery, 'rawPayload.merchantID': storeId })
-      .select('externalOrderId externalStoreId rawPayload')
+      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status deliveredAt discount')
       .sort({ placedAt: -1 })
-      .limit(limit)
-      .lean() as MissingPhoneOrder[]
+      .limit(limit * 8)
+      .lean() as GrabBackfillCandidate[]
+  }
+
+  if (orders.length === 0 && intg.brandId) {
+    orders = await OrderModel.find({
+      ...baseQuery,
+      brandId: intg.brandId,
+    })
+      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status deliveredAt discount')
+      .sort({ placedAt: -1 })
+      .limit(limit * 8)
+      .lean() as GrabBackfillCandidate[]
   }
 
   const result = orders
-    .filter(o => o.externalOrderId)
-    .map(o => ({
-      externalOrderId: String(o.externalOrderId),
-      externalStoreId: String(
-        o.externalStoreId ??
-        (o.rawPayload as Record<string, unknown>)?.merchantID ??
-        storeId ?? ''
-      ),
-    }))
+    .map((order) => {
+      const rawPayload = getRecord(order.rawPayload)
+      const storedStage = getGrabStoredPageStage(rawPayload)
+      const missingCustomerPhone = ['preparing', 'ready', 'upcoming'].includes(storedStage)
+        && !hasMeaningfulPhone(getDisplayCustomerPhone(order as unknown as Order))
+      const missingDriverPhone = !hasMeaningfulPhone(getDisplayDriverPhone(order as unknown as Order))
+      const missingItemDetail = !hasGrabDetailedItems(rawPayload)
+      const missingPromotionDetail = Number(order.discount ?? 0) > 0 && !hasGrabPromotionDetail(rawPayload)
+      const missingDeliveredAt = order.status === 'completed' && !order.deliveredAt && !hasDeliveredAtSignal(rawPayload)
+      const reasons = [
+        missingCustomerPhone ? 'customer-phone' : null,
+        missingDriverPhone ? 'driver-phone' : null,
+        missingItemDetail ? 'item-detail' : null,
+        missingPromotionDetail ? 'promotion-detail' : null,
+        missingDeliveredAt ? 'delivered-at' : null,
+      ].filter((value): value is string => Boolean(value))
+
+      return {
+        externalOrderId: order.externalOrderId ? String(order.externalOrderId) : '',
+        externalStoreId: String(
+          order.externalStoreId ??
+          (order.rawPayload as Record<string, unknown>)?.merchantID ??
+          storeId ?? ''
+        ),
+        pageStage: storedStage,
+        reasons,
+      }
+    })
+    .filter((order) => order.externalOrderId && order.reasons.length > 0)
+    .slice(0, limit)
 
   return NextResponse.json({ ok: true, orders: result, total: result.length })
 }

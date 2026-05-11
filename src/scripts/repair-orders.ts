@@ -7,6 +7,7 @@ function parseArgs() {
   const daysArg = args.find((arg) => arg.startsWith('--days='))?.split('=')[1]
   const orderIdsArg = args.find((arg) => arg.startsWith('--orderIds='))?.split('=')[1]
   const shortIdsArg = args.find((arg) => arg.startsWith('--shortIds='))?.split('=')[1]
+  const storeIdsArg = args.find((arg) => arg.startsWith('--storeIds='))?.split('=')[1]
   const driverPhoneArg = args.find((arg) => arg.startsWith('--driverPhone='))?.split('=')[1]
   const historicalArg = args.find((arg) => arg.startsWith('--historical='))?.split('=')[1]
 
@@ -16,16 +17,17 @@ function parseArgs() {
     includeHistorical: historicalArg !== 'false',
     externalOrderIds: (orderIdsArg ? orderIdsArg.split(',') : []).map((value) => value.trim()).filter(Boolean),
     shortIds: (shortIdsArg ? shortIdsArg.split(',') : []).map((value) => value.trim()).filter(Boolean),
+    externalStoreIds: (storeIdsArg ? storeIdsArg.split(',') : []).map((value) => value.trim()).filter(Boolean),
     driverPhone: (driverPhoneArg ?? '').trim(),
   }
 }
 
 async function main() {
-  const { providers, days, includeHistorical, externalOrderIds, shortIds, driverPhone } = parseArgs()
+  const { providers, days, includeHistorical, externalOrderIds, shortIds, externalStoreIds, driverPhone } = parseArgs()
   await connectDB()
 
-  console.log(`[repair-orders] start providers=${providers.join(',')} days=${days} historical=${includeHistorical} orderIds=${externalOrderIds.length} shortIds=${shortIds.length}`)
-  const result = await runOrderRepair({ providers, days, includeHistorical, externalOrderIds, shortIds, driverPhone })
+  console.log(`[repair-orders] start providers=${providers.join(',')} days=${days} historical=${includeHistorical} orderIds=${externalOrderIds.length} shortIds=${shortIds.length} storeIds=${externalStoreIds.length}`)
+  const result = await runOrderRepair({ providers, days, includeHistorical, externalOrderIds, shortIds, externalStoreIds, driverPhone })
   console.log('[repair-orders] result', JSON.stringify(result, null, 2))
 }
 

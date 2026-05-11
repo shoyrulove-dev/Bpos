@@ -31,6 +31,52 @@ const GRAB_PORTAL_ORDER_DETAIL_PAGE_STAGES = ['preparing', 'ready', 'upcoming', 
 const GRAB_PORTAL_HISTORY_REPORTS_URL = 'https://api.grab.com/delvplatformapi/merchant/v1/reports/daily-pagination'
 const GRAB_PORTAL_ACTIVE_PAGE_TYPES = ['PreparingV2', 'Ready', 'Upcoming'] as const
 const GRAB_PORTAL_HISTORY_PAGE_TYPES = ['Completed', 'CompletedV2', 'History', 'Past', 'PastOrders', 'Delivered', 'Cancelled', 'All'] as const
+const GRAB_PORTAL_ACTIVE_PAGE_TYPE_SET = new Set<string>(GRAB_PORTAL_ACTIVE_PAGE_TYPES)
+const GRAB_PORTAL_HISTORY_PAGE_TYPE_SET = new Set<string>(GRAB_PORTAL_HISTORY_PAGE_TYPES)
+
+type GrabPortalStage = typeof GRAB_PORTAL_ORDER_DETAIL_PAGE_STAGES[number]
+
+function normalizeGrabPortalPageType(value: unknown) {
+  return String(value ?? '').trim()
+}
+
+function resolveGrabPortalStage(raw: Record<string, unknown>): GrabPortalStage {
+  const explicitStage = String(raw._pageStage ?? '').trim().toLowerCase()
+  if (GRAB_PORTAL_ORDER_DETAIL_PAGE_STAGES.includes(explicitStage as GrabPortalStage)) {
+    return explicitStage as GrabPortalStage
+  }
+
+  const pageType = normalizeGrabPortalPageType(raw._pageType ?? raw.pageType)
+  const normalizedPageType = pageType.toLowerCase()
+  if (pageType && GRAB_PORTAL_ACTIVE_PAGE_TYPE_SET.has(pageType)) {
+    if (normalizedPageType.includes('ready')) return 'ready'
+    if (normalizedPageType.includes('upcoming')) return 'upcoming'
+    return 'preparing'
+  }
+
+  if (pageType && GRAB_PORTAL_HISTORY_PAGE_TYPE_SET.has(pageType)) {
+    if (normalizedPageType.includes('cancel')) return 'cancelled'
+    if (normalizedPageType.includes('complete') || normalizedPageType.includes('deliver')) return 'completed'
+    return 'history'
+  }
+
+  const rawStatus = String(raw.deliveryStatus ?? raw.orderState ?? raw.status ?? raw.orderStatus ?? raw.state ?? '').toLowerCase()
+  if (rawStatus.includes('ready')) return 'ready'
+  if (rawStatus.includes('upcoming') || rawStatus.includes('schedule')) return 'upcoming'
+  if (rawStatus.includes('cancel')) return 'cancelled'
+  if (rawStatus.includes('complete') || rawStatus.includes('deliver') || rawStatus.includes('history') || rawStatus.includes('past')) return 'history'
+  return 'preparing'
+}
+
+function decorateGrabPortalOrderContext(raw: Record<string, unknown>, pageTypeHint?: string) {
+  const pageType = normalizeGrabPortalPageType(raw._pageType ?? raw.pageType ?? pageTypeHint)
+  const decorated: Record<string, unknown> = {
+    ...raw,
+    ...(pageType ? { _pageType: pageType } : {}),
+  }
+  decorated._pageStage = resolveGrabPortalStage(decorated)
+  return decorated
+}
 
 function mapGrabStatus(rawStatus: string): OrderStatus {
   const statusMap: Record<string, OrderStatus> = {
@@ -71,6 +117,7 @@ function hasGrabDateValue(value: unknown) {
 function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): OrderStatus {
   const mappedStatus = mapGrabStatus(rawStatus)
   if (mappedStatus === 'completed' || mappedStatus === 'cancelled') return mappedStatus
+  const pageStage = resolveGrabPortalStage(raw)
 
   const times = raw.times && typeof raw.times === 'object' && !Array.isArray(raw.times)
     ? raw.times as Record<string, unknown>
@@ -88,6 +135,7 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
     raw.fulfillmentStatus,
     raw.displayStatus,
     raw.pageType,
+    pageStage,
   ]
     .map((value) => String(value ?? '').trim().toLowerCase())
     .filter(Boolean)
@@ -96,11 +144,21 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
     return 'cancelled'
   }
 
+  if (pageStage === 'cancelled') return 'cancelled'
+
+  if (pageStage === 'upcoming') return 'pre_order'
+
+  if (pageStage === 'ready') {
+    return secondarySignals.some((value) => value.includes('collect') || value.includes('delivery') || value.includes('picking_up'))
+      ? 'delivering'
+      : 'waiting_pickup'
+  }
+
   if (secondarySignals.some((value) => value.includes('complete') || value.includes('deliver') || value.includes('history') || value.includes('past') || value.includes('terminate'))) {
     return 'completed'
   }
 
-  if ((mappedStatus === 'waiting_pickup' || mappedStatus === 'delivering') && secondarySignals.some((value) => (
+  if (['preparing', 'upcoming', 'ready'].includes(pageStage) && (mappedStatus === 'waiting_confirm' || mappedStatus === 'waiting_pickup' || mappedStatus === 'delivering' || mappedStatus === 'pre_order') && secondarySignals.some((value) => (
     value.includes('prepare')
     || value.includes('ready')
     || value.includes('upcoming')
@@ -109,6 +167,7 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
     || value.includes('allocat')
     || value.includes('execut')
   ))) {
+    if (pageStage === 'preparing' && mappedStatus === 'waiting_confirm') return 'waiting_confirm'
     return mappedStatus
   }
 
@@ -293,7 +352,7 @@ export class GrabAdapter implements PlatformAdapter {
             const orderId = String(order.orderID ?? order.orderId ?? order.id ?? '')
             if (orderId && seenOrderIds.has(orderId)) continue
             if (orderId) seenOrderIds.add(orderId)
-            portalOrders.push(order)
+            portalOrders.push(decorateGrabPortalOrderContext(order, pageType))
           }
           continue
         }
@@ -322,12 +381,7 @@ export class GrabAdapter implements PlatformAdapter {
   }
 
   private getGrabPortalOrderPageStage(raw: Record<string, unknown>) {
-    const rawStatus = String(raw.deliveryStatus ?? raw.orderState ?? raw.status ?? raw.orderStatus ?? raw.state ?? '').toLowerCase()
-    if (rawStatus.includes('ready')) return 'ready'
-    if (rawStatus.includes('upcoming') || rawStatus.includes('schedule')) return 'upcoming'
-    if (rawStatus.includes('cancel')) return 'cancelled'
-    if (rawStatus.includes('complete') || rawStatus.includes('deliver') || rawStatus.includes('history') || rawStatus.includes('past')) return 'history'
-    return 'preparing'
+    return resolveGrabPortalStage(raw)
   }
 
   private buildGrabPortalDetailPageUrls(raw: Record<string, unknown>, discoveredStoreId: string) {
@@ -970,7 +1024,7 @@ export class GrabAdapter implements PlatformAdapter {
           const statementId = String(statement.ID ?? statement.id ?? statement.orderID ?? '')
           if (statementId && seenIds.has(statementId)) continue
           if (statementId) seenIds.add(statementId)
-          statements.push(statement)
+          statements.push(decorateGrabPortalOrderContext(statement, String(statement.pageType ?? statement.PageType ?? 'History')))
         }
 
         if (!data.hasMore) break
@@ -1056,6 +1110,7 @@ export class GrabAdapter implements PlatformAdapter {
   }
 
   private normalizePortalOrder(raw: Record<string, unknown>, fallbackStoreId?: string): NormalizedOrder {
+    raw = decorateGrabPortalOrderContext(raw)
     // Portal might use different field names than Partner API
     const itemInfo = (raw.itemInfo ?? {}) as Record<string, unknown>
     const itemsRaw = (raw.items ?? raw.orderItems ?? raw.lineItems ?? itemInfo.items ?? []) as Record<string, unknown>[]

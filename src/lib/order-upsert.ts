@@ -53,6 +53,22 @@ export function hasMeaningfulDriverName(value: unknown) {
   return hasMeaningfulName(value, DRIVER_NAME_PLACEHOLDERS)
 }
 
+export function getComparableDriverName(value: unknown) {
+  if (!hasMeaningfulDriverName(value) || isDriverNamePlaceholder(value)) return undefined
+
+  const trimmed = toTrimmedText(value)
+  if (!trimmed) return undefined
+
+  const normalized = trimmed
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+
+  return normalized || undefined
+}
+
 /** Returns true when a name is an auto-generated phone-only placeholder (e.g. "(Tài xế grab)"). */
 export function isDriverNamePlaceholder(value: unknown) {
   const trimmed = toTrimmedText(value)
@@ -187,6 +203,7 @@ function hasGrabActiveStatusSignal(normalized: NormalizedOrder) {
 
   const rawPayload = normalized.rawPayload ?? {}
   const signals = [
+    rawPayload._pageStage,
     rawPayload.state,
     rawPayload.orderState,
     rawPayload.deliveryTaskpoolStatus,

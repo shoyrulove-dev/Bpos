@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
   }
 
   const rows = Object.values(customerMap)
-    .sort((a, b) => b.revenue - a.revenue)
+    .sort((a, b) => new Date(b.lastOrderAt).getTime() - new Date(a.lastOrderAt).getTime())
     .slice(0, 100)
 
   const summary = {

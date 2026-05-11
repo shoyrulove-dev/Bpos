@@ -114,6 +114,10 @@ function getGrabDetailItems(order: Order) {
     const fare = getRecord(record?.fare)
     const discountInfo = Array.isArray(record?.discountInfo) ? record.discountInfo : []
     const modifierGroups = Array.isArray(record?.modifierGroups) ? record.modifierGroups : []
+    const legacyModifierGroups = [
+      ...(Array.isArray(record?.modifiers) ? record.modifiers : []),
+      ...(Array.isArray(record?.addons) ? record.addons : []),
+    ]
     const quantity = Number(record?.quantity ?? 1)
     const sellingPrice = Number(
       fare?.priceFloat ??
@@ -132,10 +136,16 @@ function getGrabDetailItems(order: Order) {
     const strikePrice = quantity > 0 ? Math.round(itemDiscountTotal / quantity) : itemDiscountTotal
     const originalPrice = sellingPrice + strikePrice
 
-    const addonGroups = modifierGroups.map((group) => {
+    const addonGroups = [...modifierGroups, ...legacyModifierGroups].map((group) => {
       const groupRecord = getRecord(group)
-      const modifiers = Array.isArray(groupRecord?.modifiers) ? groupRecord.modifiers : []
-      const title = String(groupRecord?.modifierGroupName ?? groupRecord?.name ?? '').trim() || 'Tùy chọn'
+      const modifiers = Array.isArray(groupRecord?.modifiers)
+        ? groupRecord.modifiers
+        : Array.isArray(groupRecord?.modifierItems)
+        ? groupRecord.modifierItems
+        : Array.isArray(groupRecord?.items)
+        ? groupRecord.items
+        : []
+      const title = String(groupRecord?.modifierGroupName ?? groupRecord?.name ?? groupRecord?.title ?? '').trim() || 'Tùy chọn'
 
       const lines = modifiers.map((modifier) => {
         const modifierRecord = getRecord(modifier)
@@ -156,7 +166,7 @@ function getGrabDetailItems(order: Order) {
       strikePrice,
       sellingPrice,
       total: Number(record?.total ?? (quantity * sellingPrice)),
-      note: String(record?.comment ?? record?.remarks ?? record?.note ?? record?.specialInstruction ?? '').trim() || undefined,
+      note: String(record?.comment ?? record?.remarks ?? record?.note ?? record?.specialInstruction ?? record?.specialInstructions ?? '').trim() || undefined,
       addonGroups: addonGroups.filter((group) => group.lines.length > 0),
     }
   })
@@ -169,7 +179,7 @@ function getGrabCustomerName(order: Order) {
 function getGrabCustomerNote(order: Order) {
   const raw = getRecord(order.rawPayload)
   const eater = getRecord(raw?.eater)
-  return String(raw?.customerNote ?? raw?.note ?? raw?.deliveryNote ?? eater?.comment ?? order.deliveryInfo?.note ?? order.note ?? '').trim()
+  return String(raw?.customerNote ?? raw?.specialRequest ?? raw?.note ?? raw?.remarks ?? raw?.deliveryNote ?? eater?.comment ?? order.deliveryInfo?.note ?? order.note ?? '').trim()
 }
 
 function getGrabPaymentMethodLabel(order: Order) {
