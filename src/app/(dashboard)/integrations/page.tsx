@@ -495,17 +495,12 @@ export default function IntegrationsPage() {
               </span>
             )}
           </div>
-          {isExternalScraperManaged && (
-            <p className="text-xs text-amber-700">
-              Trạng thái trên là heartbeat từ scraper ngoài app; sync API nền không còn đại diện cho daemon scraper.
-            </p>
-          )}
           {isExternalScraperManaged && integ.scraperSyncMessage && (
             <p className="text-xs text-sky-700">
               {integ.scraperSyncMessage}
             </p>
           )}
-          {isExternalScraperManaged && integ.appLastSyncAt && (
+          {isExternalScraperManaged && integ.provider === 'be' && integ.appLastSyncAt && (
             <p className="text-xs text-gray-400" title={new Date(integ.appLastSyncAt).toLocaleString('vi-VN')}>
               API nền: {integ.appSyncStatus === 'success' ? 'OK' : integ.appSyncStatus === 'error' ? 'lỗi' : integ.appSyncStatus ?? 'n/a'} · {timeAgo(integ.appLastSyncAt)}
             </p>
