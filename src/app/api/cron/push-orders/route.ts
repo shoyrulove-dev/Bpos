@@ -90,16 +90,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing integrationId or rawOrders array' }, { status: 400 })
   }
 
-  if (rawOrders.length === 0) {
-    // Still update lastSyncAt so the UI reflects a recent sync
-    await connectDB()
-    await IntegrationModel.findByIdAndUpdate(integrationId, {
-      $set: { syncStatus: 'success', lastSyncAt: new Date(), sessionStatus: 'active', sessionFailureCount: 0 },
-      $unset: { syncError: 1, sessionError: 1 },
-    })
-    return NextResponse.json({ ok: true, total: 0, upserted: 0, updated: 0 })
-  }
-
   await connectDB()
 
   const intgDoc = await IntegrationModel.findById(integrationId)
@@ -120,12 +110,31 @@ export async function POST(req: NextRequest) {
     isActive: boolean
   }
 
+  const startedAt = Date.now()
+
+  if (rawOrders.length === 0) {
+    // Still update lastSyncAt and write a browser-push log so the UI can mark
+    // the scraper healthy even when this cycle has no orders.
+    await IntegrationModel.findByIdAndUpdate(integrationId, {
+      $set: { syncStatus: 'success', lastSyncAt: new Date(), sessionStatus: 'active', sessionFailureCount: 0 },
+      $unset: { syncError: 1, sessionError: 1 },
+    })
+
+    await SyncLogModel.create({
+      type: 'order',
+      status: 'success',
+      content: `[browser-push][${intg.provider}][integration:${integrationId}][store:${intg.externalStoreId ?? '-'}][raw:0 normalized:0 active:0 history:0][rawDebugIds:-][rawOrderIds:-][normalizedIds:-] +0 mới, 0 cập nhật (${Date.now() - startedAt}ms) [${source}]`,
+      source: intg.provider,
+      brandId: intg.brandId,
+    })
+
+    return NextResponse.json({ ok: true, total: 0, upserted: 0, updated: 0 })
+  }
+
   const adapter = getAdapter(intg.provider)
   if (!adapter?.normalizeOrder) {
     return NextResponse.json({ error: `No normalizeOrder for provider ${intg.provider}` }, { status: 400 })
   }
-
-  const startedAt = Date.now()
 
   // Normalize raw orders using the provider adapter
   // Pass _fetchType if present so BE adapter can map status correctly
