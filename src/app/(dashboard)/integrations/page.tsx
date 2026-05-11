@@ -56,9 +56,10 @@ type Integ = {
   syncError?: string
   lastSyncAt?: string
   appLastSyncAt?: string
-  scraperSyncStatus?: 'success' | 'error' | 'pending'
+  scraperSyncStatus?: 'success' | 'error' | 'pending' | 'starting' | 'logging-in'
   scraperLastSyncAt?: string
   scraperSyncSource?: string
+  scraperSyncMessage?: string
   isActive?: boolean
   loginMode?: 'api' | 'auto'
   sessionRefreshMode?: 'auto' | 'browser'
@@ -476,11 +477,13 @@ export default function IntegrationsPage() {
               isPendingSetup ? 'badge-gray' :
               displayedSyncStatus === 'success' ? 'badge-green' :
               displayedSyncStatus === 'error' ? 'badge-red' :
-              displayedSyncStatus === 'syncing' ? 'badge-blue' : 'badge-gray')}>
+              displayedSyncStatus === 'syncing' || displayedSyncStatus === 'starting' || displayedSyncStatus === 'logging-in' ? 'badge-blue' : 'badge-gray')}>
               {isPendingSetup ? 'Chờ cấu hình' :
                isExternalScraperManaged
                  ? displayedSyncStatus === 'success' ? 'Scraper OK'
                  : displayedSyncStatus === 'error' ? 'Scraper stale'
+                 : displayedSyncStatus === 'starting' ? 'Scraper khởi động'
+                 : displayedSyncStatus === 'logging-in' ? 'Scraper đăng nhập'
                  : 'Chờ scraper'
                  : displayedSyncStatus === 'success' ? 'Đồng bộ OK'
                  : displayedSyncStatus === 'error' ? 'Lỗi đồng bộ'
@@ -495,6 +498,11 @@ export default function IntegrationsPage() {
           {isExternalScraperManaged && (
             <p className="text-xs text-amber-700">
               Trạng thái trên là heartbeat từ scraper ngoài app; sync API nền không còn đại diện cho daemon scraper.
+            </p>
+          )}
+          {isExternalScraperManaged && integ.scraperSyncMessage && (
+            <p className="text-xs text-sky-700">
+              {integ.scraperSyncMessage}
             </p>
           )}
           {isExternalScraperManaged && integ.appLastSyncAt && (

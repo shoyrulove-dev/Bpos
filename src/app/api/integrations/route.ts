@@ -10,6 +10,8 @@ import { getDefaultSessionRefreshMode } from '@/lib/session-refresh-mode'
 const EXTERNAL_SCRAPER_STALE_MS = 15 * 60 * 1000
 const EXTERNAL_SCRAPER_LOOKBACK_MS = 24 * 60 * 60 * 1000
 
+type ScraperSyncStatus = 'success' | 'error' | 'pending' | 'starting' | 'logging-in'
+
 function usesExternalOrderSync(integration: { provider?: string; loginMode?: string }) {
   return integration.loginMode === 'auto' && (integration.provider === 'grab' || integration.provider === 'be')
 }
@@ -26,6 +28,31 @@ function extractIntegrationId(content: string) {
 
 function extractExternalSyncSource(content: string) {
   return content.match(/\[(browser-scraper|vps-be-scraper|backfill-phones)\]\s*$/)?.[1]?.trim()
+}
+
+function extractScraperHeartbeatPhase(content: string) {
+  return content.match(/\[phase:([^\]]+)\]/)?.[1]?.trim()
+}
+
+function extractScraperHeartbeatDetail(content: string) {
+  return content.match(/\[detail:([^\]]+)\]/)?.[1]?.trim()
+}
+
+function mapHeartbeatPhase(phase?: string): { scraperSyncStatus: ScraperSyncStatus; scraperSyncMessage?: string } | null {
+  if (!phase) return null
+
+  switch (phase) {
+    case 'starting':
+      return { scraperSyncStatus: 'starting', scraperSyncMessage: 'Scraper đang khởi động' }
+    case 'login-start':
+      return { scraperSyncStatus: 'logging-in', scraperSyncMessage: 'Scraper đang đăng nhập' }
+    case 'login-ok':
+      return { scraperSyncStatus: 'logging-in', scraperSyncMessage: 'Đăng nhập xong, chờ sync đầu tiên' }
+    case 'login-failed':
+      return { scraperSyncStatus: 'error', scraperSyncMessage: 'Scraper đăng nhập lỗi' }
+    default:
+      return null
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -51,9 +78,10 @@ export async function GET(req: NextRequest) {
   )
 
   const latestExternalSyncById = new Map<string, {
-    scraperSyncStatus: 'success' | 'error'
+    scraperSyncStatus: ScraperSyncStatus
     scraperLastSyncAt: Date | string
     scraperSyncSource: string
+    scraperSyncMessage?: string
   }>()
 
   if (externalTargets.length) {
@@ -73,8 +101,6 @@ export async function GET(req: NextRequest) {
 
     for (const log of recentLogs) {
       const content = String(log.content ?? '')
-      if (!content.includes('[browser-push]')) continue
-
       const integrationId = extractIntegrationId(content)
       if (!integrationId || latestExternalSyncById.has(integrationId)) continue
 
@@ -86,10 +112,32 @@ export async function GET(req: NextRequest) {
       const createdAt = log.createdAt ? new Date(log.createdAt) : null
       if (!createdAt || Number.isNaN(createdAt.getTime())) continue
 
+      if (content.includes('[browser-push]')) {
+        latestExternalSyncById.set(integrationId, {
+          scraperSyncStatus: Date.now() - createdAt.getTime() <= EXTERNAL_SCRAPER_STALE_MS ? 'success' : 'error',
+          scraperLastSyncAt: createdAt,
+          scraperSyncSource: syncSource,
+          scraperSyncMessage: Date.now() - createdAt.getTime() <= EXTERNAL_SCRAPER_STALE_MS ? 'Scraper đã push dữ liệu' : 'Scraper không push gần đây',
+        })
+        continue
+      }
+
+      if (!content.includes('[scraper-heartbeat]')) continue
+
+      const phase = extractScraperHeartbeatPhase(content)
+      const heartbeat = mapHeartbeatPhase(phase)
+      if (!heartbeat) continue
+
+      const detail = extractScraperHeartbeatDetail(content)
+      const isStale = Date.now() - createdAt.getTime() > EXTERNAL_SCRAPER_STALE_MS
+
       latestExternalSyncById.set(integrationId, {
-        scraperSyncStatus: Date.now() - createdAt.getTime() <= EXTERNAL_SCRAPER_STALE_MS ? 'success' : 'error',
+        scraperSyncStatus: isStale ? 'error' : heartbeat.scraperSyncStatus,
         scraperLastSyncAt: createdAt,
         scraperSyncSource: syncSource,
+        scraperSyncMessage: isStale
+          ? 'Heartbeat scraper đã cũ'
+          : detail || heartbeat.scraperSyncMessage,
       })
     }
   }
@@ -109,6 +157,7 @@ export async function GET(req: NextRequest) {
       scraperSyncStatus: externalSync?.scraperSyncStatus ?? 'pending',
       scraperLastSyncAt: externalSync?.scraperLastSyncAt,
       scraperSyncSource: externalSync?.scraperSyncSource,
+      scraperSyncMessage: externalSync?.scraperSyncMessage,
     }
   }))
 }
