@@ -446,7 +446,7 @@ async function backfillOrderDetails(days: number, providers: string[], externalO
   let skipped = 0
 
   for (const order of candidates) {
-    const integration = pickIntegrationForOrder(order, integrations as Array<{ provider: string; brandId?: unknown; hubId?: unknown; externalStoreId?: string; loginMode?: string; credentials?: unknown }>)
+    const integration = pickIntegrationForOrder(order, integrations as unknown as Array<{ provider: string; brandId?: unknown; hubId?: unknown; externalStoreId?: string; loginMode?: string; credentials?: unknown }>)
     if (!integration) {
       skipped += 1
       continue

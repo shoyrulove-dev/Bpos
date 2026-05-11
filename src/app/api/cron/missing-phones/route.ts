@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
 
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
   const storeId = intg.externalStoreId
+  type MissingPhoneOrder = { externalOrderId?: string; externalStoreId?: string; rawPayload?: Record<string, unknown> }
 
   // Query orders missing either customer or driver phone
   // Filter by externalStoreId (set on new orders) or fall back to matching storeId in rawPayload
@@ -63,14 +64,14 @@ export async function GET(req: NextRequest) {
   }
 
   // Try by externalStoreId first (fast, indexed), then fallback by brandId
-  let orders: Array<{ externalOrderId?: string; externalStoreId?: string; rawPayload?: Record<string, unknown> }> = []
+  let orders: MissingPhoneOrder[] = []
 
   if (storeId) {
     orders = await OrderModel.find({ ...baseQuery, externalStoreId: storeId })
       .select('externalOrderId externalStoreId rawPayload')
       .sort({ placedAt: -1 })
       .limit(limit)
-      .lean()
+      .lean() as MissingPhoneOrder[]
   }
 
   // If we got nothing by storeId (old orders without externalStoreId), try rawPayload.merchantID
@@ -79,7 +80,7 @@ export async function GET(req: NextRequest) {
       .select('externalOrderId externalStoreId rawPayload')
       .sort({ placedAt: -1 })
       .limit(limit)
-      .lean()
+      .lean() as MissingPhoneOrder[]
   }
 
   const result = orders
