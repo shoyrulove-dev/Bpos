@@ -182,6 +182,38 @@ function extractNestedTimes(rawPayload: Record<string, unknown>) {
   }
 }
 
+function hasGrabActiveStatusSignal(normalized: NormalizedOrder) {
+  if (normalized.source !== 'grab') return false
+
+  const rawPayload = normalized.rawPayload ?? {}
+  const signals = [
+    rawPayload.state,
+    rawPayload.orderState,
+    rawPayload.deliveryTaskpoolStatus,
+    rawPayload.preparationTaskpoolStatus,
+    rawPayload.status,
+    rawPayload.orderStatus,
+    rawPayload.pageType,
+    rawPayload._pageType,
+  ]
+    .map((value) => String(value ?? '').trim().toLowerCase())
+    .filter(Boolean)
+
+  if (signals.some((value) => value.includes('cancel') || value.includes('fail') || value.includes('refund'))) {
+    return false
+  }
+
+  return signals.some((value) => (
+    value.includes('prepare')
+    || value.includes('ready')
+    || value.includes('upcoming')
+    || value.includes('pickup')
+    || value.includes('accepted')
+    || value.includes('allocat')
+    || value.includes('execut')
+  ))
+}
+
 function extractCancellationReason(rawPayload: Record<string, unknown>) {
   const reason = rawPayload.cancelReason
     ?? rawPayload.cancellationReason
@@ -242,6 +274,10 @@ function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
     || rawPayload.cancelCode
   ) {
     return 'cancelled' as const
+  }
+
+  if (hasGrabActiveStatusSignal(normalized) && normalized.orderStatus !== 'cancelled') {
+    return normalized.orderStatus === 'delivering' ? 'delivering' : 'waiting_pickup'
   }
 
   if (
