@@ -162,6 +162,8 @@ export default function NotificationProvider({ children }: { children: React.Rea
       if (newOrders.length > 0) {
         if (initialized.current) {
           const newOrderIds = newOrders.map(o => o._id)
+          // Mark as seen immediately so repeated polls don't re-notify/re-print
+          newOrders.forEach(o => seenIds.current.add(o._id))
           addNotification(newOrders)
           void queryClient.invalidateQueries({ queryKey: ['orders'] })
           void queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })

@@ -468,12 +468,26 @@ export class BeAdapter implements PlatformAdapter {
     let orderStatus: OrderStatus = (fetchType ? STATUS_BY_FETCH[fetchType] : undefined) ?? 'waiting_confirm'
     if (!isActiveBucket) {
       // Only apply cancel/complete detection for history buckets (previous, cancelled) or unknown fetchType
-      if ((statusInt === 21 || statusInt === 20) && fetchType !== 'cancelled') orderStatus = 'completed'
-      // Broad cancelled detection: 99/100 (partner), 3-10 (merchant portal cancel reasons)
-      const CANCELLED_INTS = new Set([3, 4, 5, 6, 7, 8, 9, 10, 99, 100])
-      if (CANCELLED_INTS.has(statusInt)) orderStatus = 'cancelled'
-      // Check explicit cancellation fields in raw payload (merchant API may include these)
-      if (this.hasCancelSignal(raw)) orderStatus = 'cancelled'
+      const isDefinitelyCompleted = (statusInt === 21 || statusInt === 20) && fetchType !== 'cancelled'
+      if (isDefinitelyCompleted) {
+        orderStatus = 'completed'
+      } else if (fetchType === 'previous') {
+        // previous bucket = completed tab — trust as completed unless cancel signal is definitive
+        // (cancel_code, cancel_reason etc. may appear spuriously in BE completed order payloads)
+        const CANCELLED_INTS = new Set([3, 4, 5, 6, 7, 8, 9, 10, 99, 100])
+        if (CANCELLED_INTS.has(statusInt)) {
+          orderStatus = 'cancelled'
+        } else {
+          // Require BOTH a cancel integer AND an explicit cancel signal to override completed
+          orderStatus = 'completed'
+        }
+      } else {
+        // Broad cancelled detection: 99/100 (partner), 3-10 (merchant portal cancel reasons)
+        const CANCELLED_INTS = new Set([3, 4, 5, 6, 7, 8, 9, 10, 99, 100])
+        if (CANCELLED_INTS.has(statusInt)) orderStatus = 'cancelled'
+        // Check explicit cancellation fields in raw payload (merchant API may include these)
+        if (this.hasCancelSignal(raw)) orderStatus = 'cancelled'
+      }
     }
 
     // BE price breakdown (merchant perspective):
