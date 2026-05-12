@@ -1,6 +1,6 @@
 'use client'
 
-import { buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, renderPrintTemplateHtml } from '@/lib/print-template'
+import { buildDemoPrintTemplateContext, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, renderPrintTemplateHtml } from '@/lib/print-template'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
 import type { BillTemplate, Order } from '@/types'
 
@@ -274,6 +274,32 @@ export async function printOrderWithHtmlTemplate(orderId: string, type: LocalPri
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ html: fullHtml, paperWidth: paperSize, type }),
     signal: AbortSignal.timeout(35000), // Playwright rendering can take several seconds
+  })
+  const data = await res.json() as { ok?: boolean; message?: string }
+  if (!data.ok) throw new Error(data.message ?? 'Máy in không phản hồi')
+  return true
+}
+
+// Send the currently-editing template to the real printer via bridge using demo data.
+// Used by the bill-templates editor page to verify layout before going live.
+export async function printDemoTemplateWithBridge(templateContent: string, type: LocalPrinterType, size?: '80mm' | '58mm'): Promise<boolean> {
+  const paperSize: '80mm' | '58mm' = size ?? (type === 'label' ? '58mm' : '80mm')
+  const templateType = getTemplateTypeForPaperSize(paperSize)
+  const context = buildDemoPrintTemplateContext(templateType)
+  const content = templateContent.trim() || getDefaultTemplateContent(templateType)
+  // Demo items matching buildDemoPrintTemplateContext's demoOrder.items
+  const demoItems = [
+    { name: 'Trà sữa trân châu', quantity: 2, price: 35_000, total: 70_000, note: 'Ít đường' },
+    { name: 'Bánh mì gà xé', quantity: 1, price: 45_000, total: 45_000 },
+    { name: 'Cơm sườn trứng', quantity: 1, price: 70_000, total: 70_000, note: 'Thêm nước mắm' },
+  ]
+  const renderedContent = renderPrintTemplateHtml(content, context, demoItems)
+  const fullHtml = buildThermalHtmlPage(renderedContent, paperSize)
+  const res = await fetch(`${LOCAL_PRINTER_BRIDGE_ORIGIN}/print-template-html`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ html: fullHtml, paperWidth: paperSize, type }),
+    signal: AbortSignal.timeout(35000),
   })
   const data = await res.json() as { ok?: boolean; message?: string }
   if (!data.ok) throw new Error(data.message ?? 'Máy in không phản hồi')

@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Edit, Eye, FileText, Plus, Printer, Sparkles, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Edit, Eye, FileText, Loader2, Plus, Printer, Sparkles, ToggleLeft, ToggleRight } from 'lucide-react'
 import { useBillTemplates, useCreateBillTemplate, useUpdateBillTemplate } from '@/hooks/use-data'
 import { loadOrderAlertSettings } from '@/lib/order-alerts'
+import { printDemoTemplateWithBridge } from '@/lib/local-printer'
 import { buildDemoPrintTemplateContext, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, PRINT_TEMPLATE_VARIABLES, renderPrintTemplateHtml } from '@/lib/print-template'
 import { cn } from '@/lib/utils'
 import type { BillSize, BillTemplate, BillType } from '@/types'
@@ -92,6 +93,8 @@ export default function BillTemplatesPage() {
   const [form, setForm] = useState<TemplateFormState>(createFormState())
   const [testOrderId, setTestOrderId] = useState('')
   const [loadingTestOrder, setLoadingTestOrder] = useState(false)
+  const [bridgePrintStatus, setBridgePrintStatus] = useState<'idle' | 'printing' | 'ok' | 'error'>('idle')
+  const [bridgePrintError, setBridgePrintError] = useState('')
   const [printerName, setPrinterName] = useState('')
   const [printerSize, setPrinterSize] = useState<BillSize>('80mm')
   const saving = createMutation.isPending || updateMutation.isPending
@@ -173,6 +176,29 @@ export default function BillTemplatesPage() {
   }
 
   const handleTypeChange = (nextType: BillType) => {
+    const nextSize: BillSize = nextType === 'label' ? '58mm' : form.size === '58mm' ? '80mm' : form.size
+    setForm((current) => ({
+      ...current,
+      type: nextType,
+      size: nextSize,
+      templateContent: current.templateContent.trim() ? current.templateContent : createFormState(nextType, nextSize).templateContent,
+    }))
+  }
+
+  const handlePrintToRealPrinter = async () => {
+    setBridgePrintStatus('printing')
+    setBridgePrintError('')
+    const printerType = form.type === 'label' ? 'label' as const : 'receipt' as const
+    const paperSize = form.type === 'label' ? '58mm' as const : '80mm' as const
+    try {
+      await printDemoTemplateWithBridge(form.templateContent, printerType, paperSize)
+      setBridgePrintStatus('ok')
+      setTimeout(() => setBridgePrintStatus('idle'), 4000)
+    } catch (err) {
+      setBridgePrintError(err instanceof Error ? err.message : 'Lỗi không xác định')
+      setBridgePrintStatus('error')
+    }
+  }
     const nextSize: BillSize = nextType === 'label' ? '58mm' : form.size === '58mm' ? '80mm' : form.size
     setForm((current) => ({
       ...current,
@@ -334,9 +360,28 @@ export default function BillTemplatesPage() {
                     <p className="text-xs text-gray-500 mt-1">Đây là renderer thật đang được dùng cho preview và trang in.</p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <button onClick={() => void printTemplateWithBridgeFallback(form.templateContent, form.type, form.size)} className="btn-primary btn-sm gap-1.5 whitespace-nowrap">
-                      <Printer className="h-3.5 w-3.5" /> In thử demo
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => void printTemplateWithBridgeFallback(form.templateContent, form.type, form.size)} className="btn-outline btn-sm gap-1.5 whitespace-nowrap">
+                        <Printer className="h-3.5 w-3.5" /> In thử demo
+                      </button>
+                      <button
+                        onClick={() => void handlePrintToRealPrinter()}
+                        disabled={bridgePrintStatus === 'printing'}
+                        className="btn-primary btn-sm gap-1.5 whitespace-nowrap disabled:opacity-60"
+                        title="Gửi thẳng đến máy in thật qua bridge"
+                      >
+                        {bridgePrintStatus === 'printing'
+                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Đang in...</>
+                          : bridgePrintStatus === 'ok'
+                            ? '✓ Đã in'
+                            : bridgePrintStatus === 'error'
+                              ? '✗ Lỗi'
+                              : <><Printer className="h-3.5 w-3.5" /> In máy in</>}
+                      </button>
+                    </div>
+                    {bridgePrintStatus === 'error' && bridgePrintError && (
+                      <p className="text-xs text-red-600 text-right max-w-[220px]">{bridgePrintError}</p>
+                    )}
                     <div className="flex items-center gap-1.5">
                       <input
                         className="input h-7 text-xs w-[160px] px-2"
