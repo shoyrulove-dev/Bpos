@@ -595,7 +595,9 @@ export class GrabAdapter implements PlatformAdapter {
   private getGrabPhoneCandidate(value: unknown): string | undefined {
     if (typeof value === 'string' || typeof value === 'number') {
       const text = String(value).trim()
-      return text || undefined
+      // Reject empty strings and Grab-masked numbers (e.g. "+84901***567", "090****123")
+      if (!text || text.includes('*') || text.includes('x')) return undefined
+      return text
     }
 
     if (Array.isArray(value)) {
@@ -1247,14 +1249,17 @@ export class GrabAdapter implements PlatformAdapter {
         name:     String(i.name ?? i.itemName ?? ''),
         quantity: Number(i.quantity ?? 1),
         price:    this.getGrabItemUnitPrice(i),
-        total:    Number(i.quantity ?? 1) * this.getGrabItemUnitPrice(i),
+        // Prefer Grab's actual line total (already includes discounts) over qty*unitPrice
+        total:    Number(i.total ?? i.itemTotal ?? i.totalPrice ?? i.soldAmount ?? (Number(i.quantity ?? 1) * this.getGrabItemUnitPrice(i))),
         note:     itemNote,
       }
     })
 
     const rawStatus = String(raw.deliveryStatus ?? raw.orderState ?? raw.status ?? raw.orderStatus ?? raw.state ?? '')
     const orderStatus = resolveGrabStatus(rawStatus, raw)
-    const consumer  = raw.consumer ?? raw.customer ?? raw.receiver ?? raw.eater ?? {} as Record<string, unknown>
+    // eater = Grab app user (customer who ordered); always prefer over receiver which may
+    // hold driver or system contact in some Grab API versions
+    const consumer  = raw.consumer ?? raw.customer ?? raw.eater ?? raw.receiver ?? {} as Record<string, unknown>
     const consumerObj = typeof consumer === 'object' ? consumer as Record<string, unknown> : {}
     const consumerPhone = normalizeCompactPhone(
       this.getGrabPhoneCandidate([
@@ -1380,7 +1385,8 @@ export class GrabAdapter implements PlatformAdapter {
         name:     String(i.name ?? i.itemName ?? ''),
         quantity: Number(i.quantity ?? 1),
         price:    this.getGrabItemUnitPrice(i),
-        total:    Number(i.quantity ?? 1) * this.getGrabItemUnitPrice(i),
+        // Prefer Grab's actual line total (already includes discounts) over qty*unitPrice
+        total:    Number(i.total ?? i.itemTotal ?? i.totalPrice ?? i.soldAmount ?? (Number(i.quantity ?? 1) * this.getGrabItemUnitPrice(i))),
         note:     itemNote,
       }
     })
