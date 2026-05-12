@@ -15,6 +15,7 @@ import type { SessionData } from '@/integrations/types'
 
 const CRON_SECRET = process.env.CRON_SECRET
 const GRAB_HISTORY_PAGE_TYPES = new Set(['Completed', 'CompletedV2', 'History', 'Past', 'PastOrders', 'Delivered', 'Cancelled'])
+const FINAL_ORDER_STATUSES = new Set(['completed', 'cancelled'])
 
 function getRecord(value: unknown) {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -71,6 +72,70 @@ function needsGrabSessionDetailEnrichment(order: NormalizedOrder) {
     || !hasMeaningfulPhone(order.driverInfo?.phone)
     || !order.items.length
     || order.items.some((item) => Number(item.price ?? 0) <= 0 || Number(item.total ?? 0) <= 0)
+}
+
+function parseDateValue(value: unknown) {
+  if (!value) return undefined
+  const date = new Date(String(value))
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
+function hasDetailedItems(items: unknown) {
+  if (!Array.isArray(items) || items.length === 0) return false
+
+  return items.some((item) => {
+    const record = getRecord(item)
+    if (!record) return false
+    return Boolean(
+      (typeof record.note === 'string' && record.note.trim())
+      || (Array.isArray(record.addons) && record.addons.length)
+      || (Array.isArray(record.options) && record.options.length)
+      || (Array.isArray(record.modifiers) && record.modifiers.length)
+      || Number(record.price ?? 0) > 0
+      || Number(record.total ?? 0) > 0
+    )
+  })
+}
+
+function hasGrabUtensilInfo(rawPayload: unknown) {
+  const raw = getRecord(rawPayload)
+  if (!raw) return false
+  if ('needCutlery' in raw) return true
+  const itemInfo = getRecord(raw.itemInfo)
+  return Boolean(itemInfo && 'needCutlery' in itemInfo)
+}
+
+function hasMeaningfulFinalizedUpgrade(existing: Record<string, unknown> | undefined, merged: NormalizedOrder) {
+  if (!existing) return true
+
+  if (!hasMeaningfulPhone(existing.customerPhone) && hasMeaningfulPhone(merged.customerPhone)) return true
+  if (!hasMeaningfulPhone(getRecord(existing.driverInfo)?.phone) && hasMeaningfulPhone(merged.driverInfo?.phone)) return true
+
+  if (!hasDetailedItems(existing.items) && hasDetailedItems(merged.items)) return true
+
+  if (Number(existing.subtotal ?? 0) <= 0 && Number(merged.subtotal ?? 0) > 0) return true
+  if (Number(existing.discount ?? 0) <= 0 && Number(merged.discount ?? 0) > 0) return true
+  if (Number(existing.total ?? 0) <= 0 && Number(merged.total ?? 0) > 0) return true
+
+  const existingDeliveredAt = parseDateValue(existing.deliveredAt)
+  const mergedDeliveredAt = parseDateValue(merged.deliveredAt)
+    ?? parseDateValue(getRecord(merged.rawPayload)?.deliveredAt)
+    ?? parseDateValue(getRecord(merged.rawPayload)?.completedAt)
+  if (!existingDeliveredAt && mergedDeliveredAt) return true
+
+  if (!hasGrabUtensilInfo(existing.rawPayload) && hasGrabUtensilInfo(merged.rawPayload)) return true
+
+  return false
+}
+
+function shouldSkipExistingFinalizedOrderUpdate(existing: Record<string, unknown> | undefined, merged: NormalizedOrder) {
+  const existingStatus = String(existing?.status ?? '').trim().toLowerCase()
+  const mergedStatus = String(merged.orderStatus ?? '').trim().toLowerCase()
+
+  if (!FINAL_ORDER_STATUSES.has(existingStatus)) return false
+  if (existingStatus !== mergedStatus) return false
+
+  return !hasMeaningfulFinalizedUpgrade(existing, merged)
 }
 
 /**
@@ -214,6 +279,7 @@ export async function POST(req: NextRequest) {
 
   let upserted = 0
   let updated = 0
+  let skipped = 0
   const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean; placedAt?: string | Date }> = []
   const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean }> = []
   const historyCount = intg.provider === 'grab' ? countGrabHistoryOrders(rawOrders) : 0
@@ -235,6 +301,11 @@ export async function POST(req: NextRequest) {
       const existingStatus = (existing as { status?: string } | undefined)?.status
       if (existingStatus === 'cancelled' && merged.orderStatus === 'completed') {
         merged.orderStatus = 'cancelled'
+      }
+
+      if (shouldSkipExistingFinalizedOrderUpdate(existing as Record<string, unknown> | undefined, merged)) {
+        skipped++
+        continue
       }
 
       const result = await OrderModel.findOneAndUpdate(
@@ -319,10 +390,10 @@ export async function POST(req: NextRequest) {
   await SyncLogModel.create({
     type: 'order',
     status: 'success',
-    content: `[browser-push][${intg.provider}][integration:${integrationId}][store:${intg.externalStoreId ?? '-'}][raw:${rawOrders.length} normalized:${normalized.length} active:${activeCount} history:${historyCount}][rawDebugIds:${summarizeIds(rawDebugIds)}][rawOrderIds:${summarizeIds(rawOrderIds)}][normalizedIds:${summarizeIds(normalizedIds)}] +${upserted} mới, ${updated} cập nhật (${Date.now() - startedAt}ms) [${source}]`,
+      content: `[browser-push][${intg.provider}][integration:${integrationId}][store:${intg.externalStoreId ?? '-'}][raw:${rawOrders.length} normalized:${normalized.length} active:${activeCount} history:${historyCount}][rawDebugIds:${summarizeIds(rawDebugIds)}][rawOrderIds:${summarizeIds(rawOrderIds)}][normalizedIds:${summarizeIds(normalizedIds)}] +${upserted} mới, ${updated} cập nhật, ${skipped} bỏ qua (${Date.now() - startedAt}ms) [${source}]`,
     source: intg.provider,
     brandId: intg.brandId,
   })
 
-  return NextResponse.json({ ok: true, total: normalized.length, upserted, updated })
+    return NextResponse.json({ ok: true, total: normalized.length, upserted, updated, skipped })
 }

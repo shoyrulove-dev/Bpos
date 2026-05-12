@@ -327,9 +327,12 @@ function PrinterSection() {
   const [checking, setChecking]     = useState(false)
   const [printing,  setPrinting]    = useState(false)
   const [savingConfig, setSavingConfig] = useState(false)
+  const [discovering, setDiscovering] = useState(false)
   const [printerIp, setPrinterIp]   = useState('192.168.1.100')
   const [printerPort, setPrinterPort] = useState('9100')
   const [printerStatus, setPrinterStatus] = useState<'ok' | 'offline' | 'unknown'>('unknown')
+  const [autoDiscover, setAutoDiscover] = useState(true)
+  const [discoveredPrinters, setDiscoveredPrinters] = useState<Array<{ ip: string; port: number }>>([])
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   useEffect(() => {
@@ -343,6 +346,8 @@ function PrinterSection() {
         if (data?.ip) setPrinterIp(String(data.ip))
         if (data?.port) setPrinterPort(String(data.port))
         if (data?.status) setPrinterStatus(data.status)
+        setAutoDiscover(data?.autoDiscover !== false)
+        setDiscoveredPrinters(Array.isArray(data?.discovered) ? data.discovered : [])
       } catch {
         if (!cancelled) setPrinterStatus('unknown')
       }
@@ -359,11 +364,13 @@ function PrinterSection() {
       const d = await r.json()
       if (d?.ip) setPrinterIp(String(d.ip))
       if (d?.port) setPrinterPort(String(d.port))
+      setAutoDiscover(d?.autoDiscover !== false)
+      setDiscoveredPrinters(Array.isArray(d?.discovered) ? d.discovered : [])
       setPrinterStatus(d?.status === 'ok' || d?.status === 'offline' ? d.status : (d?.online ? 'ok' : 'offline'))
       setResult({ ok: !!d.online || !!d.ok, message: d.message ?? (d.online ? `Online — ${d.ip}:${d.port}` : `Offline — ${d.ip}:${d.port}`) })
     } catch (e) {
       setPrinterStatus('unknown')
-      setResult({ ok: false, message: `Không kết nối được scraper (127.0.0.1:3845): ${(e as Error).message}` })
+      setResult({ ok: false, message: `Không kết nối được scraper (127.0.0.1:3846): ${(e as Error).message}` })
     } finally { setChecking(false) }
   }
 
@@ -375,6 +382,7 @@ function PrinterSection() {
       if (d?.ip) setPrinterIp(String(d.ip))
       if (d?.port) setPrinterPort(String(d.port))
       if (d?.status) setPrinterStatus(d.status)
+      setDiscoveredPrinters(Array.isArray(d?.discovered) ? d.discovered : discoveredPrinters)
       setResult({ ok: !!d.ok, message: d.message ?? (d.ok ? 'In thử thành công!' : 'In thất bại') })
     } catch (e) {
       setPrinterStatus('unknown')
@@ -395,12 +403,30 @@ function PrinterSection() {
       if (d?.ip) setPrinterIp(String(d.ip))
       if (d?.port) setPrinterPort(String(d.port))
       if (d?.status) setPrinterStatus(d.status)
+      setDiscoveredPrinters(Array.isArray(d?.discovered) ? d.discovered : discoveredPrinters)
       setResult({ ok: !!d.ok, message: d.message ?? (d.ok ? 'Đã cập nhật cấu hình máy in' : 'Lỗi cập nhật') })
     } catch (e) {
       setPrinterStatus('unknown')
       setResult({ ok: false, message: `Không kết nối được scraper để cập nhật cấu hình: ${(e as Error).message}` })
     } finally {
       setSavingConfig(false)
+    }
+  }
+
+  const discoverPrinters = async () => {
+    setDiscovering(true); setResult(null)
+    try {
+      const r = await fetch(`${SCRAPER_CONTROL}/printer-discover`, { method: 'POST', signal: AbortSignal.timeout(20000) })
+      const d = await r.json()
+      if (d?.ip) setPrinterIp(String(d.ip))
+      if (d?.port) setPrinterPort(String(d.port))
+      if (d?.status) setPrinterStatus(d.status)
+      setDiscoveredPrinters(Array.isArray(d?.discovered) ? d.discovered : [])
+      setResult({ ok: !!d.ok, message: d.message ?? 'Đã quét máy in trên LAN.' })
+    } catch (e) {
+      setResult({ ok: false, message: `Không quét được máy in: ${(e as Error).message}` })
+    } finally {
+      setDiscovering(false)
     }
   }
 
@@ -435,6 +461,9 @@ function PrinterSection() {
         <span className="text-xs text-gray-500">
           Cấu hình hiện tại: {printerIp}:{printerPort}
         </span>
+        <span className="text-xs text-gray-500">
+          Auto-find: {autoDiscover ? 'Bật' : 'Tắt'}
+        </span>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -449,18 +478,48 @@ function PrinterSection() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button onClick={check} disabled={checking || printing || savingConfig} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
+        <button onClick={discoverPrinters} disabled={checking || printing || savingConfig || discovering} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
+          {discovering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
+          Tự tìm máy in
+        </button>
+        <button onClick={check} disabled={checking || printing || savingConfig || discovering} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
           {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
           Kiểm tra kết nối
         </button>
-        <button onClick={testPrint} disabled={checking || printing || savingConfig} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
+        <button onClick={testPrint} disabled={checking || printing || savingConfig || discovering} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
           {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="text-base leading-none">🖨️</span>}
           In thử
         </button>
-        <button onClick={updatePrinterEnv} disabled={checking || printing || savingConfig} className="btn-ghost flex items-center gap-1.5 text-sm disabled:opacity-50">
+        <button onClick={updatePrinterEnv} disabled={checking || printing || savingConfig || discovering} className="btn-ghost flex items-center gap-1.5 text-sm disabled:opacity-50">
           {savingConfig ? <Loader2 className="w-4 h-4 animate-spin" /> : <Settings className="w-4 h-4" />} {savingConfig ? 'Đang lưu...' : 'Cập nhật IP/Port'}
         </button>
       </div>
+
+      {discoveredPrinters.length > 0 && (
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Máy in tìm thấy</p>
+          <div className="flex flex-wrap gap-2">
+            {discoveredPrinters.map((printer) => {
+              const key = `${printer.ip}:${printer.port}`
+              const active = printer.ip === printerIp && String(printer.port) === printerPort
+              return (
+                <button
+                  key={key}
+                  onClick={() => { setPrinterIp(printer.ip); setPrinterPort(String(printer.port)) }}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                    active
+                      ? 'border-green-300 bg-green-50 text-green-700'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-100'
+                  )}
+                >
+                  {key}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {result && (
         <div className={cn('rounded-xl px-4 py-3 text-sm flex items-start gap-2',

@@ -203,24 +203,23 @@ export async function GET(req: NextRequest) {
       .lean() as GrabBackfillCandidate[]
   }
 
-  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
-
   const result = orders
     .map((order) => {
       const rawPayload = getRecord(order.rawPayload)
       const storedStage = getGrabStoredPageStage(rawPayload)
+      const isFinalizedStage = ['history', 'completed', 'cancelled'].includes(storedStage)
+      const isFinalizedStatus = ['completed', 'cancelled'].includes(String(order.status ?? '').trim().toLowerCase())
+      const hasFinalSignal = Boolean(order.deliveredAt) || hasDeliveredAtSignal(rawPayload) || storedStage === 'cancelled'
+      const skipFinalizedRetry = (isFinalizedStage || isFinalizedStatus) && hasFinalSignal
+
       const missingCustomerPhone = ['preparing', 'ready', 'upcoming'].includes(storedStage)
         && !hasMeaningfulPhone(getDisplayCustomerPhone(order as unknown as Order))
-      // Skip driver-phone retry for completed orders older than 3 days — driver info
-      // is removed by Grab after delivery; retrying forever wastes the backfill budget.
-      const isOldCompleted = (order.status === 'completed' || order.status === 'cancelled')
-        && order.deliveredAt != null && new Date(String(order.deliveredAt)) < threeDaysAgo
-      const missingDriverPhone = !isOldCompleted
+      const missingDriverPhone = !skipFinalizedRetry
         && !hasMeaningfulPhone(getDisplayDriverPhone(order as unknown as Order))
-      const missingItemDetail = !hasGrabDetailedItems(rawPayload)
-      const missingPromotionDetail = Number(order.discount ?? 0) > 0 && !hasGrabPromotionDetail(rawPayload)
+      const missingItemDetail = !skipFinalizedRetry && !hasGrabDetailedItems(rawPayload)
+      const missingPromotionDetail = !skipFinalizedRetry && Number(order.discount ?? 0) > 0 && !hasGrabPromotionDetail(rawPayload)
       const missingDeliveredAt = order.status === 'completed' && !order.deliveredAt && !hasDeliveredAtSignal(rawPayload)
-      const missingUtensilInfo = !isOldCompleted && !hasGrabUtensilInfo(rawPayload)
+      const missingUtensilInfo = !skipFinalizedRetry && !hasGrabUtensilInfo(rawPayload)
       const reasons = [
         missingCustomerPhone ? 'customer-phone' : null,
         missingDriverPhone ? 'driver-phone' : null,
