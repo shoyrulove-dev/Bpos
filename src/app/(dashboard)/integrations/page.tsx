@@ -320,6 +320,104 @@ function PlatformAccountsSection() {
   )
 }
 
+// ─── PrinterSection: kiểm tra + in thử máy in nhiệt LAN ────────────────────
+const SCRAPER_CONTROL = 'http://127.0.0.1:3845'
+
+function PrinterSection() {
+  const [checking, setChecking]     = useState(false)
+  const [printing,  setPrinting]    = useState(false)
+  const [printerIp, setPrinterIp]   = useState('192.168.1.100')
+  const [printerPort, setPrinterPort] = useState('9100')
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
+
+  const check = async () => {
+    setChecking(true); setResult(null)
+    try {
+      const r = await fetch(`${SCRAPER_CONTROL}/printer-check`, { signal: AbortSignal.timeout(8000) })
+      const d = await r.json()
+      setResult({ ok: !!d.online || !!d.ok, message: d.message ?? (d.online ? `Online — ${d.ip}:${d.port}` : `Offline — ${d.ip}:${d.port}`) })
+    } catch (e) {
+      setResult({ ok: false, message: `Không kết nối được scraper (127.0.0.1:3845): ${(e as Error).message}` })
+    } finally { setChecking(false) }
+  }
+
+  const testPrint = async () => {
+    setPrinting(true); setResult(null)
+    try {
+      const r = await fetch(`${SCRAPER_CONTROL}/printer-test`, { method: 'POST', signal: AbortSignal.timeout(12000) })
+      const d = await r.json()
+      setResult({ ok: !!d.ok, message: d.message ?? (d.ok ? 'In thử thành công!' : 'In thất bại') })
+    } catch (e) {
+      setResult({ ok: false, message: `Không kết nối được scraper: ${(e as Error).message}` })
+    } finally { setPrinting(false) }
+  }
+
+  const updatePrinterEnv = async () => {
+    setResult(null)
+    try {
+      const r = await fetch(`${SCRAPER_CONTROL}/set-printer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip: printerIp, port: Number(printerPort) }),
+        signal: AbortSignal.timeout(5000),
+      })
+      const d = await r.json()
+      setResult({ ok: !!d.ok, message: d.message ?? (d.ok ? 'Đã cập nhật cấu hình máy in' : 'Lỗi cập nhật') })
+    } catch {
+      setResult({ ok: false, message: 'Không kết nối được scraper. Thay đổi IP/Port không có tác dụng ngay — cấu hình lại trong .env rồi restart scraper.' })
+    }
+  }
+
+  return (
+    <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
+      <div className="flex items-center gap-2">
+        <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-xl">🖨️</div>
+        <div>
+          <h2 className="font-semibold text-gray-900 text-sm">Máy in nhiệt (LAN)</h2>
+          <p className="text-xs text-gray-400">Kết nối qua scraper · ESC/POS TCP · 80mm</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label">IP máy in</label>
+          <input className="input" value={printerIp} onChange={e => setPrinterIp(e.target.value)} placeholder="192.168.1.100" />
+        </div>
+        <div>
+          <label className="label">Port</label>
+          <input className="input" value={printerPort} onChange={e => setPrinterPort(e.target.value)} placeholder="9100" />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button onClick={check} disabled={checking || printing} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
+          {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
+          Kiểm tra kết nối
+        </button>
+        <button onClick={testPrint} disabled={checking || printing} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
+          {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="text-base leading-none">🖨️</span>}
+          In thử
+        </button>
+        <button onClick={updatePrinterEnv} disabled={checking || printing} className="btn-ghost flex items-center gap-1.5 text-sm disabled:opacity-50">
+          <Settings className="w-4 h-4" /> Cập nhật IP/Port
+        </button>
+      </div>
+
+      {result && (
+        <div className={cn('rounded-xl px-4 py-3 text-sm flex items-start gap-2',
+          result.ok ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-600')}>
+          {result.ok ? <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" /> : <XCircle className="w-4 h-4 shrink-0 mt-0.5" />}
+          <span>{result.message}</span>
+        </div>
+      )}
+
+      <p className="text-xs text-gray-400">
+        Chức năng này gọi scraper tại <code className="font-mono">127.0.0.1:3845</code> — scraper phải đang chạy trên cùng máy tính.
+      </p>
+    </div>
+  )
+}
+
 export default function IntegrationsPage() {
   const { data: session } = useSession()
   const isAdmin = (session?.user as { role?: string })?.role === 'admin'
@@ -1030,6 +1128,9 @@ export default function IntegrationsPage() {
           </div>
         </section>
       </div>
+
+      {/* ═══ Máy in nhiệt (LAN) ════════════════════════════════════════════ */}
+      <PrinterSection />
 
       {/* ═══ MODAL: Create ══════════════════════════════════════════════════ */}
       {showForm && (() => {
