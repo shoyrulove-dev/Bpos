@@ -6,7 +6,6 @@ import { Bell, X, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import {
-  buildReceiptPrintUrl,
   DEFAULT_ORDER_ALERT_SETTINGS,
   getRecentPrintedOrderIds,
   loadOrderAlertSettings,
@@ -16,6 +15,7 @@ import {
   primeOrderAlertAudio,
   rememberPrintedOrders,
 } from '@/lib/order-alerts'
+import { buildFallbackPrintUrl, isBridgePrintingEnabled, tryBridgePrintOrder } from '@/lib/local-printer'
 
 interface Notification {
   id: string
@@ -88,6 +88,7 @@ export default function NotificationProvider({ children }: { children: React.Rea
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [settings, setSettings] = useState(DEFAULT_ORDER_ALERT_SETTINGS)
   const [printQueue, setPrintQueue] = useState<string[]>([])
+  const [embeddedPrintOrderId, setEmbeddedPrintOrderId] = useState<string | null>(null)
   const seenIds = useRef<Set<string>>(new Set())
   const initialized = useRef(false)
 
@@ -207,6 +208,7 @@ export default function NotificationProvider({ children }: { children: React.Rea
       if (payload.type !== 'bpos-receipt-printed' && payload.type !== 'bpos-receipt-print-failed') return
       if (!payload.orderId) return
 
+      setEmbeddedPrintOrderId(null)
       setPrintQueue(prev => prev.filter(orderId => orderId !== payload.orderId))
     }
 
@@ -240,10 +242,48 @@ export default function NotificationProvider({ children }: { children: React.Rea
   }, [])
 
   useEffect(() => {
+    if (!printQueue.length) {
+      setEmbeddedPrintOrderId(null)
+      return
+    }
+
+    const activeOrderId = printQueue[0]
+    if (embeddedPrintOrderId === activeOrderId) return
+
+    let cancelled = false
+
+    if (!isBridgePrintingEnabled('receipt')) {
+      setEmbeddedPrintOrderId(activeOrderId)
+      return
+    }
+
+    void tryBridgePrintOrder(activeOrderId, 'receipt')
+      .then((printed) => {
+        if (cancelled) return
+        if (printed) {
+          setEmbeddedPrintOrderId(null)
+          setPrintQueue(prev => prev[0] === activeOrderId ? prev.slice(1) : prev.filter(orderId => orderId !== activeOrderId))
+          return
+        }
+        setEmbeddedPrintOrderId(activeOrderId)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEmbeddedPrintOrderId(activeOrderId)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [embeddedPrintOrderId, printQueue])
+
+  useEffect(() => {
     if (!printQueue.length) return
 
     const activeOrderId = printQueue[0]
     const timeout = window.setTimeout(() => {
+      setEmbeddedPrintOrderId(null)
       setPrintQueue(prev => prev[0] === activeOrderId ? prev.slice(1) : prev.filter(orderId => orderId !== activeOrderId))
     }, 20_000)
 
@@ -265,10 +305,10 @@ export default function NotificationProvider({ children }: { children: React.Rea
     <NotificationContext.Provider value={{ notifications, dismiss, dismissAll }}>
       {children}
 
-      {printQueue[0] && (
+      {embeddedPrintOrderId && (
         <iframe
-          title={`receipt-print-${printQueue[0]}`}
-          src={buildReceiptPrintUrl(printQueue[0], { autoprint: true, embedded: true })}
+          title={`receipt-print-${embeddedPrintOrderId}`}
+          src={buildFallbackPrintUrl(embeddedPrintOrderId, 'receipt', { autoprint: true }) + '&embedded=1'}
           style={{ position: 'fixed', width: 0, height: 0, border: 0, opacity: 0, pointerEvents: 'none' }}
         />
       )}

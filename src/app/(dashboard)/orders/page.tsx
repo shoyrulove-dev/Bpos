@@ -8,7 +8,7 @@ import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { getActualReceived, getDisplayCustomerPhone, getDisplayDriverPhone } from '@/lib/order-financials'
-import { buildReceiptPrintUrl } from '@/lib/order-alerts'
+import { printOrderWithFallback } from '@/lib/local-printer'
 import { formatDateInput } from '@/lib/date-range'
 import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '@/lib/utils'
 import type { Order } from '@/types'
@@ -45,10 +45,6 @@ const SOURCES = [
   { value: 'internal', label: 'Nội bộ' },
 ]
 
-function openWindow(url: string) {
-  window.open(url, '_blank', 'noopener,noreferrer,width=430,height=900')
-}
-
 function getTotalItems(order: Order) {
   return order.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
 }
@@ -79,6 +75,11 @@ function buildGrabPortalOrderUrl(order: Order) {
   const url = new URL(`https://merchant.grab.com/order/${encodeURIComponent(merchantId)}/${getGrabPortalOrderStage(order)}/${encodeURIComponent(orderId)}`)
   if (shortOrderId) url.searchParams.set('shortOrderID', shortOrderId)
   return url.toString()
+}
+
+function openWindow(url: string) {
+  if (typeof window === 'undefined') return
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 function InfoRow({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
@@ -271,8 +272,8 @@ export default function OrdersPage() {
                   <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2.5">
                     <Link href={`/orders/${order._id}`} className="inline-flex items-center gap-2 rounded-full bg-[#20232A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-black">Chi tiết</Link>
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => openWindow(buildReceiptPrintUrl(order._id, { autoprint: true, paperSize: '80mm' }))} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In Đơn</button>
-                      <button type="button" onClick={() => openWindow(buildReceiptPrintUrl(order._id, { autoprint: true, paperSize: '58mm' }))} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In phiếu tem</button>
+                      <button type="button" onClick={() => void printOrderWithFallback(order._id, 'receipt')} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In Đơn</button>
+                      <button type="button" onClick={() => void printOrderWithFallback(order._id, 'label')} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In phiếu tem</button>
 
                     </div>
                   </div>

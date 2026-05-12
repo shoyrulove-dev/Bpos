@@ -1,6 +1,6 @@
 import type { NormalizedOrder, OrderItem, OrderStatus } from '@/types'
 import { enrichGrabSessionExtraHeaders } from '@/lib/grab-session'
-import { normalizeCompactPhone } from '@/lib/phone'
+import { extractCompactPhone, normalizeCompactPhone } from '@/lib/phone'
 import { mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
 import type { PlatformAdapter, AdapterConfig, SessionData } from './types'
 
@@ -108,6 +108,29 @@ function mapGrabStatus(rawStatus: string): OrderStatus {
   return statusMap[rawStatus] ?? 'waiting_confirm'
 }
 
+function hasGrabDeliverySignal(signals: string[]) {
+  return signals.some((value) => (
+    value.includes('in_delivery')
+    || value.includes('delivering')
+    || value.includes('dang giao')
+    || value.includes('đang giao')
+    || value.includes('collected')
+    || value.includes('picked_up')
+    || value.includes('on_the_way')
+    || value.includes('delivery')
+  ))
+}
+
+function hasGrabCompletionSignal(signals: string[]) {
+  return signals.some((value) => (
+    value.includes('complete')
+    || value.includes('delivered')
+    || value.includes('terminate')
+    || value.includes('hoàn tất')
+    || value.includes('hoan tat')
+  ))
+}
+
 function hasGrabDateValue(value: unknown) {
   if (!value) return false
   const date = new Date(String(value))
@@ -146,9 +169,13 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
 
   if (pageStage === 'cancelled') return 'cancelled'
 
+  if (hasGrabDeliverySignal(secondarySignals) || mappedStatus === 'delivering') {
+    return 'delivering'
+  }
+
   // Check completion TRƯỚC khi check pageStage === 'ready', để tránh downgrade
   // đơn đã hoàn thành (có completedAt/deliveredAt) xuống waiting_pickup
-  if (secondarySignals.some((value) => value.includes('complete') || value.includes('deliver') || value.includes('history') || value.includes('past') || value.includes('terminate'))) {
+  if (hasGrabCompletionSignal(secondarySignals)) {
     return 'completed'
   }
 
@@ -165,13 +192,19 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
 
   if (pageStage === 'upcoming') return 'pre_order'
 
+  if (pageStage === 'history') {
+    return mappedStatus === 'waiting_confirm' || mappedStatus === 'waiting_pickup'
+      ? 'completed'
+      : mappedStatus
+  }
+
   if (pageStage === 'ready') {
     return secondarySignals.some((value) => value.includes('collect') || value.includes('delivery') || value.includes('picking_up'))
       ? 'delivering'
       : 'waiting_pickup'
   }
 
-  if (['preparing', 'upcoming', 'ready'].includes(pageStage) && (mappedStatus === 'waiting_confirm' || mappedStatus === 'waiting_pickup' || mappedStatus === 'delivering' || mappedStatus === 'pre_order') && secondarySignals.some((value) => (
+  if (['preparing', 'upcoming', 'ready'].includes(pageStage) && (mappedStatus === 'waiting_confirm' || mappedStatus === 'waiting_pickup' || mappedStatus === 'pre_order') && secondarySignals.some((value) => (
     value.includes('prepare')
     || value.includes('ready')
     || value.includes('upcoming')
@@ -189,6 +222,38 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
   }
 
   return mappedStatus
+}
+
+function shouldExposeGrabDriverInfo(raw: Record<string, unknown>, orderStatus: OrderStatus) {
+  if (orderStatus === 'delivering' || orderStatus === 'completed' || orderStatus === 'cancelled') {
+    return true
+  }
+
+  const pageStage = resolveGrabPortalStage(raw)
+  if (pageStage === 'ready' || pageStage === 'history' || pageStage === 'completed' || pageStage === 'cancelled') {
+    return true
+  }
+
+  const driverSignals = [
+    raw.deliveryStatus,
+    raw.orderState,
+    raw.status,
+    raw.orderStatus,
+    raw.state,
+    raw.deliveryTaskpoolStatus,
+    raw.fulfillmentStatus,
+    raw._pageType,
+    raw.pageType,
+  ]
+    .map((value) => String(value ?? '').trim().toLowerCase())
+    .filter(Boolean)
+
+  return driverSignals.some((value) => (
+    value.includes('ready')
+    || value.includes('collect')
+    || value.includes('delivery')
+    || value.includes('picking_up')
+  ))
 }
 
 export class GrabAdapter implements PlatformAdapter {
@@ -522,7 +587,19 @@ export class GrabAdapter implements PlatformAdapter {
     if (!value || typeof value !== 'object') return undefined
 
     const record = value as Record<string, unknown>
-    const candidates = [record.phone, record.phoneNumber, record.mobileNumber, record.contact, record.value, record.number]
+    const candidates = [
+      record.phone,
+      record.phoneNumber,
+      record.mobileNumber,
+      record.contactNumber,
+      record.contactNo,
+      record.contact,
+      record.displayPhone,
+      record.phoneNo,
+      record.mobile,
+      record.value,
+      record.number,
+    ]
     for (const candidate of candidates) {
       const resolved = this.getGrabPhoneCandidate(candidate)
       if (resolved) return resolved
@@ -532,8 +609,7 @@ export class GrabAdapter implements PlatformAdapter {
   }
 
   private extractGrabPortalPhone(segment: string) {
-    const match = segment.match(/((?:\+?84|0)\d[\d .-]{7,13}\d)/)
-    return match?.[1]?.trim()
+    return extractCompactPhone(segment)
   }
 
   private extractGrabPortalName(segment: string, phone?: string) {
@@ -541,6 +617,7 @@ export class GrabAdapter implements PlatformAdapter {
     const cleaned = withoutPhone
       .replace(/^(?:[:：-]|sdt|sđt|điện thoại|phone)\s*/i, '')
       .replace(/(?:sdt|sđt|điện thoại|phone).*$/i, '')
+      .replace(/(?:đang giao|dang giao|đang đến lấy|dang den lay|đang lấy hàng|dang lay hang|đã giao|da giao|đã hoàn tất|da hoan tat|hoàn tất|hoan tat|đã hủy|da huy|đã huỷ|da huy).*/i, '')
       .replace(/(?:đã giao|đã hoàn tất|hoàn tất|đã hủy|đã huỷ|mã đặt hàng).*$/i, '')
       .replace(/[📞☎]/g, ' ')
       .replace(/\s+/g, ' ')
@@ -556,12 +633,19 @@ export class GrabAdapter implements PlatformAdapter {
 
     const customerSegment = this.extractGrabPortalSegment(text, 'Khách hàng', ['Tài xế', 'Lưu ý từ khách hàng', 'Sản phẩm', 'Tóm tắt đơn hàng'])
     const driverSegment = this.extractGrabPortalSegment(text, 'Tài xế', ['Mã đặt hàng', 'Khách hàng', 'Lưu ý từ khách hàng', 'Sản phẩm', 'Tóm tắt đơn hàng'])
+    const statusSegment = this.extractGrabPortalSegment(text, 'Tài xế', ['Mã đặt hàng', 'Khách hàng'])
     const rawCustomerPhone = this.extractGrabPortalPhone(customerSegment)
     const rawDriverPhone = this.extractGrabPortalPhone(driverSegment)
     const customerPhone = this.normalizeGrabPortalPhone(rawCustomerPhone)
     const driverPhone = this.normalizeGrabPortalPhone(rawDriverPhone)
     const customerName = this.extractGrabPortalName(customerSegment, rawCustomerPhone)
     const driverName = this.extractGrabPortalName(driverSegment, rawDriverPhone)
+    const normalizedStatusText = statusSegment.toLowerCase()
+    const inferredDeliveryStatus = normalizedStatusText.includes('đang giao') || normalizedStatusText.includes('dang giao')
+      ? 'IN_DELIVERY'
+      : normalizedStatusText.includes('đã giao') || normalizedStatusText.includes('da giao') || normalizedStatusText.includes('hoàn tất') || normalizedStatusText.includes('hoan tat')
+      ? 'DELIVERED'
+      : undefined
 
     const financialBreakdown = {
       merchandiseAmount: this.extractGrabPortalAmountByLabels(text, ['Tiền hàng']),
@@ -581,6 +665,7 @@ export class GrabAdapter implements PlatformAdapter {
       orderID: orderId,
       ID: orderId,
       financialBreakdown,
+      ...(inferredDeliveryStatus ? { deliveryStatus: inferredDeliveryStatus, orderStatus: inferredDeliveryStatus } : {}),
     }
 
     if (hasContacts) {
@@ -1154,8 +1239,11 @@ export class GrabAdapter implements PlatformAdapter {
         consumerObj.phones,
         consumerObj.phone,
         consumerObj.phoneNumber,
+        consumerObj.displayPhone,
+        consumerObj.contactNumber,
         consumerObj.mobileNumber,
         this.extractGrabPortalPhone(String(consumerObj.comment ?? '')),
+        this.extractGrabPortalPhone(String(raw.specialRequest ?? raw.note ?? raw.remarks ?? '')),
       ])
     )
 
@@ -1188,6 +1276,28 @@ export class GrabAdapter implements PlatformAdapter {
     const dropoff  = (delivery.dropoff ?? {}) as Record<string, unknown>
     const address  = String(dropoff.address ?? dropoff.formattedAddress ?? delivery.address ?? raw.deliveryAddress ?? '')
     const driver   = (delivery.driver ?? raw.driver ?? raw.rider ?? raw.driverDetails ?? raw.driverInfo ?? raw.courier ?? raw.deliveryPerson ?? raw.deliveryAgent ?? {}) as Record<string, unknown>
+    const driverPhone = normalizeCompactPhone(this.getGrabPhoneCandidate([
+      driver.phones,
+      driver.phone,
+      driver.phoneNumber,
+      driver.mobileNumber,
+      driver.contact,
+      driver.contactNumber,
+      driver.displayPhone,
+      raw.driverPhone,
+      raw.driverContactNo,
+      raw.driverPhoneNumber,
+      raw.driver_phone_no,
+      raw.driver_contact,
+      raw.driver_phone,
+    ]))
+    const driverName = String(driver.name ?? driver.displayName ?? driver.fullName ?? '') || undefined
+    const driverInfo = shouldExposeGrabDriverInfo(raw, orderStatus) && (driverName || driverPhone)
+      ? {
+        name: driverName,
+        phone: driverPhone,
+      }
+      : undefined
 
     const estimatedTime = this.getGrabEstimatedTime(raw)
 
@@ -1207,22 +1317,7 @@ export class GrabAdapter implements PlatformAdapter {
       platformFee,
       paymentMethod:   String(raw.paymentType ?? raw.paymentMethod ?? (raw.isTakeawayOrder ? 'pickup' : 'delivery')),
       deliveryInfo:    { address, note: deliveryNote, estimatedTime },
-      driverInfo:      {
-        name: String(driver.name ?? driver.displayName ?? '') || undefined,
-        phone: normalizeCompactPhone(this.getGrabPhoneCandidate([
-          driver.phones,
-          driver.phone,
-          driver.phoneNumber,
-          driver.mobileNumber,
-          driver.contact,
-          raw.driverPhone,
-          raw.driverContactNo,
-          raw.driverPhoneNumber,
-          raw.driver_phone_no,
-          raw.driver_contact,
-          raw.driver_phone,
-        ])),
-      },
+      driverInfo,
       orderStatus,
       placedAt:        String(raw.orderTime ?? raw.createdAt ?? raw.createTime ?? new Date().toISOString()),
       deliveredAt:     this.getGrabDeliveredAt(raw, orderStatus),
@@ -1317,6 +1412,12 @@ export class GrabAdapter implements PlatformAdapter {
     const driverName = String(
       driverRaw?.name ?? driverRaw?.driverName ?? driverRaw?.fullName ?? driverRaw?.displayName ?? ''
     )
+    const driverInfo = shouldExposeGrabDriverInfo(raw, orderStatus) && (driverName || driverPhone)
+      ? {
+        name: driverName,
+        phone: driverPhone ?? '',
+      }
+      : undefined
 
     return {
       source:          'grab',
@@ -1338,10 +1439,7 @@ export class GrabAdapter implements PlatformAdapter {
         note: String(raw.specialRequest ?? raw.note ?? raw.remarks ?? '') || undefined,
         estimatedTime: this.getGrabEstimatedTime(raw),
       },
-      driverInfo: driverName || driverPhone ? {
-        name:  driverName,
-        phone: driverPhone ?? '',
-      } : undefined,
+      driverInfo,
       orderStatus,
       placedAt:    String(raw.orderTime ?? new Date().toISOString()),
       deliveredAt: this.getGrabDeliveredAt(raw, orderStatus),

@@ -1,10 +1,327 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Printer, Volume2 } from 'lucide-react'
+import { CheckCircle2, Loader2, Printer, Receipt, RefreshCw, Save, Ticket, Volume2, Wifi, XCircle } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { DEFAULT_ORDER_ALERT_SETTINGS, loadOrderAlertSettings, persistOrderAlertSettings, playOrderAlert, type OrderAlertSettings } from '@/lib/order-alerts'
+import {
+  DEFAULT_LOCAL_PRINTER_SETTINGS,
+  checkBridgePrinter,
+  discoverBridgePrinters,
+  getBridgePrinterConfig,
+  loadLocalPrinterSettings,
+  persistLocalPrinterSettings,
+  saveLocalPrinterProfile,
+  setBridgePrinterConfig,
+  testBridgePrinter,
+  type BridgePrinterResponse,
+  type LocalPrinterProfile,
+  type LocalPrinterSettings,
+  type LocalPrinterType,
+} from '@/lib/local-printer'
+
+type PrinterFeedback = { ok: boolean; message: string } | null
+
+function formatSyncTime() {
+  return new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+function normalizeBridgeStatus(value: string | undefined): 'ok' | 'offline' | 'unknown' {
+  return value === 'ok' || value === 'offline' ? value : 'unknown'
+}
+
+function mergeProfile(type: LocalPrinterType, previous: LocalPrinterProfile, payload: BridgePrinterResponse) {
+  const nextProfile: LocalPrinterProfile = {
+    ...previous,
+    ip: String(payload.ip ?? previous.ip).trim() || previous.ip,
+    port: String(payload.port ?? previous.port).trim() || previous.port,
+  }
+  saveLocalPrinterProfile(type, nextProfile)
+  return nextProfile
+}
+
+function PrinterProfileCard({
+  printerType,
+  title,
+  description,
+}: {
+  printerType: LocalPrinterType
+  title: string
+  description: string
+}) {
+  const [profile, setProfile] = useState<LocalPrinterProfile>(() => loadLocalPrinterSettings()[printerType])
+  const [status, setStatus] = useState<'ok' | 'offline' | 'unknown'>('unknown')
+  const [discoveredPrinters, setDiscoveredPrinters] = useState<Array<{ ip: string; port: number }>>([])
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<PrinterFeedback>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [discovering, setDiscovering] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [testing, setTesting] = useState(false)
+
+  useEffect(() => {
+    const settings = loadLocalPrinterSettings()
+    setProfile(settings[printerType])
+
+    void (async () => {
+      try {
+        const payload = await getBridgePrinterConfig(printerType)
+        setProfile((previous) => mergeProfile(printerType, previous, payload))
+        setStatus(normalizeBridgeStatus(payload.status))
+        setDiscoveredPrinters(Array.isArray(payload.discovered) ? payload.discovered : [])
+        setLastSyncedAt(formatSyncTime())
+      } catch {
+        setStatus('unknown')
+      }
+    })()
+  }, [printerType])
+
+  const statusTone = useMemo(() => (
+    status === 'ok'
+      ? 'bg-green-50 text-green-700 border border-green-200'
+      : status === 'offline'
+        ? 'bg-red-50 text-red-600 border border-red-200'
+        : 'bg-gray-50 text-gray-500 border border-gray-200'
+  ), [status])
+
+  const statusLabel = status === 'ok' ? 'Online' : status === 'offline' ? 'Offline' : 'Chưa rõ'
+
+  const persistProfile = (nextProfile: LocalPrinterProfile) => {
+    setProfile(nextProfile)
+    const nextSettings: LocalPrinterSettings = {
+      ...loadLocalPrinterSettings(),
+      [printerType]: nextProfile,
+    }
+    persistLocalPrinterSettings(nextSettings)
+  }
+
+  const applyBridgePayload = (payload: BridgePrinterResponse, message?: string) => {
+    setProfile((previous) => mergeProfile(printerType, previous, payload))
+    setStatus(normalizeBridgeStatus(payload.status))
+    setDiscoveredPrinters(Array.isArray(payload.discovered) ? payload.discovered : [])
+    setLastSyncedAt(formatSyncTime())
+    if (message) {
+      setFeedback({ ok: payload.ok, message })
+    }
+  }
+
+  const syncFromBridge = async (showMessage = false) => {
+    setRefreshing(true)
+    if (showMessage) setFeedback(null)
+    try {
+      const payload = await getBridgePrinterConfig(printerType)
+      applyBridgePayload(payload, showMessage ? payload.message || `Đã đồng bộ cấu hình ${title.toLowerCase()}.` : undefined)
+    } catch (error) {
+      setStatus('unknown')
+      if (showMessage) {
+        setFeedback({ ok: false, message: `Không đọc được cấu hình từ bridge: ${(error as Error).message}` })
+      }
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const saveBridgeConfig = async () => {
+    setSaving(true)
+    setFeedback(null)
+    persistProfile(profile)
+    try {
+      const payload = await setBridgePrinterConfig(printerType, {
+        ip: profile.ip,
+        port: Number(profile.port),
+      })
+      applyBridgePayload(payload, payload.message || `Đã lưu cấu hình ${title.toLowerCase()}.`)
+    } catch (error) {
+      setFeedback({ ok: false, message: `Không lưu được cấu hình bridge: ${(error as Error).message}` })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const discoverOnLan = async () => {
+    setDiscovering(true)
+    setFeedback(null)
+    try {
+      const payload = await discoverBridgePrinters(printerType)
+      applyBridgePayload(payload, payload.message || 'Đã quét máy in trên LAN.')
+    } catch (error) {
+      setFeedback({ ok: false, message: `Không quét được máy in: ${(error as Error).message}` })
+    } finally {
+      setDiscovering(false)
+    }
+  }
+
+  const checkConnection = async () => {
+    setChecking(true)
+    setFeedback(null)
+    try {
+      const payload = await checkBridgePrinter(printerType)
+      applyBridgePayload(payload, payload.message || 'Đã kiểm tra kết nối máy in.')
+    } catch (error) {
+      setStatus('unknown')
+      setFeedback({ ok: false, message: `Không kiểm tra được máy in: ${(error as Error).message}` })
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const runTestPrint = async () => {
+    setTesting(true)
+    setFeedback(null)
+    try {
+      const payload = await testBridgePrinter(printerType)
+      applyBridgePayload(payload, payload.message || 'Đã gửi lệnh in thử.')
+    } catch (error) {
+      setStatus('unknown')
+      setFeedback({ ok: false, message: `Không gửi được lệnh in thử: ${(error as Error).message}` })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <div className="rounded-[28px] border border-gray-200 bg-white p-5 shadow-sm space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+            {printerType === 'receipt' ? <Receipt className="h-4 w-4" /> : <Ticket className="h-4 w-4" />}
+            {title}
+          </h2>
+          <p className="mt-1 text-sm text-gray-500">{description}</p>
+        </div>
+        <label className="flex items-center gap-2 text-xs font-medium text-gray-600">
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={profile.enabled}
+            onChange={(event) => {
+              const nextProfile = { ...profile, enabled: event.target.checked }
+              persistProfile(nextProfile)
+            }}
+          />
+          Dùng bridge local
+        </label>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={cn('inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold', statusTone)}>
+          Trạng thái: {statusLabel}
+        </span>
+        <span className="text-xs text-gray-500">Bridge đang trỏ: {profile.ip}:{profile.port}</span>
+        {lastSyncedAt && <span className="text-xs text-gray-500">Đồng bộ lúc: {lastSyncedAt}</span>}
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div>
+          <label className="label">Tên máy in</label>
+          <input
+            className="input"
+            value={profile.name}
+            onChange={(event) => setProfile((previous) => ({ ...previous, name: event.target.value }))}
+            placeholder={printerType === 'receipt' ? 'Xprinter XP-T80L' : 'Xprinter XP-Q361U'}
+          />
+        </div>
+        <div>
+          <label className="label">Khổ giấy</label>
+          <select
+            className="input"
+            value={profile.paperSize}
+            onChange={(event) => setProfile((previous) => ({
+              ...previous,
+              paperSize: event.target.value as LocalPrinterProfile['paperSize'],
+            }))}
+          >
+            <option value="80mm">80mm</option>
+            <option value="58mm">58mm</option>
+            <option value="A4">A4</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div>
+          <label className="label">IP máy in</label>
+          <input
+            className="input"
+            value={profile.ip}
+            onChange={(event) => setProfile((previous) => ({ ...previous, ip: event.target.value }))}
+            placeholder="192.168.1.100"
+          />
+        </div>
+        <div>
+          <label className="label">Port</label>
+          <input
+            className="input"
+            value={profile.port}
+            onChange={(event) => setProfile((previous) => ({ ...previous, port: event.target.value }))}
+            placeholder="9100"
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => void syncFromBridge(true)} disabled={refreshing || saving || discovering || checking || testing} className="btn-outline disabled:opacity-50">
+          {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Đồng bộ bridge
+        </button>
+        <button type="button" onClick={() => void discoverOnLan()} disabled={refreshing || saving || discovering || checking || testing} className="btn-outline disabled:opacity-50">
+          {discovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />} Quét LAN
+        </button>
+        <button type="button" onClick={() => void checkConnection()} disabled={refreshing || saving || discovering || checking || testing} className="btn-outline disabled:opacity-50">
+          {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} Kiểm tra
+        </button>
+        <button type="button" onClick={() => void runTestPrint()} disabled={refreshing || saving || discovering || checking || testing} className="btn-outline disabled:opacity-50">
+          {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} In thử
+        </button>
+        <button type="button" onClick={() => void saveBridgeConfig()} disabled={refreshing || saving || discovering || checking || testing} className="btn-primary disabled:opacity-50">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Lưu cấu hình
+        </button>
+      </div>
+
+      {discoveredPrinters.length > 0 && (
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Máy in bridge nhìn thấy</p>
+          <div className="flex flex-wrap gap-2">
+            {discoveredPrinters.map((printer) => {
+              const key = `${printer.ip}:${printer.port}`
+              const active = printer.ip === profile.ip && String(printer.port) === profile.port
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setProfile((previous) => ({ ...previous, ip: printer.ip, port: String(printer.port) }))}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                    active
+                      ? 'border-green-300 bg-green-50 text-green-700'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-100'
+                  )}
+                >
+                  {key}
+                </button>
+              )
+            })}
+          </div>
+          {printerType === 'label' && discoveredPrinters.length === 1 && discoveredPrinters[0]?.ip === '192.168.1.100' && discoveredPrinters[0]?.port === 9100 && (
+            <p className="text-xs text-amber-700">Hiện bridge mới nhìn thấy một thiết bị LAN tại 192.168.1.100:9100. Nếu XP-Q361U ở IP khác thì nhập tay rồi bấm lưu.</p>
+          )}
+        </div>
+      )}
+
+      {feedback && (
+        <div className={cn(
+          'rounded-xl px-4 py-3 text-sm flex items-start gap-2',
+          feedback.ok ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-600'
+        )}>
+          {feedback.ok ? <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" /> : <XCircle className="h-4 w-4 shrink-0 mt-0.5" />}
+          <span>{feedback.message}</span>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function SettingsPage() {
   const { data: session } = useSession()
@@ -15,6 +332,15 @@ export default function SettingsPage() {
   useEffect(() => {
     setOrderSettings(loadOrderAlertSettings())
 
+    const printerSettings = loadLocalPrinterSettings()
+    if (printerSettings.receipt.name || printerSettings.receipt.paperSize) {
+      setOrderSettings((previous) => ({
+        ...previous,
+        printerName: printerSettings.receipt.name,
+        printerPaperSize: printerSettings.receipt.paperSize,
+      }))
+    }
+
     void fetch('/api/settings/order-alerts')
       .then(async (response) => {
         if (!response.ok) return null
@@ -22,17 +348,22 @@ export default function SettingsPage() {
       })
       .then((payload) => {
         if (!payload?.voiceMessage) return
-        setOrderSettings((prev) => ({
-          ...prev,
-          voiceMessage: payload.voiceMessage || prev.voiceMessage,
-          soundRepeatCount: typeof payload.soundRepeatCount === 'number' ? payload.soundRepeatCount : prev.soundRepeatCount,
+        setOrderSettings((previous) => ({
+          ...previous,
+          voiceMessage: payload.voiceMessage || previous.voiceMessage,
+          soundRepeatCount: typeof payload.soundRepeatCount === 'number' ? payload.soundRepeatCount : previous.soundRepeatCount,
         }))
       })
       .catch(() => null)
   }, [])
 
   const handleSaveOrderSettings = async () => {
-    persistOrderAlertSettings(orderSettings)
+    const printerSettings = loadLocalPrinterSettings()
+    persistOrderAlertSettings({
+      ...orderSettings,
+      printerName: printerSettings.receipt.name,
+      printerPaperSize: printerSettings.receipt.paperSize,
+    })
 
     if (isAdmin) {
       await fetch('/api/settings/order-alerts', {
@@ -47,18 +378,18 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="max-w-5xl space-y-5">
       <div className="page-header">
         <div>
           <h1 className="page-title">Cài đặt</h1>
-          <p className="page-subtitle">Quản lý âm thanh, tự động in và cấu hình in đơn mặc định.</p>
+          <p className="page-subtitle">Âm thanh đơn mới, tự động in và hai cấu hình máy in tách riêng cho hóa đơn và tem.</p>
         </div>
       </div>
 
       <div className="card p-6 space-y-4">
         <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900"><Printer className="h-4 w-4" /> In đơn và âm thanh</h2>
-          <p className="mt-1 text-sm text-gray-500">Mục này được tách riêng để dễ tìm và chỉnh khi vận hành.</p>
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900"><Volume2 className="h-4 w-4" /> Âm thanh và tự động in</h2>
+          <p className="mt-1 text-sm text-gray-500">Phần này chỉ giữ logic cảnh báo và auto-print. Cấu hình máy in LAN nằm ở hai khối phía dưới.</p>
         </div>
 
         <label className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
@@ -70,26 +401,26 @@ export default function SettingsPage() {
             type="checkbox"
             className="h-4 w-4"
             checked={orderSettings.soundEnabled}
-            onChange={(event) => setOrderSettings((prev) => ({ ...prev, soundEnabled: event.target.checked }))}
+            onChange={(event) => setOrderSettings((previous) => ({ ...previous, soundEnabled: event.target.checked }))}
           />
         </label>
 
         <label className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
           <div>
-            <p className="text-sm font-medium text-gray-900">Tự động in đơn mới</p>
-            <p className="text-xs text-gray-500">Tự mở phiếu in khi đơn mới vào hàng chờ xử lý.</p>
+            <p className="text-sm font-medium text-gray-900">Tự động in hóa đơn đơn mới</p>
+            <p className="text-xs text-gray-500">Ưu tiên gửi qua bridge `receipt`; nếu bridge không sẵn sàng thì fallback sang cửa sổ in của trình duyệt.</p>
           </div>
           <input
             type="checkbox"
             className="h-4 w-4"
             checked={orderSettings.autoPrintEnabled}
-            onChange={(event) => setOrderSettings((prev) => ({ ...prev, autoPrintEnabled: event.target.checked }))}
+            onChange={(event) => setOrderSettings((previous) => ({ ...previous, autoPrintEnabled: event.target.checked }))}
           />
         </label>
 
         <div className="rounded-xl border border-gray-200 overflow-hidden">
-          <div className="border-b border-gray-100 px-4 py-3">
-            <div className="flex items-start justify-between gap-4 mb-2">
+          <div className="px-4 py-3 space-y-3">
+            <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-gray-900">Câu thông báo đọc lên</p>
                 <p className="text-xs text-gray-500">{isAdmin ? 'Admin có thể đổi câu này.' : 'Chỉ admin mới được đổi câu thông báo chung.'}</p>
@@ -103,7 +434,7 @@ export default function SettingsPage() {
                   rows={2}
                   maxLength={200}
                   value={orderSettings.voiceMessage}
-                  onChange={(event) => setOrderSettings((prev) => ({ ...prev, voiceMessage: event.target.value }))}
+                  onChange={(event) => setOrderSettings((previous) => ({ ...previous, voiceMessage: event.target.value }))}
                   readOnly={!isAdmin}
                   placeholder="Anh ơi. Mình có đơn hàng mới. Anh kiểm tra giúp em nhé."
                 />
@@ -115,37 +446,14 @@ export default function SettingsPage() {
                 className="input w-20 text-center text-sm flex-shrink-0"
                 value={orderSettings.soundRepeatCount}
                 onChange={(event) => {
-                  const val = parseInt(event.target.value, 10)
-                  setOrderSettings((prev) => ({ ...prev, soundRepeatCount: Number.isFinite(val) && val > 0 ? val : prev.soundRepeatCount }))
+                  const nextValue = parseInt(event.target.value, 10)
+                  setOrderSettings((previous) => ({
+                    ...previous,
+                    soundRepeatCount: Number.isFinite(nextValue) && nextValue > 0 ? nextValue : previous.soundRepeatCount,
+                  }))
                 }}
                 disabled={!isAdmin}
               />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 divide-x divide-gray-100">
-            <div className="px-4 py-3">
-              <p className="text-xs font-medium text-gray-500 mb-1">Tên máy in</p>
-              <input
-                className="input text-sm"
-                value={orderSettings.printerName}
-                onChange={(event) => setOrderSettings((prev) => ({ ...prev, printerName: event.target.value }))}
-                placeholder="VD: Xprinter XP-T80L"
-              />
-            </div>
-            <div className="px-4 py-3">
-              <p className="text-xs font-medium text-gray-500 mb-1">Khổ giấy mặc định</p>
-              <select
-                className="input text-sm"
-                value={orderSettings.printerPaperSize}
-                onChange={(event) => setOrderSettings((prev) => ({
-                  ...prev,
-                  printerPaperSize: event.target.value as OrderAlertSettings['printerPaperSize'],
-                }))}
-              >
-                <option value="80mm">80mm</option>
-                <option value="58mm">58mm</option>
-                <option value="A4">A4</option>
-              </select>
             </div>
           </div>
         </div>
@@ -154,29 +462,24 @@ export default function SettingsPage() {
           <button type="button" onClick={() => playOrderAlert(1, orderSettings.voiceMessage)} className="btn-outline">
             <Volume2 className="h-4 w-4" /> Test âm thanh
           </button>
-          <button type="button" onClick={() => {
-            const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            const toHtml = (txt: string) => txt.split('\n').map(line => {
-              const t = line.trim()
-              if (t.match(/^={3,}/)) return `<div style="text-align:center;font-weight:bold">${esc(t)}</div>`
-              if (t.match(/^-{3,}$/)) return `<hr style="border:none;border-top:1px dashed #999;margin:3px 0"/>`
-              if (/\d/.test(t) && /^\s/.test(line)) return `<div style="text-align:right">${esc(t)}</div>`
-              return `<div>${esc(t) || '\u00a0'}</div>`
-            }).join('')
-            const w = ({ A4: '210mm', A5: '148mm', '80mm': '80mm', '58mm': '58mm' } as Record<string, string>)[orderSettings.printerPaperSize] ?? '80mm'
-            const content = `=== IN THỬ BIÊN LAI ===\nMáy in: ${orderSettings.printerName || '(chưa đặt)'}\nKhổ giấy: ${orderSettings.printerPaperSize}\n---\nCửa hàng Demo\nNgày: ${new Date().toLocaleString('vi-VN')}\n---\n   Sản phẩm demo x1    100,000đ\n---\n   Tổng: 100,000đ\n=== CẢM ƠN QUÝ KHÁCH ===`
-            const pw = window.open('', '_blank', 'width=480,height=700')
-            if (!pw) return
-            pw.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;background:#e5e5e5;display:flex;flex-direction:column;align-items:center;padding:20px}.paper{background:#fff;width:${w};max-width:100%;padding:10px;font-family:'Courier New',monospace;font-size:11px;line-height:1.6;box-shadow:0 2px 12px rgba(0,0,0,.18);word-break:break-word}.toolbar{display:flex;gap:8px;margin-bottom:14px}.toolbar button{padding:6px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}.bp{background:#f97316;color:#fff}.bc{background:#e5e7eb;color:#374151}@media print{body{background:#fff;padding:0}.toolbar{display:none}@page{size:${w};margin:4mm}}</style></head><body><div class="toolbar"><button class="bp" onclick="window.print()">&#128424; In</button><button class="bc" onclick="window.close()">&#x2715; Đóng</button></div><div class="paper">${toHtml(content)}</div></body></html>`)
-            pw.document.close()
-          }} className="btn-outline">
-            <Printer className="h-4 w-4" /> In thử biên lai
-          </button>
           <button type="button" onClick={handleSaveOrderSettings} className="btn-primary">
-            {settingsSaved ? '✓ Đã lưu cài đặt' : 'Lưu cài đặt'}
+            {settingsSaved ? '✓ Đã lưu cài đặt' : 'Lưu cài đặt chung'}
           </button>
           <Link href="/orders" className="btn-outline">Về danh sách đơn</Link>
         </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <PrinterProfileCard
+          printerType="receipt"
+          title="In hóa đơn"
+          description="Dùng cho nút `In đơn` và luồng auto-print receipt. Mặc định đang nhắm Xprinter XP-T80L."
+        />
+        <PrinterProfileCard
+          printerType="label"
+          title="In tem"
+          description="Dùng cho nút `In phiếu tem`. Cấu hình này tách riêng để bạn trỏ sang XP-Q361U nếu thiết bị có IP riêng."
+        />
       </div>
     </div>
   )

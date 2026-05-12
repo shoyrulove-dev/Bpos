@@ -115,6 +115,40 @@ function mergeDriverInfoPreservingDetail(
   return Object.keys(nextDriverInfo).length ? (nextDriverInfo as NonNullable<NormalizedOrder['driverInfo']>) : undefined
 }
 
+function shouldSuppressDriverInfo(incoming: NormalizedOrder) {
+  if (incoming.source !== 'grab') return false
+  if (incoming.orderStatus === 'delivering' || incoming.orderStatus === 'completed' || incoming.orderStatus === 'cancelled') {
+    return false
+  }
+
+  const raw = getRecord(incoming.rawPayload)
+  const pageStage = String(raw?._pageStage ?? raw?._pageType ?? raw?.pageType ?? '').trim().toLowerCase()
+  if (pageStage.includes('ready') || pageStage.includes('history') || pageStage.includes('complete') || pageStage.includes('cancel')) {
+    return false
+  }
+
+  const driverSignals = [
+    raw?.deliveryStatus,
+    raw?.orderState,
+    raw?.status,
+    raw?.orderStatus,
+    raw?.state,
+    raw?.deliveryTaskpoolStatus,
+    raw?.fulfillmentStatus,
+    raw?._pageType,
+    raw?.pageType,
+  ]
+    .map((value) => String(value ?? '').trim().toLowerCase())
+    .filter(Boolean)
+
+  return !driverSignals.some((value) => (
+    value.includes('ready')
+    || value.includes('collect')
+    || value.includes('delivery')
+    || value.includes('picking_up')
+  ))
+}
+
 function hasItems(items: unknown) {
   return Array.isArray(items) && items.length > 0
 }
@@ -202,17 +236,97 @@ function mergeInfoObject<T extends object>(existing: T | undefined, incoming: T 
   return Object.keys(merged).length ? (merged as T) : undefined
 }
 
+function mergeRawPayloadPreservingContacts(
+  existing: Record<string, unknown> | undefined,
+  incoming: Record<string, unknown> | undefined,
+) {
+  if (!existing && !incoming) return undefined
+
+  const merged: Record<string, unknown> = {
+    ...(existing ?? {}),
+    ...(incoming ?? {}),
+  }
+
+  for (const key of ['customer', 'receiver', 'consumer', 'eater', 'driver', 'rider', 'courier', 'driverDetails', 'driverInfo']) {
+    const nextValue = mergeInfoObject(getRecord(existing?.[key]), getRecord(incoming?.[key]))
+    if (nextValue) merged[key] = nextValue
+  }
+
+  const mergedDelivery = mergeInfoObject(getRecord(existing?.delivery), getRecord(incoming?.delivery))
+  if (mergedDelivery) {
+    merged.delivery = mergedDelivery
+
+    const mergedDeliveryDriver = mergeInfoObject(
+      getRecord(getRecord(existing?.delivery)?.driver),
+      getRecord(getRecord(incoming?.delivery)?.driver),
+    )
+
+    if (mergedDeliveryDriver) {
+      (merged.delivery as Record<string, unknown>).driver = mergedDeliveryDriver
+    }
+  }
+
+  return Object.keys(merged).length ? merged : undefined
+}
+
 type OrderSnapshot = Partial<NormalizedOrder>
 
 export function mergeNormalizedOrderPreservingDetail(existing: OrderSnapshot | null | undefined, incoming: NormalizedOrder): NormalizedOrder {
+  const mergedRawPayload = mergeRawPayloadPreservingContacts(
+    getRecord(existing?.rawPayload),
+    getRecord(incoming.rawPayload),
+  )
+
+  const existingOrder = {
+    ...(existing ?? {}),
+    rawPayload: existing?.rawPayload,
+  } as Order
+
+  const incomingOrder = {
+    ...incoming,
+    rawPayload: mergedRawPayload ?? incoming.rawPayload,
+  } as unknown as Order
+
   const mergedCustomerName = pickPreferredName(
-    incoming.customerName,
-    existing?.customerName,
+    getDisplayCustomerName(incomingOrder) || incoming.customerName,
+    getDisplayCustomerName(existingOrder) || existing?.customerName,
     CUSTOMER_NAME_PLACEHOLDERS,
     incoming.customerName,
   ) ?? 'Khách hàng'
 
-  const mergedCustomerPhone = pickPreferredPhone(incoming.customerPhone, existing?.customerPhone)
+  const mergedCustomerPhone = pickPreferredPhone(
+    getDisplayCustomerPhone(incomingOrder) || incoming.customerPhone,
+    getDisplayCustomerPhone(existingOrder) || existing?.customerPhone,
+  )
+
+  const mergedDriverName = pickPreferredName(
+    getDisplayDriverName(incomingOrder) || incoming.driverInfo?.name,
+    getDisplayDriverName(existingOrder) || existing?.driverInfo?.name,
+    DRIVER_NAME_PLACEHOLDERS,
+  )
+
+  const mergedDriverPhone = pickPreferredPhone(
+    getDisplayDriverPhone(incomingOrder) || incoming.driverInfo?.phone,
+    getDisplayDriverPhone(existingOrder) || existing?.driverInfo?.phone,
+  )
+
+  const mergedDriverInfo = shouldSuppressDriverInfo(incoming)
+    ? undefined
+    : (() => {
+      const nextDriverInfo = {
+        ...(mergeDriverInfoPreservingDetail(existing?.driverInfo, incoming.driverInfo) ?? {}),
+      } as Record<string, unknown>
+
+      if (mergedDriverName) nextDriverInfo.name = mergedDriverName
+      else delete nextDriverInfo.name
+
+      if (mergedDriverPhone) nextDriverInfo.phone = mergedDriverPhone
+      else delete nextDriverInfo.phone
+
+      return Object.keys(nextDriverInfo).length
+        ? nextDriverInfo as NonNullable<NormalizedOrder['driverInfo']>
+        : undefined
+    })()
 
   return {
     ...incoming,
@@ -229,8 +343,8 @@ export function mergeNormalizedOrderPreservingDetail(existing: OrderSnapshot | n
       ? String(existing?.paymentMethod).trim()
       : undefined,
     deliveryInfo: mergeInfoObject(existing?.deliveryInfo, incoming.deliveryInfo),
-    driverInfo: mergeDriverInfoPreservingDetail(existing?.driverInfo, incoming.driverInfo),
-    rawPayload: {
+    driverInfo: mergedDriverInfo,
+    rawPayload: mergedRawPayload ?? {
       ...(existing?.rawPayload ?? {}),
       ...(incoming.rawPayload ?? {}),
     },
@@ -286,6 +400,13 @@ function hasGrabActiveStatusSignal(normalized: NormalizedOrder) {
     || value.includes('accepted')
     || value.includes('allocat')
     || value.includes('execut')
+    || value.includes('in_delivery')
+    || value.includes('delivering')
+    || value.includes('dang giao')
+    || value.includes('đang giao')
+    || value.includes('collected')
+    || value.includes('picked_up')
+    || value.includes('delivery')
   ))
 }
 

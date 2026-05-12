@@ -372,11 +372,27 @@ function hasDeliveredAtSignal(rawPayload?: Record<string, unknown>) {
     || parseDateValue(raw?.deliveryCompletedAt)
     || parseDateValue(raw?.delivered_time)
     || parseDateValue(raw?.finished_at)
-    || parseDateValue(raw?.updatedAt)
-    || parseDateValue(raw?.updated_at)
     || parseDateValue(times?.deliveredAt)
     || parseDateValue(times?.completedAt)
   )
+}
+
+function hasGrabDeliverySignalText(value: string) {
+  return value.includes('in_delivery')
+    || value.includes('delivering')
+    || value.includes('dang giao')
+    || value.includes('đang giao')
+    || value.includes('collected')
+    || value.includes('picked_up')
+    || value.includes('on_the_way')
+}
+
+function hasGrabCompletionSignalText(value: string) {
+  return value.includes('delivered')
+    || value.includes('complete')
+    || value.includes('bill_paid')
+    || value.includes('hoàn tất')
+    || value.includes('hoan tat')
 }
 
 function getGrabStoredPageStage(rawPayload?: Record<string, unknown>) {
@@ -386,7 +402,7 @@ function getGrabStoredPageStage(rawPayload?: Record<string, unknown>) {
 
   const pageType = String(raw?._pageType ?? raw?.pageType ?? '').trim().toLowerCase()
   if (pageType.includes('cancel')) return 'cancelled'
-  if (pageType.includes('complete') || pageType.includes('deliver')) return 'completed'
+  if (pageType.includes('complete')) return 'completed'
   if (pageType.includes('history') || pageType.includes('past') || pageType.includes('all')) return 'history'
   if (pageType.includes('ready')) return 'ready'
   if (pageType.includes('upcoming')) return 'upcoming'
@@ -394,7 +410,8 @@ function getGrabStoredPageStage(rawPayload?: Record<string, unknown>) {
 
   const rawStatus = String(raw?.deliveryStatus ?? raw?.orderState ?? raw?.status ?? raw?.orderStatus ?? raw?.state ?? '').trim().toLowerCase()
   if (rawStatus.includes('cancel')) return 'cancelled'
-  if (rawStatus.includes('complete') || rawStatus.includes('deliver')) return 'completed'
+  if (hasGrabCompletionSignalText(rawStatus)) return 'completed'
+  if (hasGrabDeliverySignalText(rawStatus)) return 'history'
   if (rawStatus.includes('ready')) return 'ready'
   if (rawStatus.includes('upcoming') || rawStatus.includes('schedule')) return 'upcoming'
   return 'preparing'

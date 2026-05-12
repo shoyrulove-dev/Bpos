@@ -5,12 +5,12 @@ import OrderModel from '@/models/Order'
 import SyncLogModel from '@/models/SyncLog'
 import { getAdapter } from '@/integrations/registry'
 import { decryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, getComparableDriverName, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
+import { buildOrderUpsert, getComparableDriverName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
 import { upsertCustomerProfile } from '@/lib/customer-upsert'
-import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone } from '@/lib/order-financials'
+import { getOrderContactProfileCandidates } from '@/lib/order-contact-profiles'
 import DriverModel from '@/models/Driver'
 import { buildSessionStoreId } from '@/lib/realtime-order-sync'
-import type { NormalizedOrder, Order } from '@/types'
+import type { NormalizedOrder } from '@/types'
 import type { SessionData } from '@/integrations/types'
 
 const CRON_SECRET = process.env.CRON_SECRET
@@ -83,7 +83,6 @@ function needsGrabSessionDetailEnrichment(order: NormalizedOrder) {
  */
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
-  const bypass = req.nextUrl.searchParams.get('x-vercel-protection-bypass')
   if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -238,6 +237,13 @@ export async function POST(req: NextRequest) {
       }
 
       if (shouldSkipFinalizedOrderSync(existing as Record<string, unknown> | undefined, merged)) {
+        const skippedProfiles = getOrderContactProfileCandidates(merged, {
+          brandId: String(intg.brandId),
+          platform: intg.provider,
+          isNew: false,
+        })
+        if (skippedProfiles.customer) customersToSave.push(skippedProfiles.customer)
+        if (skippedProfiles.driver) driversToSave.push(skippedProfiles.driver)
         skipped++
         continue
       }
@@ -252,28 +258,13 @@ export async function POST(req: NextRequest) {
       if (isNew) upserted++
       else updated++
 
-      // Collect customer info
-      const orderDoc = merged as unknown as Order
-      const cName = getDisplayCustomerName(orderDoc) ?? merged.customerName?.trim()
-      const cPhone = getDisplayCustomerPhone(orderDoc) || merged.customerPhone?.trim()
-      if (cName && cPhone && hasMeaningfulCustomerName(cName) && hasMeaningfulPhone(cPhone)) {
-        customersToSave.push({
-          name: cName,
-          phone: cPhone,
-          brandId: String(intg.brandId),
-          total: merged.total ?? 0,
-          isNew,
-          placedAt: merged.placedAt,
-        })
-      }
-
-      // Collect driver info — same strategy as sync-orders
-      const dNameRaw = getDisplayDriverName(orderDoc) ?? merged.driverInfo?.name?.trim()
-      const dPhone = getDisplayDriverPhone(orderDoc) || merged.driverInfo?.phone?.trim()
-      const dName = (dNameRaw && hasMeaningfulDriverName(dNameRaw)) ? dNameRaw : (dPhone && hasMeaningfulPhone(dPhone) ? `(Tài xế ${intg.provider})` : undefined)
-      if (dName && dPhone && hasMeaningfulPhone(dPhone)) {
-        driversToSave.push({ name: dName, phone: dPhone, platform: intg.provider, isNew })
-      }
+      const savedProfiles = getOrderContactProfileCandidates(merged, {
+        brandId: String(intg.brandId),
+        platform: intg.provider,
+        isNew,
+      })
+      if (savedProfiles.customer) customersToSave.push(savedProfiles.customer)
+      if (savedProfiles.driver) driversToSave.push(savedProfiles.driver)
     } catch { /* skip individual order errors */ }
   }
 

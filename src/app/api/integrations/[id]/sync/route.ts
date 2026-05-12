@@ -10,11 +10,11 @@ import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/aut
 import { requestAutomationLogin } from '@/lib/automation-login'
 import { upsertCustomerProfile } from '@/lib/customer-upsert'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, getComparableDriverName, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
-import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone } from '@/lib/order-financials'
+import { buildOrderUpsert, getComparableDriverName, hasMeaningfulDriverName, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
+import { getOrderContactProfileCandidates } from '@/lib/order-contact-profiles'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeOrdersByExternalOrderId, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
 import { buildSessionFailureUpdate, buildSessionSuccessUpdate } from '@/lib/session-health'
-import type { NormalizedOrder, Order } from '@/types'
+import type { NormalizedOrder } from '@/types'
 import type { SessionData } from '@/integrations/types'
 
 const AUTOMATION_URL = process.env.AUTOMATION_SERVICE_URL ?? ''
@@ -269,6 +269,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         }
 
         if (shouldSkipFinalizedOrderSync(existingOrdersByExternalId.get(normalized.externalOrderId) as Record<string, unknown> | undefined, mergedNormalized)) {
+          const skippedProfiles = getOrderContactProfileCandidates(mergedNormalized, {
+            brandId: String(intg.brandId),
+            platform: intg.provider,
+            isNew: false,
+          })
+          if (skippedProfiles.customer) customersToSave.push(skippedProfiles.customer)
+          if (skippedProfiles.driver) driversToSave.push(skippedProfiles.driver)
           skipped += 1
           continue
         }
@@ -283,24 +290,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         if (isNewOrder) upserted++
         else updated++
 
-        const customerOrder = mergedNormalized as unknown as Order
-        const cName = getDisplayCustomerName(customerOrder) ?? mergedNormalized.customerName?.trim()
-        const cPhone = getDisplayCustomerPhone(customerOrder) || mergedNormalized.customerPhone?.trim()
-        if (cName && cPhone && hasMeaningfulCustomerName(cName) && hasMeaningfulPhone(cPhone)) {
-          customersToSave.push({ name: cName, phone: cPhone, brandId: String(intg.brandId), total: mergedNormalized.total ?? 0, isNew: isNewOrder, placedAt: mergedNormalized.placedAt })
-        }
-
-        // Collect driver info for auto-save.
-        // Use display helpers so we also scan rawPayload fields that the adapter
-        // may not have mapped into driverInfo (same strategy buildOrderUpsert uses).
-        const dNameRaw = getDisplayDriverName(customerOrder) ?? mergedNormalized.driverInfo?.name?.trim()
-        const dPhone = getDisplayDriverPhone(customerOrder) || mergedNormalized.driverInfo?.phone?.trim()
-        // If phone is meaningful but name isn't available yet, use a platform placeholder
-        // so the phone gets saved to DriverModel. repairDrivers() will fill name later.
-        const dName = (dNameRaw && hasMeaningfulDriverName(dNameRaw)) ? dNameRaw : (dPhone && hasMeaningfulPhone(dPhone) ? `(Tài xế ${intg.provider})` : undefined)
-        if (dName && dPhone && hasMeaningfulPhone(dPhone)) {
-          driversToSave.push({ name: dName, phone: dPhone, platform: intg.provider, isNew: isNewOrder })
-        }
+        const savedProfiles = getOrderContactProfileCandidates(mergedNormalized, {
+          brandId: String(intg.brandId),
+          platform: intg.provider,
+          isNew: isNewOrder,
+        })
+        if (savedProfiles.customer) customersToSave.push(savedProfiles.customer)
+        if (savedProfiles.driver) driversToSave.push(savedProfiles.driver)
       } catch (orderErr) {
         errors.push(`${normalized.externalOrderId}: ${orderErr instanceof Error ? orderErr.message : String(orderErr)}`)
       }
