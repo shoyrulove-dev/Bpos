@@ -11,12 +11,14 @@ import {
   checkBridgePrinter,
   discoverBridgePrinters,
   getBridgePrinterConfig,
+  listWindowsPrinters,
   loadLocalPrinterSettings,
   persistLocalPrinterSettings,
   saveLocalPrinterProfile,
   setBridgePrinterConfig,
   testBridgePrinter,
   type BridgePrinterResponse,
+  type LocalPrinterConnectionType,
   type LocalPrinterProfile,
   type LocalPrinterSettings,
   type LocalPrinterType,
@@ -37,6 +39,8 @@ function mergeProfile(type: LocalPrinterType, previous: LocalPrinterProfile, pay
     ...previous,
     ip: String(payload.ip ?? previous.ip).trim() || previous.ip,
     port: String(payload.port ?? previous.port).trim() || previous.port,
+    connectionType: (payload.connectionType ?? previous.connectionType) as LocalPrinterConnectionType,
+    usbName: String(payload.usbName ?? previous.usbName ?? '').trim(),
   }
   saveLocalPrinterProfile(type, nextProfile)
   return nextProfile
@@ -54,6 +58,7 @@ function PrinterProfileCard({
   const [profile, setProfile] = useState<LocalPrinterProfile>(() => loadLocalPrinterSettings()[printerType])
   const [status, setStatus] = useState<'ok' | 'offline' | 'unknown'>('unknown')
   const [discoveredPrinters, setDiscoveredPrinters] = useState<Array<{ ip: string; port: number }>>([])
+  const [windowsPrinters, setWindowsPrinters] = useState<string[]>([])
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<PrinterFeedback>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -61,6 +66,10 @@ function PrinterProfileCard({
   const [discovering, setDiscovering] = useState(false)
   const [checking, setChecking] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [loadingPrinters, setLoadingPrinters] = useState(false)
+
+  const isUsb = profile.connectionType === 'usb'
+  const busy = refreshing || saving || discovering || checking || testing
 
   useEffect(() => {
     const settings = loadLocalPrinterSettings()
@@ -130,8 +139,10 @@ function PrinterProfileCard({
     persistProfile(profile)
     try {
       const payload = await setBridgePrinterConfig(printerType, {
+        connectionType: profile.connectionType,
         ip: profile.ip,
         port: Number(profile.port),
+        usbName: profile.usbName,
       })
       applyBridgePayload(payload, payload.message || `Đã lưu cấu hình ${title.toLowerCase()}.`)
     } catch (error) {
@@ -182,6 +193,26 @@ function PrinterProfileCard({
     }
   }
 
+  const loadPrinterList = async () => {
+    setLoadingPrinters(true)
+    setFeedback(null)
+    try {
+      const printers = await listWindowsPrinters()
+      setWindowsPrinters(printers)
+      if (printers.length === 0) {
+        setFeedback({ ok: false, message: 'Bridge không liệt kê được máy in nào. Đảm bảo scraper đang chạy.' })
+      }
+    } catch {
+      setFeedback({ ok: false, message: 'Không kết nối được bridge. Đảm bảo scraper đang chạy.' })
+    } finally {
+      setLoadingPrinters(false)
+    }
+  }
+
+  const connectionLabel = isUsb
+    ? (profile.usbName || 'Chưa chọn')
+    : `${profile.ip}:${profile.port}`
+
   return (
     <div className="rounded-[28px] border border-gray-200 bg-white p-5 shadow-sm space-y-4">
       <div className="flex items-start justify-between gap-4">
@@ -210,13 +241,42 @@ function PrinterProfileCard({
         <span className={cn('inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold', statusTone)}>
           Trạng thái: {statusLabel}
         </span>
-        <span className="text-xs text-gray-500">Bridge đang trỏ: {profile.ip}:{profile.port}</span>
+        <span className="text-xs text-gray-500">
+          {isUsb ? 'USB' : 'LAN'}: {connectionLabel}
+        </span>
         {lastSyncedAt && <span className="text-xs text-gray-500">Đồng bộ lúc: {lastSyncedAt}</span>}
       </div>
 
+      {/* Connection type toggle */}
+      <div className="rounded-xl border border-gray-200 overflow-hidden">
+        <div className="flex">
+          <button
+            type="button"
+            onClick={() => setProfile(p => ({ ...p, connectionType: 'lan' }))}
+            className={cn(
+              'flex-1 py-2 text-sm font-medium transition-colors',
+              !isUsb ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+            )}
+          >
+            📡 LAN / TCP-IP
+          </button>
+          <button
+            type="button"
+            onClick={() => setProfile(p => ({ ...p, connectionType: 'usb' }))}
+            className={cn(
+              'flex-1 py-2 text-sm font-medium transition-colors',
+              isUsb ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+            )}
+          >
+            🔌 USB / Windows
+          </button>
+        </div>
+      </div>
+
+      {/* Name + Paper size */}
       <div className="grid gap-3 md:grid-cols-2">
         <div>
-          <label className="label">Tên máy in</label>
+          <label className="label">Tên máy in (hiển thị)</label>
           <input
             className="input"
             value={profile.name}
@@ -241,46 +301,99 @@ function PrinterProfileCard({
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <div>
-          <label className="label">IP máy in</label>
-          <input
-            className="input"
-            value={profile.ip}
-            onChange={(event) => setProfile((previous) => ({ ...previous, ip: event.target.value }))}
-            placeholder="192.168.1.100"
-          />
+      {/* LAN fields */}
+      {!isUsb && (
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="label">IP máy in (LAN)</label>
+            <input
+              className="input"
+              value={profile.ip}
+              onChange={(event) => setProfile((previous) => ({ ...previous, ip: event.target.value }))}
+              placeholder="192.168.1.100"
+            />
+          </div>
+          <div>
+            <label className="label">Port</label>
+            <input
+              className="input"
+              value={profile.port}
+              onChange={(event) => setProfile((previous) => ({ ...previous, port: event.target.value }))}
+              placeholder="9100"
+            />
+          </div>
         </div>
-        <div>
-          <label className="label">Port</label>
-          <input
-            className="input"
-            value={profile.port}
-            onChange={(event) => setProfile((previous) => ({ ...previous, port: event.target.value }))}
-            placeholder="9100"
-          />
+      )}
+
+      {/* USB fields */}
+      {isUsb && (
+        <div className="space-y-2">
+          <div>
+            <label className="label">Tên máy in trong Windows</label>
+            <div className="flex gap-2">
+              <input
+                className="input flex-1"
+                value={profile.usbName}
+                onChange={(event) => setProfile((previous) => ({ ...previous, usbName: event.target.value }))}
+                placeholder="XPrinter XP-Q361U"
+              />
+              <button
+                type="button"
+                onClick={() => void loadPrinterList()}
+                disabled={loadingPrinters}
+                className="btn-outline shrink-0 disabled:opacity-50"
+              >
+                {loadingPrinters ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} Liệt kê
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-gray-500">Nhập đúng tên máy in xuất hiện trong Windows Printers (Control Panel).</p>
+          </div>
+          {windowsPrinters.length > 0 && (
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Máy in Windows phát hiện</p>
+              <div className="flex flex-wrap gap-2">
+                {windowsPrinters.map(name => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setProfile(p => ({ ...p, usbName: name }))}
+                    className={cn(
+                      'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                      profile.usbName === name
+                        ? 'border-green-300 bg-green-50 text-green-700'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-100'
+                    )}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => void syncFromBridge(true)} disabled={refreshing || saving || discovering || checking || testing} className="btn-outline disabled:opacity-50">
+        <button type="button" onClick={() => void syncFromBridge(true)} disabled={busy} className="btn-outline disabled:opacity-50">
           {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Đồng bộ bridge
         </button>
-        <button type="button" onClick={() => void discoverOnLan()} disabled={refreshing || saving || discovering || checking || testing} className="btn-outline disabled:opacity-50">
-          {discovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />} Quét LAN
-        </button>
-        <button type="button" onClick={() => void checkConnection()} disabled={refreshing || saving || discovering || checking || testing} className="btn-outline disabled:opacity-50">
+        {!isUsb && (
+          <button type="button" onClick={() => void discoverOnLan()} disabled={busy} className="btn-outline disabled:opacity-50">
+            {discovering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />} Quét LAN
+          </button>
+        )}
+        <button type="button" onClick={() => void checkConnection()} disabled={busy} className="btn-outline disabled:opacity-50">
           {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} Kiểm tra
         </button>
-        <button type="button" onClick={() => void runTestPrint()} disabled={refreshing || saving || discovering || checking || testing} className="btn-outline disabled:opacity-50">
+        <button type="button" onClick={() => void runTestPrint()} disabled={busy} className="btn-outline disabled:opacity-50">
           {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} In thử
         </button>
-        <button type="button" onClick={() => void saveBridgeConfig()} disabled={refreshing || saving || discovering || checking || testing} className="btn-primary disabled:opacity-50">
+        <button type="button" onClick={() => void saveBridgeConfig()} disabled={busy} className="btn-primary disabled:opacity-50">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Lưu cấu hình
         </button>
       </div>
 
-      {discoveredPrinters.length > 0 && (
+      {!isUsb && discoveredPrinters.length > 0 && (
         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3 space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Máy in bridge nhìn thấy</p>
           <div className="flex flex-wrap gap-2">
@@ -304,9 +417,6 @@ function PrinterProfileCard({
               )
             })}
           </div>
-          {printerType === 'label' && discoveredPrinters.length === 1 && discoveredPrinters[0]?.ip === '192.168.1.100' && discoveredPrinters[0]?.port === 9100 && (
-            <p className="text-xs text-amber-700">Hiện bridge mới nhìn thấy một thiết bị LAN tại 192.168.1.100:9100. Nếu XP-Q361U ở IP khác thì nhập tay rồi bấm lưu.</p>
-          )}
         </div>
       )}
 

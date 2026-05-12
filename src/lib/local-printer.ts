@@ -4,12 +4,15 @@ import { buildReceiptPrintUrl } from '@/lib/order-alerts'
 
 export type LocalPrinterType = 'receipt' | 'label'
 export type LocalPrinterPaperSize = '80mm' | '58mm' | 'A4'
+export type LocalPrinterConnectionType = 'lan' | 'usb'
 
 export interface LocalPrinterProfile {
   name: string
   paperSize: LocalPrinterPaperSize
+  connectionType: LocalPrinterConnectionType
   ip: string
   port: string
+  usbName: string
   enabled: boolean
 }
 
@@ -23,9 +26,12 @@ export interface BridgePrinterResponse {
   type?: LocalPrinterType
   ip?: string
   port?: number
+  connectionType?: LocalPrinterConnectionType
+  usbName?: string
   status?: string
   autoDiscover?: boolean
   discovered?: Array<{ ip: string; port: number }>
+  printers?: string[]
   message?: string
 }
 
@@ -36,21 +42,29 @@ export const DEFAULT_LOCAL_PRINTER_SETTINGS: LocalPrinterSettings = {
   receipt: {
     name: 'Xprinter XP-T80L',
     paperSize: '80mm',
+    connectionType: 'lan',
     ip: '192.168.1.100',
     port: '9100',
+    usbName: '',
     enabled: true,
   },
   label: {
     name: 'Xprinter XP-Q361U',
     paperSize: '58mm',
+    connectionType: 'usb',
     ip: '192.168.1.100',
     port: '9100',
+    usbName: 'XPrinter XP-Q361U',
     enabled: true,
   },
 }
 
 function normalizePaperSize(value: unknown, fallback: LocalPrinterPaperSize): LocalPrinterPaperSize {
   return value === '58mm' || value === 'A4' || value === '80mm' ? value : fallback
+}
+
+function normalizeConnectionType(value: unknown, fallback: LocalPrinterConnectionType): LocalPrinterConnectionType {
+  return value === 'usb' || value === 'lan' ? value : fallback
 }
 
 function normalizeProfile(value: unknown, fallback: LocalPrinterProfile): LocalPrinterProfile {
@@ -61,8 +75,10 @@ function normalizeProfile(value: unknown, fallback: LocalPrinterProfile): LocalP
   return {
     name: String(record.name ?? fallback.name).trim() || fallback.name,
     paperSize: normalizePaperSize(record.paperSize, fallback.paperSize),
+    connectionType: normalizeConnectionType(record.connectionType, fallback.connectionType),
     ip: String(record.ip ?? fallback.ip).trim() || fallback.ip,
     port: String(record.port ?? fallback.port).trim() || fallback.port,
+    usbName: String(record.usbName ?? fallback.usbName ?? '').trim(),
     enabled: record.enabled !== false,
   }
 }
@@ -145,11 +161,23 @@ export async function getBridgePrinterConfig(type: LocalPrinterType) {
   return callBridge('/printer-config', type)
 }
 
-export async function setBridgePrinterConfig(type: LocalPrinterType, payload: { ip: string; port: number }) {
+export async function setBridgePrinterConfig(type: LocalPrinterType, payload: { connectionType: LocalPrinterConnectionType; ip: string; port: number; usbName: string }) {
   return callBridge('/set-printer', type, {
     method: 'POST',
     body: JSON.stringify({ type, ...payload }),
   })
+}
+
+export async function listWindowsPrinters(): Promise<string[]> {
+  try {
+    const response = await fetch(`${LOCAL_PRINTER_BRIDGE_ORIGIN}/printer-list`, {
+      signal: AbortSignal.timeout(8000),
+    })
+    const data = await response.json() as BridgePrinterResponse
+    return Array.isArray(data.printers) ? data.printers : []
+  } catch {
+    return []
+  }
 }
 
 export async function discoverBridgePrinters(type: LocalPrinterType) {
