@@ -1,6 +1,8 @@
 'use client'
 
+import { buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, renderPrintTemplateHtml } from '@/lib/print-template'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
+import type { BillTemplate, Order } from '@/types'
 
 export type LocalPrinterType = 'receipt' | 'label'
 export type LocalPrinterPaperSize = '80mm' | '58mm' | 'A4'
@@ -213,24 +215,87 @@ export async function tryBridgePrintOrder(orderId: string, type: LocalPrinterTyp
   return Boolean(payload.ok)
 }
 
-export async function printOrderWithFallback(orderId: string, type: LocalPrinterType, options?: { autoprint?: boolean; allowBrowserFallback?: boolean; alwaysShowPopup?: boolean }) {
-  let bridgePrinted = false
+// Build a complete self-contained HTML page for thermal printing
+// (identical styles to ReceiptPrintClient so bridge rendering matches preview)
+function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58mm' | 'A4'): string {
+  const wrapWidth = paperWidth === '58mm' ? '50mm' : paperWidth === 'A4' ? '190mm' : '72mm'
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+@page{size:${paperWidth} auto;margin:4mm}
+html,body{margin:0;padding:0;background:#fff;color:#000}
+body{width:${paperWidth};font-family:Arial,Helvetica,sans-serif}
+.receipt-wrap{box-sizing:border-box;width:${wrapWidth};margin:0 auto;padding:2mm 0 4mm}
+.receipt-template{font-family:'Noto Sans Mono','Consolas','Courier New',monospace;font-size:4.1mm;line-height:1.32;white-space:normal}
+.tpl-line{white-space:pre-wrap;word-break:break-word}
+.tpl-empty{min-height:1.32em}
+.tpl-center{text-align:center}
+.tpl-strong{font-weight:800;letter-spacing:.04em}
+.tpl-divider{border-top:.35mm dashed #000;margin:1.5mm 0}
+.tpl-indent{padding-left:3mm}
+</style></head><body>
+<div class="receipt-wrap receipt-template">${renderedContent}</div>
+</body></html>`
+}
+
+// Print an order using the active HTML bill template via the bridge's Playwright renderer.
+// This produces output that EXACTLY matches the template preview in the browser.
+export async function printOrderWithHtmlTemplate(orderId: string, type: LocalPrinterType): Promise<boolean> {
+  // 1. Fetch order data
+  const orderRes = await fetch(`/api/orders/${orderId}`, { signal: AbortSignal.timeout(10000) })
+  if (!orderRes.ok) throw new Error('Không tải được đơn hàng')
+  const order = await orderRes.json() as Order
+
+  // 2. Fetch active bill template
+  const paperSize: '80mm' | '58mm' = type === 'label' ? '58mm' : '80mm'
+  const templateType = getTemplateTypeForPaperSize(paperSize)
+  let templateContent = ''
+  try {
+    const tplRes = await fetch('/api/bill-templates', { signal: AbortSignal.timeout(8000) })
+    if (tplRes.ok) {
+      const templates = await tplRes.json() as BillTemplate[]
+      const active = templates.find((t) => t.isActive && t.type === templateType && t.size === paperSize)
+        ?? templates.find((t) => t.isActive && t.type === templateType)
+      templateContent = active?.templateContent?.trim() ?? ''
+    }
+  } catch { /* fall through to default template */ }
+  if (!templateContent) templateContent = getDefaultTemplateContent(templateType)
+
+  // 3. Render HTML
+  const context = buildPrintTemplateContext(order, {
+    BillName: type === 'label' ? 'TEM IN BẾP' : 'PHIẾU LÀM MÓN',
+  })
+  const renderedContent = renderPrintTemplateHtml(templateContent, context, order.items ?? [])
+  const fullHtml = buildThermalHtmlPage(renderedContent, paperSize)
+
+  // 4. POST to bridge — bridge uses Playwright to screenshot → ESC/POS raster → LAN/USB
+  const res = await fetch(`${LOCAL_PRINTER_BRIDGE_ORIGIN}/print-template-html`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ html: fullHtml, paperWidth: paperSize, type }),
+    signal: AbortSignal.timeout(30000), // Playwright rendering can take a few seconds
+  })
+  const data = await res.json() as { ok?: boolean }
+  return data.ok === true
+}
+
+export async function printOrderWithFallback(orderId: string, type: LocalPrinterType, options?: { autoprint?: boolean; allowBrowserFallback?: boolean }) {
   if (isBridgePrintingEnabled(type)) {
     try {
-      bridgePrinted = await tryBridgePrintOrder(orderId, type)
+      // Receipt: use HTML template → Playwright screenshot → ESC/POS raster (matches preview exactly)
+      // Label:   use ESC/POS direct (faster for kitchen tickets)
+      const printed = type === 'receipt'
+        ? await printOrderWithHtmlTemplate(orderId, type)
+        : await tryBridgePrintOrder(orderId, type)
+      if (printed) return true
     } catch {
-      // Fall back to browser print below.
+      // Bridge unavailable or failed → fall back to browser print dialog below
     }
   }
 
-  if (!bridgePrinted) {
-    if (options?.allowBrowserFallback === false) return false
-    // Bridge failed/disabled: open popup with autoprint so OS dialog fires
-    openFallbackPrintWindow(orderId, type, { autoprint: options?.autoprint })
-  } else if (options?.alwaysShowPopup !== false) {
-    // Bridge succeeded: open popup in view-only mode (no autoprint) so user can see the rendered template
-    openFallbackPrintWindow(orderId, type, { autoprint: false })
-  }
-
+  if (options?.allowBrowserFallback === false) return false
+  // Open popup with autoprint so OS print dialog fires automatically as fallback
+  openFallbackPrintWindow(orderId, type, { autoprint: options?.autoprint ?? true })
   return true
 }

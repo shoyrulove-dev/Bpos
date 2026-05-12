@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { Edit, Eye, FileText, Plus, Printer, Sparkles, ToggleLeft, ToggleRight } from 'lucide-react'
 import { useBillTemplates, useCreateBillTemplate, useUpdateBillTemplate } from '@/hooks/use-data'
 import { loadOrderAlertSettings } from '@/lib/order-alerts'
-import { isBridgePrintingEnabled, LOCAL_PRINTER_BRIDGE_ORIGIN } from '@/lib/local-printer'
 import { buildDemoPrintTemplateContext, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, PRINT_TEMPLATE_VARIABLES, renderPrintTemplateHtml } from '@/lib/print-template'
 import { cn } from '@/lib/utils'
 import type { BillSize, BillTemplate, BillType } from '@/types'
@@ -77,28 +76,8 @@ function openTemplatePrintWindow(content: string, type: BillType, size: BillSize
 }
 
 async function printTemplateWithBridgeFallback(content: string, type: BillType, size: BillSize) {
-  const bridgeType = type === 'label' ? 'label' as const : 'receipt' as const
-  if (isBridgePrintingEnabled(bridgeType)) {
-    try {
-      const demoOrder = {
-        source: 'grab', externalOrderId: 'DEMO-TEMPLATE', shortId: 'DEMO',
-        customerName: 'Khách Test', customerPhone: '0901234567',
-        items: [
-          { name: 'Trà sữa trân châu', quantity: 2, price: 35000, total: 70000, note: 'Ít đá' },
-          { name: 'Cơm sườn trứng', quantity: 1, price: 70000, total: 70000, note: '' },
-        ],
-        subtotal: 140000, discount: 0, total: 140000, note: 'In thử từ Hóa đơn mẫu', rawPayload: {},
-      }
-      const res = await fetch(`${LOCAL_PRINTER_BRIDGE_ORIGIN}/print-order?type=${bridgeType}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: bridgeType, order: demoOrder }),
-        signal: AbortSignal.timeout(5000),
-      })
-      const data = await res.json() as { ok?: boolean }
-      if (data.ok) return
-    } catch { /* bridge không có hoặc lỗi → dùng popup */ }
-  }
+  // Always use the HTML preview window — ESC/POS bridge output looks completely different
+  // from the HTML template and confuses users who compare preview vs. actual printout.
   openTemplatePrintWindow(content, type, size)
 }
 

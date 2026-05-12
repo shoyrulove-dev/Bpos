@@ -32,6 +32,12 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
   const [bridgeStatus, setBridgeStatus] = useState<'idle' | 'ok' | 'error'>('idle')
   const templateType = getTemplateTypeForPaperSize(paperSize)
 
+  // Build the same full HTML page that the bridge uses for Playwright rendering
+  const buildBridgeHtml = (content: string) => {
+    const wrapWidth = paperSize === '58mm' ? '50mm' : '72mm'
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap" rel="stylesheet"><style>@page{size:${paperSize} auto;margin:4mm}html,body{margin:0;padding:0;background:#fff;color:#000}body{width:${paperSize};font-family:Arial,Helvetica,sans-serif}.receipt-wrap{box-sizing:border-box;width:${wrapWidth};margin:0 auto;padding:2mm 0 4mm}.receipt-template{font-family:'Noto Sans Mono','Consolas','Courier New',monospace;font-size:4.1mm;line-height:1.32;white-space:normal}.tpl-line{white-space:pre-wrap;word-break:break-word}.tpl-empty{min-height:1.32em}.tpl-center{text-align:center}.tpl-strong{font-weight:800;letter-spacing:.04em}.tpl-divider{border-top:.35mm dashed #000;margin:1.5mm 0}.tpl-indent{padding-left:3mm}</style></head><body><div class="receipt-wrap receipt-template">${content}</div></body></html>`
+  }
+
   useEffect(() => {
     let cancelled = false
 
@@ -178,15 +184,15 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
         <button
           type="button"
           className="receipt-action-btn"
-          disabled={bridgePrinting}
+          disabled={bridgePrinting || !renderedTemplate}
           onClick={() => {
-            if (!order) return
+            if (!order || !renderedTemplate) return
             setBridgePrinting(true)
             setBridgeStatus('idle')
-            fetch(`http://127.0.0.1:3846/print-order`, {
+            fetch(`http://127.0.0.1:3846/print-template-html`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ type: templateType, orderId: order._id }),
+              body: JSON.stringify({ html: buildBridgeHtml(renderedTemplate), paperWidth: paperSize, type: templateType }),
             })
               .then((r) => r.json())
               .then((d: { ok?: boolean }) => setBridgeStatus(d.ok ? 'ok' : 'error'))
