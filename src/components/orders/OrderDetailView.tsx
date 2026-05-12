@@ -765,7 +765,7 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{driverName}</p>
             <p className="text-xs text-gray-500">{driverPhone}</p>
             {order.driverInfo?.vehiclePlate && <p className="mt-0.5 text-[11px] text-gray-400">Biển số: <span className="text-gray-700">{order.driverInfo.vehiclePlate}</span></p>}
-            <p className="mt-0.5 text-[11px] text-gray-400">Dụng cụ: <span className="text-gray-700">{utensilRequest}</span></p>
+            {utensilRequest !== '-' && <p className="mt-0.5 text-[11px] text-gray-400">Dụng cụ: <span className="text-gray-700">{utensilRequest}</span></p>}
           </div>
         </div>
         {(order.deliveryInfo?.note || order.note) && (
