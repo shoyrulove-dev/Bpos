@@ -25,6 +25,7 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
 
   const [order, setOrder] = useState<PrintableOrder | null>(null)
   const [templateContent, setTemplateContent] = useState('')
+  const [templateName, setTemplateName] = useState<string>('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const templateType = getTemplateTypeForPaperSize(paperSize)
@@ -88,6 +89,7 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
 
         if (!cancelled) {
           setTemplateContent(activeTemplate?.templateContent?.trim() || fallbackTemplate)
+          setTemplateName(activeTemplate?.name?.trim() || '')
         }
       } catch {
         if (!cancelled) {
@@ -170,6 +172,11 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
 
   return (
     <ReceiptShell paperSize={paperSize}>
+      {!autoPrint && (
+        <div className="receipt-template-badge">
+          {templateName ? `Mẫu: ${templateName}` : 'Mẫu mặc định (chưa có mẫu active)'}
+        </div>
+      )}
       <div className="receipt-wrap receipt-template" dangerouslySetInnerHTML={{ __html: renderedTemplate }} />
     </ReceiptShell>
   )
@@ -354,6 +361,25 @@ function ReceiptShell({ children, paperSize }: { children: ReactNode; paperSize:
           .receipt-state {
             padding: 0;
           }
+          .receipt-template-badge {
+            display: none;
+          }
+        }
+
+        .receipt-template-badge {
+          position: fixed;
+          top: 5px;
+          right: 5px;
+          background: rgba(0,0,0,0.55);
+          color: #fff;
+          font-size: 10px;
+          font-family: sans-serif;
+          line-height: 1;
+          padding: 3px 8px;
+          border-radius: 6px;
+          pointer-events: none;
+          z-index: 9999;
+          white-space: nowrap;
         }
       `}</style>
       {children}

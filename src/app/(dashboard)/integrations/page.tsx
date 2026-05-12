@@ -323,6 +323,7 @@ function PlatformAccountsSection() {
 
 // ─── PrinterSection: kiểm tra + in thử máy in nhiệt LAN ────────────────────
 const SCRAPER_CONTROL = 'http://127.0.0.1:3846'
+const SCRAPER_PANEL   = 'http://127.0.0.1:3845'
 
 function PrinterSection() {
   const [refreshingConfig, setRefreshingConfig] = useState(false)
@@ -337,6 +338,8 @@ function PrinterSection() {
   const [discoveredPrinters, setDiscoveredPrinters] = useState<Array<{ ip: string; port: number }>>([])
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [scraperVersion, setScraperVersion] = useState<string | null>(null)
+  const [scraperOnline, setScraperOnline] = useState(false)
 
   const loadPrinterConfig = useCallback(async (options?: { showResult?: boolean }) => {
     const showResult = options?.showResult === true
@@ -352,6 +355,15 @@ function PrinterSection() {
       setAutoDiscover(data?.autoDiscover !== false)
       setDiscoveredPrinters(Array.isArray(data?.discovered) ? data.discovered : [])
       setLastSyncedAt(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+      setScraperOnline(true)
+
+      // Lấy version scraper song song
+      try {
+        const vr = await fetch(`${SCRAPER_CONTROL}/version`, { signal: AbortSignal.timeout(4000) })
+        const vd = await vr.json()
+        if (vd?.version) setScraperVersion(String(vd.version))
+      } catch { /* ignore */ }
+
       if (showResult) {
         setResult({
           ok: true,
@@ -360,6 +372,7 @@ function PrinterSection() {
       }
     } catch (e) {
       setPrinterStatus('unknown')
+      setScraperOnline(false)
       if (showResult) {
         setResult({ ok: false, message: `Không đọc được cấu hình máy in từ scraper: ${(e as Error).message}` })
       }
@@ -471,11 +484,35 @@ function PrinterSection() {
 
   return (
     <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
-      <div className="flex items-center gap-2">
-        <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-xl">🖨️</div>
-        <div>
-          <h2 className="font-semibold text-gray-900 text-sm">Máy in nhiệt (LAN)</h2>
-          <p className="text-xs text-gray-400">Kết nối qua scraper · ESC/POS TCP · 80mm</p>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-xl">🖨️</div>
+          <div>
+            <h2 className="font-semibold text-gray-900 text-sm">Máy in nhiệt (LAN)</h2>
+            <p className="text-xs text-gray-400">Kết nối qua scraper · ESC/POS TCP · 80mm</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {scraperOnline ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2.5 py-1 text-xs font-semibold text-green-700">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+              Scraper {scraperVersion ? `v${scraperVersion}` : 'Online'}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
+              Scraper offline
+            </span>
+          )}
+          <a
+            href={SCRAPER_PANEL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+            title="Mở scraper control panel"
+          >
+            <Zap className="w-3 h-3" /> Control Panel
+          </a>
         </div>
       </div>
 
@@ -565,6 +602,8 @@ function PrinterSection() {
 
       <p className="text-xs text-gray-400">
         Chức năng này gọi printer bridge tại <code className="font-mono">127.0.0.1:3846</code> — scraper phải đang chạy trên cùng máy tính.
+        In qua scraper dùng ESC/POS trực tiếp (không dùng mẫu HTML). Để in theo mẫu template → dùng nút &quot;In đơn&quot; trên trang đơn hàng.
+        Xem log và control scraper tại <a href={SCRAPER_PANEL} target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">127.0.0.1:3845</a>.
       </p>
     </div>
   )
