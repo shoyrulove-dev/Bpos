@@ -193,9 +193,20 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
   if (pageStage === 'upcoming') return 'pre_order'
 
   if (pageStage === 'history') {
-    return mappedStatus === 'waiting_confirm' || mappedStatus === 'waiting_pickup'
-      ? 'completed'
-      : mappedStatus
+    if (mappedStatus === 'completed' || mappedStatus === 'cancelled') return mappedStatus
+    // Only treat as completed if there's actual completion evidence.
+    // Backfill may accidentally navigate to the history page for an active (preparing) order,
+    // setting _pageStage='history' without real completion signals — don't blindly complete it.
+    const hasCompletionEvidence = hasGrabCompletionSignal(secondarySignals)
+      || hasGrabDateValue(raw.completedAt)
+      || hasGrabDateValue(raw.deliveredAt)
+      || hasGrabDateValue(raw.deliveryCompletedAt)
+      || hasGrabDateValue(raw.delivered_time)
+      || hasGrabDateValue(times?.completedAt)
+      || hasGrabDateValue(times?.deliveredAt)
+    if (hasCompletionEvidence) return 'completed'
+    // No evidence → trust the raw status signal, don't falsely complete
+    return mappedStatus
   }
 
   if (pageStage === 'ready') {
