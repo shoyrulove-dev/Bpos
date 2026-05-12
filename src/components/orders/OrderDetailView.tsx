@@ -211,7 +211,9 @@ function getBeDetailItems(order: Order) {
       sellingPrice: Number(item.price ?? 0),
       total: Number(item.total ?? 0),
       note: item.note,
-      addonLines: item.note ? item.note.split('|').map((line) => line.trim()).filter(Boolean) : [],
+      addonGroups: item.note
+        ? [{ title: '', lines: item.note.split('|').map((line) => line.trim()).filter(Boolean) }]
+        : [],
     }))
   }
 
@@ -228,23 +230,28 @@ function getBeDetailItems(order: Order) {
     const sellingPrice = Math.round(sellingAmount / quantity)
     const strikePrice = Math.max(0, originalPrice - sellingPrice)
     const customizeJson = String(record?.customize_json ?? '').trim()
-    let addonLines: string[] = []
+    let addonGroups: { title: string; lines: string[] }[] = []
 
     if (customizeJson) {
       try {
-        const groups = JSON.parse(customizeJson) as Array<{ options?: Array<{ name?: string; quantity?: number; price?: number }> }>
-        addonLines = groups.flatMap((group) =>
-          (group.options ?? []).map((option) => {
-            const quantityText = option.quantity && option.quantity > 1 ? `${option.quantity} x ` : ''
-            const priceText = typeof option.price === 'number' && option.price > 0 ? ` ${formatCurrency(option.price)}` : ''
-            return `${quantityText}${option.name ?? ''}${priceText}`.trim()
+        const parsed = JSON.parse(customizeJson) as Array<{ name?: string; options?: Array<{ name?: string; quantity?: number; price?: number }> }>
+        addonGroups = parsed
+          .map((group) => {
+            const title = String(group.name ?? '').trim()
+            const lines = (group.options ?? []).map((option) => {
+              const quantityText = option.quantity && option.quantity > 1 ? `${option.quantity} x ` : ''
+              const priceText = typeof option.price === 'number' && option.price > 0 ? ` ${formatCurrency(option.price)}` : ''
+              return `${quantityText}${option.name ?? ''}${priceText}`.trim()
+            }).filter(Boolean)
+            return { title, lines }
           })
-        ).filter(Boolean)
+          .filter((group) => group.lines.length > 0)
       } catch {
-        addonLines = String(record?.customize_object ?? '').split(/[:,]/).map((part) => part.trim()).filter(Boolean)
+        const fallbackLines = String(record?.customize_object ?? '').split(/[:,]/).map((part) => part.trim()).filter(Boolean)
+        if (fallbackLines.length) addonGroups = [{ title: '', lines: fallbackLines }]
       }
     } else if (record?.customize_object) {
-      addonLines = [String(record.customize_object).trim()]
+      addonGroups = [{ title: '', lines: [String(record.customize_object).trim()] }]
     }
 
     return {
@@ -255,7 +262,7 @@ function getBeDetailItems(order: Order) {
       sellingPrice,
       total: sellingAmount || sellingPrice * quantity,
       note: String(record?.note ?? '').trim() || undefined,
-      addonLines,
+      addonGroups,
     }
   })
 }
@@ -782,7 +789,7 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
               <tbody>
                 {items.map((item, index) => (
                   <tr key={`${item.name}-${index}`} className="border-t border-gray-100 align-top">
-                    <td className="px-3 py-2.5"><p className="text-base font-semibold text-gray-950">{item.name}</p>{item.note && <p className="mt-0.5 whitespace-pre-line text-xs text-gray-500">{item.note}</p>}{item.addonLines.length > 0 && <div className="mt-0.5 space-y-0.5 text-xs text-gray-500">{item.addonLines.map((addon, addonIndex) => <p key={`${addon}-${addonIndex}`}>• {addon}</p>)}</div>}</td>
+                    <td className="px-3 py-2.5"><p className="text-base font-semibold text-gray-950">{item.name}</p>{item.note && <p className="mt-0.5 whitespace-pre-line text-xs text-gray-500">{item.note}</p>}{item.addonGroups.length > 0 && <div className="mt-1 space-y-1 text-xs text-gray-500">{item.addonGroups.map((group, gi) => (<div key={`grp-${gi}`}>{group.title && <p className="font-medium text-gray-600">{group.title}:</p>}<div className="space-y-0.5">{group.lines.map((line, li) => <p key={`${gi}-${li}`}>• {line}</p>)}</div></div>))}</div>}</td>
                     <td className="px-3 py-2.5 text-center text-sm font-medium text-gray-900">{item.quantity}</td>
                     <td className="px-3 py-2.5 text-right text-sm text-gray-700">{formatCurrency(item.originalPrice)}</td>
                     <td className="px-3 py-2.5 text-right text-sm text-gray-700">{formatCurrency(item.strikePrice)}</td>
