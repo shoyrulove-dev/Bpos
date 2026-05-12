@@ -321,7 +321,7 @@ function PlatformAccountsSection() {
 }
 
 // ─── PrinterSection: kiểm tra + in thử máy in nhiệt LAN ────────────────────
-const SCRAPER_CONTROL = 'http://127.0.0.1:3845'
+const SCRAPER_CONTROL = 'http://127.0.0.1:3846'
 
 function PrinterSection() {
   const [checking, setChecking]     = useState(false)
@@ -471,7 +471,7 @@ function PrinterSection() {
       )}
 
       <p className="text-xs text-gray-400">
-        Chức năng này gọi scraper tại <code className="font-mono">127.0.0.1:3845</code> — scraper phải đang chạy trên cùng máy tính.
+        Chức năng này gọi printer bridge tại <code className="font-mono">127.0.0.1:3846</code> — scraper phải đang chạy trên cùng máy tính.
       </p>
     </div>
   )
