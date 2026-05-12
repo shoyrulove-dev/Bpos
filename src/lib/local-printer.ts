@@ -216,18 +216,16 @@ export async function tryBridgePrintOrder(orderId: string, type: LocalPrinterTyp
 }
 
 // Build a complete self-contained HTML page for thermal printing
-// (identical styles to ReceiptPrintClient so bridge rendering matches preview)
+// NOTE: No external font links — bridge Playwright renders offline; rely on system fonts only
 function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58mm' | 'A4'): string {
   const wrapWidth = paperWidth === '58mm' ? '50mm' : paperWidth === 'A4' ? '190mm' : '72mm'
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
 @page{size:${paperWidth} auto;margin:4mm}
 html,body{margin:0;padding:0;background:#fff;color:#000}
-body{width:${paperWidth};font-family:Arial,Helvetica,sans-serif}
+body{width:${paperWidth};font-family:'Courier New',Courier,monospace}
 .receipt-wrap{box-sizing:border-box;width:${wrapWidth};margin:0 auto;padding:2mm 0 4mm}
-.receipt-template{font-family:'Noto Sans Mono','Consolas','Courier New',monospace;font-size:4.1mm;line-height:1.32;white-space:normal}
+.receipt-template{font-family:'Courier New',Courier,monospace;font-size:4.1mm;line-height:1.32;white-space:normal}
 .tpl-line{white-space:pre-wrap;word-break:break-word}
 .tpl-empty{min-height:1.32em}
 .tpl-center{text-align:center}
@@ -274,10 +272,11 @@ export async function printOrderWithHtmlTemplate(orderId: string, type: LocalPri
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ html: fullHtml, paperWidth: paperSize, type }),
-    signal: AbortSignal.timeout(30000), // Playwright rendering can take a few seconds
+    signal: AbortSignal.timeout(35000), // Playwright rendering can take several seconds
   })
-  const data = await res.json() as { ok?: boolean }
-  return data.ok === true
+  const data = await res.json() as { ok?: boolean; message?: string }
+  if (!data.ok) throw new Error(data.message ?? 'Máy in không phản hồi')
+  return true
 }
 
 export async function printOrderWithFallback(orderId: string, type: LocalPrinterType, options?: { autoprint?: boolean; allowBrowserFallback?: boolean }) {

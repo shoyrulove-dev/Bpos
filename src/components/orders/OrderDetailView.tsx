@@ -19,39 +19,74 @@ type PrintStatus = 'idle' | 'printing' | 'ok' | 'error'
 
 function PrintButton({ orderId, type = 'receipt', label, className }: { orderId: string; type?: 'receipt' | 'label'; label?: string; className?: string }) {
   const [status, setStatus] = useState<PrintStatus>('idle')
+  const [errorMsg, setErrorMsg] = useState<string>('')
 
   const handlePrint = async () => {
     if (status === 'printing') return
     setStatus('printing')
+    setErrorMsg('')
+    let failed = false
     try {
       const ok = type === 'receipt'
         ? await printOrderWithHtmlTemplate(orderId, 'receipt')
         : await tryBridgePrintOrder(orderId, 'label')
-      setStatus(ok ? 'ok' : 'error')
-    } catch {
+      if (ok) {
+        setStatus('ok')
+      } else {
+        failed = true
+        setStatus('error')
+        setErrorMsg('Máy in không phản hồi')
+      }
+    } catch (err) {
+      failed = true
       setStatus('error')
+      setErrorMsg(err instanceof Error ? err.message : 'Lỗi không xác định')
     }
-    window.setTimeout(() => setStatus('idle'), 3500)
+    // Success auto-resets after 4s; error stays until user closes
+    if (!failed) window.setTimeout(() => { setStatus('idle'); setErrorMsg('') }, 4000)
   }
 
   const defaultLabel = type === 'receipt' ? 'In đơn' : 'In phiếu tem'
-  const displayLabel = status === 'printing' ? 'Đang in...' : status === 'ok' ? '✓ Đã in' : status === 'error' ? '✗ Lỗi máy in' : (label ?? defaultLabel)
+  const displayLabel = status === 'printing' ? 'Đang in...' : status === 'ok' ? '✓ Đã in' : status === 'error' ? '✗ Lỗi in' : (label ?? defaultLabel)
 
   return (
-    <button
-      type="button"
-      onClick={() => void handlePrint()}
-      disabled={status === 'printing'}
-      className={cn(
-        'btn-outline h-9 text-sm disabled:opacity-60',
-        status === 'ok' && 'border-green-400 text-green-700',
-        status === 'error' && 'border-red-400 text-red-600',
-        className,
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void handlePrint()}
+          disabled={status === 'printing'}
+          className={cn(
+            'btn-outline h-9 text-sm disabled:opacity-60',
+            status === 'ok' && 'border-green-400 text-green-700',
+            status === 'error' && 'border-red-400 text-red-600',
+            className,
+          )}
+        >
+          {status === 'printing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+          {displayLabel}
+        </button>
+        {status === 'error' && (
+          <button
+            type="button"
+            onClick={() => { setStatus('idle'); setErrorMsg('') }}
+            className="text-xs text-gray-400 hover:text-gray-600"
+            title="Đóng thông báo lỗi"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      {status === 'printing' && (
+        <p className="text-xs text-blue-600">Đang gửi đến máy in...</p>
       )}
-    >
-      {status === 'printing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-      {displayLabel}
-    </button>
+      {status === 'ok' && (
+        <p className="text-xs text-green-600">Đã gửi lệnh in thành công</p>
+      )}
+      {status === 'error' && errorMsg && (
+        <p className="text-xs text-red-500 max-w-xs break-words">{errorMsg}</p>
+      )}
+    </div>
   )
 }
 
