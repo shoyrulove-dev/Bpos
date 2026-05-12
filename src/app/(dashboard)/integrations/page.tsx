@@ -326,17 +326,43 @@ const SCRAPER_CONTROL = 'http://127.0.0.1:3845'
 function PrinterSection() {
   const [checking, setChecking]     = useState(false)
   const [printing,  setPrinting]    = useState(false)
+  const [savingConfig, setSavingConfig] = useState(false)
   const [printerIp, setPrinterIp]   = useState('192.168.1.100')
   const [printerPort, setPrinterPort] = useState('9100')
+  const [printerStatus, setPrinterStatus] = useState<'ok' | 'offline' | 'unknown'>('unknown')
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadPrinterConfig = async () => {
+      try {
+        const response = await fetch(`${SCRAPER_CONTROL}/printer-config`, { signal: AbortSignal.timeout(8000) })
+        const data = await response.json()
+        if (cancelled) return
+        if (data?.ip) setPrinterIp(String(data.ip))
+        if (data?.port) setPrinterPort(String(data.port))
+        if (data?.status) setPrinterStatus(data.status)
+      } catch {
+        if (!cancelled) setPrinterStatus('unknown')
+      }
+    }
+
+    void loadPrinterConfig()
+    return () => { cancelled = true }
+  }, [])
 
   const check = async () => {
     setChecking(true); setResult(null)
     try {
       const r = await fetch(`${SCRAPER_CONTROL}/printer-check`, { signal: AbortSignal.timeout(8000) })
       const d = await r.json()
+      if (d?.ip) setPrinterIp(String(d.ip))
+      if (d?.port) setPrinterPort(String(d.port))
+      setPrinterStatus(d?.status === 'ok' || d?.status === 'offline' ? d.status : (d?.online ? 'ok' : 'offline'))
       setResult({ ok: !!d.online || !!d.ok, message: d.message ?? (d.online ? `Online — ${d.ip}:${d.port}` : `Offline — ${d.ip}:${d.port}`) })
     } catch (e) {
+      setPrinterStatus('unknown')
       setResult({ ok: false, message: `Không kết nối được scraper (127.0.0.1:3845): ${(e as Error).message}` })
     } finally { setChecking(false) }
   }
@@ -346,14 +372,18 @@ function PrinterSection() {
     try {
       const r = await fetch(`${SCRAPER_CONTROL}/printer-test`, { method: 'POST', signal: AbortSignal.timeout(12000) })
       const d = await r.json()
+      if (d?.ip) setPrinterIp(String(d.ip))
+      if (d?.port) setPrinterPort(String(d.port))
+      if (d?.status) setPrinterStatus(d.status)
       setResult({ ok: !!d.ok, message: d.message ?? (d.ok ? 'In thử thành công!' : 'In thất bại') })
     } catch (e) {
+      setPrinterStatus('unknown')
       setResult({ ok: false, message: `Không kết nối được scraper: ${(e as Error).message}` })
     } finally { setPrinting(false) }
   }
 
   const updatePrinterEnv = async () => {
-    setResult(null)
+    setSavingConfig(true); setResult(null)
     try {
       const r = await fetch(`${SCRAPER_CONTROL}/set-printer`, {
         method: 'POST',
@@ -362,11 +392,31 @@ function PrinterSection() {
         signal: AbortSignal.timeout(5000),
       })
       const d = await r.json()
+      if (d?.ip) setPrinterIp(String(d.ip))
+      if (d?.port) setPrinterPort(String(d.port))
+      if (d?.status) setPrinterStatus(d.status)
       setResult({ ok: !!d.ok, message: d.message ?? (d.ok ? 'Đã cập nhật cấu hình máy in' : 'Lỗi cập nhật') })
-    } catch {
-      setResult({ ok: false, message: 'Không kết nối được scraper. Thay đổi IP/Port không có tác dụng ngay — cấu hình lại trong .env rồi restart scraper.' })
+    } catch (e) {
+      setPrinterStatus('unknown')
+      setResult({ ok: false, message: `Không kết nối được scraper để cập nhật cấu hình: ${(e as Error).message}` })
+    } finally {
+      setSavingConfig(false)
     }
   }
+
+  const statusTone =
+    printerStatus === 'ok'
+      ? 'bg-green-50 text-green-700 border border-green-200'
+      : printerStatus === 'offline'
+        ? 'bg-red-50 text-red-600 border border-red-200'
+        : 'bg-gray-50 text-gray-500 border border-gray-200'
+
+  const statusLabel =
+    printerStatus === 'ok'
+      ? 'Online'
+      : printerStatus === 'offline'
+        ? 'Offline'
+        : 'Chưa rõ'
 
   return (
     <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
@@ -376,6 +426,15 @@ function PrinterSection() {
           <h2 className="font-semibold text-gray-900 text-sm">Máy in nhiệt (LAN)</h2>
           <p className="text-xs text-gray-400">Kết nối qua scraper · ESC/POS TCP · 80mm</p>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={cn('inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold', statusTone)}>
+          Trạng thái: {statusLabel}
+        </span>
+        <span className="text-xs text-gray-500">
+          Cấu hình hiện tại: {printerIp}:{printerPort}
+        </span>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -390,16 +449,16 @@ function PrinterSection() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button onClick={check} disabled={checking || printing} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
+        <button onClick={check} disabled={checking || printing || savingConfig} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
           {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
           Kiểm tra kết nối
         </button>
-        <button onClick={testPrint} disabled={checking || printing} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
+        <button onClick={testPrint} disabled={checking || printing || savingConfig} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
           {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="text-base leading-none">🖨️</span>}
           In thử
         </button>
-        <button onClick={updatePrinterEnv} disabled={checking || printing} className="btn-ghost flex items-center gap-1.5 text-sm disabled:opacity-50">
-          <Settings className="w-4 h-4" /> Cập nhật IP/Port
+        <button onClick={updatePrinterEnv} disabled={checking || printing || savingConfig} className="btn-ghost flex items-center gap-1.5 text-sm disabled:opacity-50">
+          {savingConfig ? <Loader2 className="w-4 h-4 animate-spin" /> : <Settings className="w-4 h-4" />} {savingConfig ? 'Đang lưu...' : 'Cập nhật IP/Port'}
         </button>
       </div>
 
