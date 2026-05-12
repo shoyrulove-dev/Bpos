@@ -15,7 +15,7 @@ import {
   primeOrderAlertAudio,
   rememberPrintedOrders,
 } from '@/lib/order-alerts'
-import { buildFallbackPrintUrl, isBridgePrintingEnabled, tryBridgePrintOrder } from '@/lib/local-printer'
+import { buildFallbackPrintUrl, isBridgePrintingEnabled, printOrderWithHtmlTemplate } from '@/lib/local-printer'
 
 interface Notification {
   id: string
@@ -259,7 +259,7 @@ export default function NotificationProvider({ children }: { children: React.Rea
       return
     }
 
-    void tryBridgePrintOrder(activeOrderId, 'receipt')
+    void printOrderWithHtmlTemplate(activeOrderId, 'receipt')
       .then((printed) => {
         if (cancelled) return
         if (printed) {

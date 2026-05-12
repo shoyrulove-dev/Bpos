@@ -215,8 +215,11 @@ export async function GET(req: NextRequest) {
         && !hasMeaningfulPhone(getDisplayCustomerPhone(order as unknown as Order))
       const missingDriverPhone = !skipFinalizedRetry
         && !hasMeaningfulPhone(getDisplayDriverPhone(order as unknown as Order))
-      const missingItemDetail = !skipFinalizedRetry && !hasGrabDetailedItems(rawPayload)
-      const missingPromotionDetail = !skipFinalizedRetry && Number(order.discount ?? 0) > 0 && !hasGrabPromotionDetail(rawPayload)
+      // Item/promo detail: always try even for history/completed orders — Grab portal
+      // still shows items/vouchers/addons on the history detail page even after
+      // customer/driver info has expired.
+      const missingItemDetail = !hasGrabDetailedItems(rawPayload)
+      const missingPromotionDetail = Number(order.discount ?? 0) > 0 && !hasGrabPromotionDetail(rawPayload)
       const missingDeliveredAt = order.status === 'completed' && !order.deliveredAt && !hasDeliveredAtSignal(rawPayload)
       const missingUtensilInfo = !skipFinalizedRetry && !hasGrabUtensilInfo(rawPayload)
       const reasons = [

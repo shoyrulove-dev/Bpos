@@ -1,17 +1,58 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Loader2, MapPin, Phone, Printer, RefreshCw, TicketPercent, Truck } from 'lucide-react'
 import { useOrder } from '@/hooks/use-orders-channels'
 import { getActualReceived as getSettlementActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown, getGrabMoneyBreakdown as getSettlementGrabMoneyBreakdown } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
-import { openFallbackPrintWindow, printOrderWithFallback } from '@/lib/local-printer'
+import { printOrderWithHtmlTemplate, tryBridgePrintOrder } from '@/lib/local-printer'
 import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, PAYMENT_METHOD_LABEL } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import type { Order } from '@/types'
 
 function openPrintWindow(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer,width=430,height=900')
+}
+
+type PrintStatus = 'idle' | 'printing' | 'ok' | 'error'
+
+function PrintButton({ orderId, type = 'receipt', label, className }: { orderId: string; type?: 'receipt' | 'label'; label?: string; className?: string }) {
+  const [status, setStatus] = useState<PrintStatus>('idle')
+
+  const handlePrint = async () => {
+    if (status === 'printing') return
+    setStatus('printing')
+    try {
+      const ok = type === 'receipt'
+        ? await printOrderWithHtmlTemplate(orderId, 'receipt')
+        : await tryBridgePrintOrder(orderId, 'label')
+      setStatus(ok ? 'ok' : 'error')
+    } catch {
+      setStatus('error')
+    }
+    window.setTimeout(() => setStatus('idle'), 3500)
+  }
+
+  const defaultLabel = type === 'receipt' ? 'In đơn' : 'In phiếu tem'
+  const displayLabel = status === 'printing' ? 'Đang in...' : status === 'ok' ? '✓ Đã in' : status === 'error' ? '✗ Lỗi máy in' : (label ?? defaultLabel)
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handlePrint()}
+      disabled={status === 'printing'}
+      className={cn(
+        'btn-outline h-9 text-sm disabled:opacity-60',
+        status === 'ok' && 'border-green-400 text-green-700',
+        status === 'error' && 'border-red-400 text-red-600',
+        className,
+      )}
+    >
+      {status === 'printing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+      {displayLabel}
+    </button>
+  )
 }
 
 function formatMaybeDate(value?: string) {
@@ -746,7 +787,8 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
 
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={onRefresh} className="btn-outline h-9 text-sm" disabled={isRefreshing}><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /> Làm mới</button>
-          <button type="button" onClick={() => void printOrderWithFallback(order._id, 'receipt', { autoprint: true })} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> In đơn</button>
+          <PrintButton orderId={order._id} />
+          <button type="button" onClick={() => openPrintWindow(buildReceiptPrintUrl(order._id, { autoprint: false, paperSize: '80mm' }))} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> Xem mẫu in</button>
         </div>
       </div>
 
@@ -892,9 +934,9 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
 
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => refetch()} className="btn-outline h-9 text-sm" disabled={isRefetching}><RefreshCw className={cn('h-4 w-4', isRefetching && 'animate-spin')} /> Làm mới</button>
-          <button type="button" onClick={() => void printOrderWithFallback(order._id, 'receipt', { autoprint: true })} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> In đơn</button>
-          <button type="button" onClick={() => void printOrderWithFallback(order._id, 'label')} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> In phiếu tem</button>
-          <button type="button" onClick={() => openPrintWindow(buildReceiptPrintUrl(order._id, { autoprint: false, paperSize: '80mm' }))} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> In qua dialog</button>
+          <PrintButton orderId={order._id} />
+          <PrintButton orderId={order._id} type="label" />
+          <button type="button" onClick={() => openPrintWindow(buildReceiptPrintUrl(order._id, { autoprint: false, paperSize: '80mm' }))} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> Xem mẫu in</button>
         </div>
       </div>
 

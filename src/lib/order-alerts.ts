@@ -24,7 +24,7 @@ const MAX_RECENT_PRINTED_IDS = 120
 
 export const DEFAULT_ORDER_ALERT_SETTINGS: OrderAlertSettings = {
   soundEnabled: true,
-  autoPrintEnabled: true,
+  autoPrintEnabled: false,
   printerName: PRINTER_MODEL_LABEL,
   printerPaperSize: '80mm',
   voiceMessage: ORDER_ALERT_VOICE_MESSAGE,
