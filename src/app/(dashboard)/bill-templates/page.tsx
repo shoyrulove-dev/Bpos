@@ -199,14 +199,6 @@ export default function BillTemplatesPage() {
       setBridgePrintStatus('error')
     }
   }
-    const nextSize: BillSize = nextType === 'label' ? '58mm' : form.size === '58mm' ? '80mm' : form.size
-    setForm((current) => ({
-      ...current,
-      type: nextType,
-      size: nextSize,
-      templateContent: current.templateContent.trim() ? current.templateContent : createFormState(nextType, nextSize).templateContent,
-    }))
-  }
 
   const recommendedTemplates = [
     { title: 'Mẫu tự động in', subtitle: 'Dùng cho auto print và In đơn 80mm', type: 'receipt' as BillType, size: '80mm' as BillSize },
