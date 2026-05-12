@@ -209,8 +209,7 @@ export async function GET(req: NextRequest) {
       const storedStage = getGrabStoredPageStage(rawPayload)
       const isFinalizedStage = ['history', 'completed', 'cancelled'].includes(storedStage)
       const isFinalizedStatus = ['completed', 'cancelled'].includes(String(order.status ?? '').trim().toLowerCase())
-      const hasFinalSignal = Boolean(order.deliveredAt) || hasDeliveredAtSignal(rawPayload) || storedStage === 'cancelled'
-      const skipFinalizedRetry = (isFinalizedStage || isFinalizedStatus) && hasFinalSignal
+      const skipFinalizedRetry = isFinalizedStage || isFinalizedStatus
 
       const missingCustomerPhone = ['preparing', 'ready', 'upcoming'].includes(storedStage)
         && !hasMeaningfulPhone(getDisplayCustomerPhone(order as unknown as Order))
