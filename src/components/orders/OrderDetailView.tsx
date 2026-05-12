@@ -5,7 +5,7 @@ import { ArrowLeft, Loader2, MapPin, Phone, Printer, RefreshCw, TicketPercent, T
 import { useOrder } from '@/hooks/use-orders-channels'
 import { getActualReceived as getSettlementActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown, getGrabMoneyBreakdown as getSettlementGrabMoneyBreakdown } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
-import { printOrderWithFallback } from '@/lib/local-printer'
+import { openFallbackPrintWindow, printOrderWithFallback } from '@/lib/local-printer'
 import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, PAYMENT_METHOD_LABEL } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import type { Order } from '@/types'
@@ -551,7 +551,7 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
 
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={onRefresh} className="btn-outline h-9 text-sm" disabled={isRefreshing}><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /> Làm mới</button>
-          <button type="button" onClick={() => void printOrderWithFallback(order._id, 'receipt')} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> In đơn</button>
+          <button type="button" onClick={() => openFallbackPrintWindow(order._id, 'receipt', { autoprint: true })} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> In đơn</button>
         </div>
       </div>
 
@@ -746,7 +746,7 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
 
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={onRefresh} className="btn-outline h-9 text-sm" disabled={isRefreshing}><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /> Làm mới</button>
-          <button type="button" onClick={() => void printOrderWithFallback(order._id, 'receipt')} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> In đơn</button>
+          <button type="button" onClick={() => openFallbackPrintWindow(order._id, 'receipt', { autoprint: true })} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> In đơn</button>
         </div>
       </div>
 
@@ -892,7 +892,7 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
 
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => refetch()} className="btn-outline h-9 text-sm" disabled={isRefetching}><RefreshCw className={cn('h-4 w-4', isRefetching && 'animate-spin')} /> Làm mới</button>
-          <button type="button" onClick={() => void printOrderWithFallback(order._id, 'receipt')} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> In đơn</button>
+          <button type="button" onClick={() => openFallbackPrintWindow(order._id, 'receipt', { autoprint: true })} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> In đơn</button>
           <button type="button" onClick={() => void printOrderWithFallback(order._id, 'label')} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> In phiếu tem</button>
           <button type="button" onClick={() => openPrintWindow(buildReceiptPrintUrl(order._id, { autoprint: false, paperSize: '80mm' }))} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> In qua dialog</button>
         </div>

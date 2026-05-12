@@ -126,9 +126,17 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
     }
 
     const triggerPrint = window.setTimeout(() => {
-      window.print()
-      window.setTimeout(finishPrint, embedded ? 8_000 : 3_000)
-    }, 350)
+      // Chờ font load xong trước khi in để tránh fallback sang Courier New
+      const doPrint = () => {
+        window.print()
+        window.setTimeout(finishPrint, embedded ? 8_000 : 3_000)
+      }
+      if (document.fonts?.ready) {
+        void document.fonts.ready.then(doPrint)
+      } else {
+        doPrint()
+      }
+    }, 200)
 
     window.addEventListener('afterprint', afterPrint)
 
@@ -204,7 +212,7 @@ function ReceiptShell({ children, paperSize }: { children: ReactNode; paperSize:
         }
 
         .receipt-template {
-          font-family: 'Noto Sans Mono', 'Courier New', monospace;
+          font-family: 'Noto Sans Mono', 'Consolas', 'Courier New', monospace;
           font-size: 4.1mm;
           line-height: 1.32;
           white-space: normal;

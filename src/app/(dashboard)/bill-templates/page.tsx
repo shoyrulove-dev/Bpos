@@ -69,8 +69,8 @@ function openTemplatePrintWindow(content: string, type: BillType, size: BillSize
   printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview</title>${NOTO_MONO_FONT_LINK}<style>
     *{box-sizing:border-box}body{margin:0;background:#ebe7df;padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px;font-family:Arial,sans-serif}
     .toolbar{display:flex;gap:10px}.toolbar button{border:0;border-radius:999px;padding:10px 18px;font-weight:700;cursor:pointer}.print{background:#111827;color:#fff}.close{background:#fff;color:#111827;border:1px solid #d1d5db}
-    .paper{width:${paperWidth};max-width:100%;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.16);padding:12px;font-family:'Noto Sans Mono','Courier New',monospace;font-size:12px;line-height:1.35;border-radius:10px}
-    .tpl-line{white-space:pre-wrap;word-break:break-word}.tpl-center{text-align:center}.tpl-strong{font-weight:800;letter-spacing:.04em}.tpl-divider{border-top:1px dashed #111;margin:6px 0}.tpl-indent{padding-left:12px}
+    .paper{width:${paperWidth};max-width:100%;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.16);padding:12px;font-family:'Noto Sans Mono','Consolas','Courier New',monospace;font-size:14px;line-height:1.38;border-radius:10px}
+    .tpl-line{white-space:pre-wrap;word-break:break-word}.tpl-center{text-align:center}.tpl-strong{font-weight:900;font-size:15px;letter-spacing:.04em}.tpl-divider{border-top:1px dashed #111;margin:6px 0}.tpl-indent{padding-left:12px}
     @media print{body{background:#fff;padding:0}.toolbar{display:none}.paper{box-shadow:none;border-radius:0;padding:4mm}@page{size:${paperWidth};margin:4mm}}
   </style></head><body><div class="toolbar"><button class="print" onclick="window.print()">In thử</button><button class="close" onclick="window.close()">Đóng</button></div><div class="paper">${html}</div></body></html>`)
   printWindow.document.close()
@@ -185,8 +185,8 @@ export default function BillTemplatesPage() {
       printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>In thử (đơn thật)</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap" rel="stylesheet"><style>
     *{box-sizing:border-box}body{margin:0;background:#ebe7df;padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px;font-family:Arial,sans-serif}
     .toolbar{display:flex;gap:10px}.toolbar button{border:0;border-radius:999px;padding:10px 18px;font-weight:700;cursor:pointer}.print{background:#111827;color:#fff}.close{background:#fff;color:#111827;border:1px solid #d1d5db}
-    .paper{width:${paperWidth};max-width:100%;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.16);padding:12px;font-family:'Noto Sans Mono','Courier New',monospace;font-size:12px;line-height:1.35;border-radius:10px}
-    .tpl-line{white-space:pre-wrap;word-break:break-word}.tpl-center{text-align:center}.tpl-strong{font-weight:800;letter-spacing:.04em}.tpl-divider{border-top:1px dashed #111;margin:6px 0}.tpl-indent{padding-left:12px}
+    .paper{width:${paperWidth};max-width:100%;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.16);padding:12px;font-family:'Noto Sans Mono','Consolas','Courier New',monospace;font-size:14px;line-height:1.38;border-radius:10px}
+    .tpl-line{white-space:pre-wrap;word-break:break-word}.tpl-center{text-align:center}.tpl-strong{font-weight:900;font-size:15px;letter-spacing:.04em}.tpl-divider{border-top:1px dashed #111;margin:6px 0}.tpl-indent{padding-left:12px}
     @media print{body{background:#fff;padding:0}.toolbar{display:none}.paper{box-shadow:none;border-radius:0;padding:4mm}@page{size:${paperWidth};margin:4mm}}
   </style></head><body><div class="toolbar"><button class="print" onclick="window.print()">In thử</button><button class="close" onclick="window.close()">Đóng</button></div><div class="paper">${html}</div></body></html>`)
       printWindow.document.close()
