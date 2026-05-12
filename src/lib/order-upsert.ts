@@ -322,6 +322,8 @@ function extractCancellationDate(normalized: NormalizedOrder) {
 export function hasMeaningfulFinalizedOrderChange(existing: Partial<NormalizedOrder> | Record<string, unknown> | null | undefined, incoming: NormalizedOrder) {
   if (!existing) return true
 
+  const existingRecord = getRecord(existing)
+  const incomingRecord = getRecord(incoming)
   const existingDriverInfo = getRecord(existing.driverInfo)
   const existingRawPayload = getRecord(existing.rawPayload)
   const incomingRawPayload = getRecord(incoming.rawPayload)
@@ -347,8 +349,8 @@ export function hasMeaningfulFinalizedOrderChange(existing: Partial<NormalizedOr
     ?? parseDateValue(incomingRawPayload?.completedAt)
   if (incomingDeliveredAt && existingDeliveredAt?.getTime() !== incomingDeliveredAt.getTime()) return true
 
-  const existingCancelReason = toTrimmedText(existing.cancelReason ?? existingRawPayload?.cancelReason ?? existingRawPayload?.cancellationReason)
-  const incomingCancelReason = toTrimmedText(incoming.cancelReason ?? incomingRawPayload?.cancelReason ?? incomingRawPayload?.cancellationReason)
+  const existingCancelReason = toTrimmedText(existingRecord?.cancelReason ?? existingRawPayload?.cancelReason ?? existingRawPayload?.cancellationReason)
+  const incomingCancelReason = toTrimmedText(incomingRecord?.cancelReason ?? incomingRawPayload?.cancelReason ?? incomingRawPayload?.cancellationReason)
   if (incomingCancelReason && existingCancelReason !== incomingCancelReason) return true
 
   if (!hasGrabUtensilInfo(existingRawPayload) && hasGrabUtensilInfo(incoming.rawPayload)) return true
