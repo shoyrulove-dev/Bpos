@@ -493,7 +493,7 @@ function pickIntegrationForOrder<T extends { provider: string; brandId?: unknown
   return sameProvider[0]
 }
 
-async function backfillOrderDetails(days: number, providers: string[], externalOrderIds?: string[], shortIds?: string[], externalStoreIds?: string[]) {
+async function backfillOrderDetails(days: number, providers: string[], externalOrderIds?: string[], shortIds?: string[], externalStoreIds?: string[], forceAll?: boolean) {
   const resolvedExternalOrderIds = await resolveScopedExternalOrderIds(providers, externalOrderIds, shortIds, externalStoreIds)
   const isScoped = Boolean(resolvedExternalOrderIds.length || shortIds?.length || externalStoreIds?.length)
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
@@ -511,7 +511,7 @@ async function backfillOrderDetails(days: number, providers: string[], externalO
 
   const candidates = candidateDocs
     .map((doc) => doc as unknown as StoredOrder)
-    .filter((order) => isScoped || needsOrderDetailBackfill(order))
+    .filter((order) => forceAll || isScoped || needsOrderDetailBackfill(order))
 
   if (!candidates.length) {
     return { scanned: candidateDocs.length, targeted: 0, refreshed: 0, failed: 0, skipped: 0 }
@@ -1166,6 +1166,7 @@ export async function runOrderRepair(options?: {
   externalStoreIds?: string[]
   forceCancelledOrderIds?: string[]
   forceCompletedShortIds?: string[]
+  forceAll?: boolean
 }) {
   const providers = (options?.providers?.length ? options.providers : ['be', 'grab']).map((value) => value.trim()).filter(Boolean)
   const days = Math.max(1, Math.min(90, Number(options?.days ?? 30) || 30))
@@ -1176,6 +1177,7 @@ export async function runOrderRepair(options?: {
   const externalStoreIds = (options?.externalStoreIds ?? []).map((value) => value.trim()).filter(Boolean)
   const forceCancelledOrderIds = (options?.forceCancelledOrderIds ?? []).map((value) => value.trim()).filter(Boolean)
   const forceCompletedShortIds = (options?.forceCompletedShortIds ?? []).map((value) => value.trim()).filter(Boolean)
+  const forceAll = Boolean(options?.forceAll)
   const isScopedRepair = Boolean(externalOrderIds.length || shortIds.length || driverPhone || externalStoreIds.length)
   const scopedExternalOrderIds = await resolveScopedExternalOrderIds(providers, externalOrderIds, shortIds, externalStoreIds)
 
@@ -1189,7 +1191,7 @@ export async function runOrderRepair(options?: {
         failed: 0,
         skipped: true,
       }
-  const detailBackfill = await backfillOrderDetails(days, providers, scopedExternalOrderIds, shortIds, externalStoreIds)
+  const detailBackfill = await backfillOrderDetails(days, providers, scopedExternalOrderIds, shortIds, externalStoreIds, forceAll)
   const orders = await repairStoredOrders(providers, { externalOrderIds, shortIds, driverPhone, externalStoreIds, forceCancelledOrderIds, forceCompletedShortIds })
   const customerBackfill = await backfillCustomersFromOrders({ providers, externalOrderIds, shortIds, externalStoreIds })
   let customerRepair: Awaited<ReturnType<typeof repairCustomers>> | null = null

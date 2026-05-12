@@ -39,8 +39,9 @@ export async function GET(req: NextRequest) {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean)
+  const forceAll = req.nextUrl.searchParams.get('forceAll') === 'true'
 
   await connectDB()
-  const result = await runOrderRepair({ days, providers, includeHistorical, externalOrderIds, shortIds, externalStoreIds, driverPhone, forceCancelledOrderIds, forceCompletedShortIds })
+  const result = await runOrderRepair({ days, providers, includeHistorical, externalOrderIds, shortIds, externalStoreIds, driverPhone, forceCancelledOrderIds, forceCompletedShortIds, forceAll })
   return NextResponse.json(result)
 }

@@ -655,9 +655,21 @@ export class GrabAdapter implements PlatformAdapter {
     const text = this.normalizeGrabPortalText(html)
     if (!text) return null
 
-    const customerSegment = this.extractGrabPortalSegment(text, 'Khách hàng', ['Tài xế', 'Lưu ý từ khách hàng', 'Sản phẩm', 'Tóm tắt đơn hàng'])
-    const driverSegment = this.extractGrabPortalSegment(text, 'Tài xế', ['Mã đặt hàng', 'Khách hàng', 'Lưu ý từ khách hàng', 'Sản phẩm', 'Tóm tắt đơn hàng'])
+    const NOTE_LABELS = ['Lưu ý từ khách hàng', 'Ghi chú từ khách hàng', 'Yêu cầu từ khách', 'Ghi chú', 'Yêu cầu đặc biệt']
+    const ITEM_LABELS = ['Sản phẩm', 'Tóm tắt đơn hàng', 'Chi tiết đơn hàng', 'Danh sách sản phẩm']
+    const ALL_NEXT_LABELS = ['Tài xế', ...NOTE_LABELS, ...ITEM_LABELS, 'Mã đặt hàng']
+
+    const customerSegment = this.extractGrabPortalSegment(text, 'Khách hàng', ALL_NEXT_LABELS)
+    const driverSegment = this.extractGrabPortalSegment(text, 'Tài xế', ['Mã đặt hàng', 'Khách hàng', ...NOTE_LABELS, ...ITEM_LABELS])
     const statusSegment = this.extractGrabPortalSegment(text, 'Tài xế', ['Mã đặt hàng', 'Khách hàng'])
+
+    // Extract "Lưu ý từ khách hàng" section
+    let noteSegment = ''
+    for (const label of NOTE_LABELS) {
+      const seg = this.extractGrabPortalSegment(text, label, ITEM_LABELS)
+      if (seg.trim()) { noteSegment = seg.trim(); break }
+    }
+
     const rawCustomerPhone = this.extractGrabPortalPhone(customerSegment)
     const rawDriverPhone = this.extractGrabPortalPhone(driverSegment)
     const customerPhone = this.normalizeGrabPortalPhone(rawCustomerPhone)
@@ -683,13 +695,38 @@ export class GrabAdapter implements PlatformAdapter {
 
     const hasFinancialBreakdown = Object.values(financialBreakdown).some((value) => typeof value === 'number')
     const hasContacts = Boolean(customerPhone || driverPhone || customerName || driverName)
-    if (!hasFinancialBreakdown && !hasContacts) return null
+
+    // Parse customer note: separate the cutlery hint from the free-text note
+    let parsedNote = noteSegment
+    let cutleryHint: string | undefined
+    const CUTLERY_PATTERNS = [
+      /không cần dụng cụ ăn uống nhựa/i,
+      /không cần dụng cụ ăn uống/i,
+      /không cần dao\/muỗng\/nĩa/i,
+      /không cần muỗng/i,
+      /không cần dao/i,
+      /no cutlery/i,
+    ]
+    for (const pattern of CUTLERY_PATTERNS) {
+      if (pattern.test(noteSegment)) {
+        cutleryHint = 'Không'
+        parsedNote = noteSegment.replace(pattern, '').replace(/^[,;.\s]+|[,;.\s]+$/g, '').trim()
+        break
+      }
+    }
+    if (/cần dụng cụ ăn uống/i.test(noteSegment) && !cutleryHint) {
+      cutleryHint = 'Có'
+    }
+
+    if (!hasFinancialBreakdown && !hasContacts && !parsedNote && !cutleryHint) return null
 
     const merged: Record<string, unknown> = {
       orderID: orderId,
       ID: orderId,
       financialBreakdown,
       ...(inferredDeliveryStatus ? { deliveryStatus: inferredDeliveryStatus, orderStatus: inferredDeliveryStatus } : {}),
+      ...(parsedNote ? { specialRequest: parsedNote, customerNote: parsedNote, note: parsedNote } : {}),
+      ...(cutleryHint !== undefined ? { cutlery: cutleryHint } : {}),
     }
 
     if (hasContacts) {
@@ -1328,8 +1365,9 @@ export class GrabAdapter implements PlatformAdapter {
 
     const estimatedTime = this.getGrabEstimatedTime(raw)
 
-    // Order-level note (special request)
-    const deliveryNote = String(raw.specialRequest ?? raw.note ?? raw.remarks ?? '') || undefined
+    // Order-level note (special request + any customer note text)
+    const rawNote = String(raw.specialRequest ?? raw.customerNote ?? raw.note ?? raw.remarks ?? raw.deliveryNote ?? '')
+    const deliveryNote = rawNote.trim() || undefined
 
     return {
       source:          'grab',
