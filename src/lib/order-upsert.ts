@@ -153,6 +153,19 @@ function hasItems(items: unknown) {
   return Array.isArray(items) && items.length > 0
 }
 
+function hasAddons(items: unknown) {
+  if (!Array.isArray(items) || items.length === 0) return false
+  return items.some((item) => {
+    const record = getRecord(item)
+    if (!record) return false
+    return (
+      (Array.isArray(record.addons) && record.addons.length > 0) ||
+      (Array.isArray(record.modifiers) && record.modifiers.length > 0) ||
+      (Array.isArray(record.modifierGroups) && record.modifierGroups.length > 0)
+    )
+  })
+}
+
 function getRecord(value: unknown) {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -332,7 +345,15 @@ export function mergeNormalizedOrderPreservingDetail(existing: OrderSnapshot | n
     ...incoming,
     customerName: mergedCustomerName,
     customerPhone: mergedCustomerPhone,
-    items: hasItems(incoming.items) ? incoming.items : existing?.items ?? incoming.items,
+    // Prefer items that have more detail: addons/modifiers > has prices > any items
+    // This prevents DOM-extracted flat items (no addons) from overwriting XHR-captured detailed items
+    items: (() => {
+      if (hasAddons(incoming.items)) return incoming.items
+      if (hasAddons(existing?.items)) return existing.items
+      if (hasDetailedItems(incoming.items)) return incoming.items
+      if (hasDetailedItems(existing?.items)) return existing.items
+      return hasItems(incoming.items) ? incoming.items : existing?.items ?? incoming.items
+    })(),
     subtotal: pickNumber(incoming.subtotal, existing?.subtotal),
     discount: pickNumber(incoming.discount, existing?.discount),
     total: pickNumber(incoming.total, existing?.total),

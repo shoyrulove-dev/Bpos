@@ -763,7 +763,7 @@ export class GrabAdapter implements PlatformAdapter {
         .trim()
 
       if (!candidate) continue
-      if (/^(?:khách hàng|tài xế|lưu ý từ khách hàng|ghi chú|mã đặt hàng)$/i.test(candidate)) continue
+      if (/^(?:khách hàng|tài xế|lưu ý từ khách hàng|ghi chú|mã đặt hàng|hóa đơn|hoá đơn|hoa don|invoice|thanh toán|tóm tắt đơn hàng|tài chính)$/i.test(candidate)) continue
       if (/(?:đang giao|dang giao|đang đến lấy|dang den lay|đang lấy hàng|dang lay hang|đã giao|da giao|đã hoàn tất|da hoan tat|hoàn tất|hoan tat|đã hủy|da huy|đã huỷ)/i.test(candidate)) continue
       if (/\d/.test(candidate)) continue
       return candidate.slice(0, 80).trim()
@@ -796,7 +796,7 @@ export class GrabAdapter implements PlatformAdapter {
     const segmentSource = structuredText || text
 
     const customerSegment = this.extractGrabPortalSegment(segmentSource, 'Khách hàng', ALL_NEXT_LABELS)
-    const driverSegment = this.extractGrabPortalSegment(segmentSource, 'Tài xế', ['Mã đặt hàng', 'Khách hàng', ...NOTE_LABELS, ...ITEM_SECTION_LABELS, 'Tóm tắt đơn hàng'])
+    const driverSegment = this.extractGrabPortalSegment(segmentSource, 'Tài xế', ['Mã đặt hàng', 'Khách hàng', ...NOTE_LABELS, ...ITEM_SECTION_LABELS, 'Tóm tắt đơn hàng', 'Hóa đơn', 'Hoá đơn', 'Thanh toán', 'Phương thức thanh toán'])
     const statusSegment = this.extractGrabPortalSegment(segmentSource, 'Tài xế', ['Mã đặt hàng', 'Khách hàng'])
 
     // Extract "Lưu ý từ khách hàng" section
@@ -1589,7 +1589,8 @@ export class GrabAdapter implements PlatformAdapter {
     const orderStatus = resolveGrabStatus(rawStatus, raw)
 
     // receiver object contains customer name, phone, and delivery address
-    const receiver = (raw.receiver ?? raw.eater ?? raw.customer) as Record<string, unknown> | undefined
+    // Also check consumer (portal format) and eater/customer (other formats)
+    const receiver = (raw.receiver ?? raw.eater ?? raw.customer ?? raw.consumer) as Record<string, unknown> | undefined
     const receiverPhone = normalizeCompactPhone(this.getGrabPhoneCandidate([
       receiver?.phones,
       receiver?.phone,
@@ -1605,9 +1606,9 @@ export class GrabAdapter implements PlatformAdapter {
     // price is a nested object in POS API v1.1.3
     const price = raw.price as Record<string, unknown> | undefined
 
-    const subtotal = Number(price?.subtotal ?? this.parseGrabDisplayAmount(raw.orderValue) ?? 0)
-    const discount = Number(price?.basketPromo ?? 0)
-    const total = Number(price?.eaterPayment ?? this.parseGrabDisplayAmount(raw.orderValue) ?? 0)
+    const subtotal = Number(price?.subtotal ?? this.parseGrabDisplayAmount(raw.orderValue ?? raw.priceDisplay ?? raw.cancelledOriginalPriceDisplay) ?? 0)
+    const discount = Number(price?.basketPromo ?? price?.discount ?? raw.discount ?? raw.discountAmount ?? 0)
+    const total = Number(price?.eaterPayment ?? price?.total ?? this.parseGrabDisplayAmount(raw.orderValue ?? raw.priceDisplay) ?? 0)
     const platformFee = Number(
       price?.platformCommission ??
       price?.platformFee ??
