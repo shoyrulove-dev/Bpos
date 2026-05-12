@@ -193,7 +193,6 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
   if (pageStage === 'upcoming') return 'pre_order'
 
   if (pageStage === 'history') {
-    if (mappedStatus === 'completed' || mappedStatus === 'cancelled') return mappedStatus
     // Only treat as completed if there's actual completion evidence.
     // Backfill may accidentally navigate to the history page for an active (preparing) order,
     // setting _pageStage='history' without real completion signals — don't blindly complete it.
