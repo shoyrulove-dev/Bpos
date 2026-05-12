@@ -359,7 +359,8 @@ export function hasMeaningfulFinalizedOrderChange(existing: Partial<NormalizedOr
 }
 
 export function shouldSkipFinalizedOrderSync(existing: Partial<NormalizedOrder> | Record<string, unknown> | null | undefined, incoming: NormalizedOrder) {
-  const existingStatus = String(existing?.status ?? '').trim().toLowerCase()
+  const existingRecord = getRecord(existing)
+  const existingStatus = String(existingRecord?.status ?? '').trim().toLowerCase()
   const incomingStatus = String(incoming.orderStatus ?? '').trim().toLowerCase()
 
   if (!FINALIZED_ORDER_STATUSES.has(existingStatus)) return false
