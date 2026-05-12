@@ -592,7 +592,8 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
 
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={onRefresh} className="btn-outline h-9 text-sm" disabled={isRefreshing}><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /> Làm mới</button>
-          <button type="button" onClick={() => void printOrderWithFallback(order._id, 'receipt', { autoprint: true })} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> In đơn</button>
+          <PrintButton orderId={order._id} />
+          <button type="button" onClick={() => openPrintWindow(buildReceiptPrintUrl(order._id, { autoprint: false, paperSize: '80mm' }))} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> Xem mẫu in</button>
         </div>
       </div>
 
