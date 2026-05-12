@@ -93,6 +93,15 @@ function hasDeliveredAtSignal(rawPayload?: Record<string, unknown>) {
   )
 }
 
+function hasGrabUtensilInfo(rawPayload?: Record<string, unknown>) {
+  if (!rawPayload) return false
+  // Nếu key needCutlery tồn tại (dù false) → đã fetch detail
+  if ('needCutlery' in rawPayload) return true
+  const itemInfo = getRecord(rawPayload.itemInfo)
+  if (itemInfo && 'needCutlery' in itemInfo) return true
+  return false
+}
+
 function getGrabStoredPageStage(rawPayload?: Record<string, unknown>) {
   const raw = getRecord(rawPayload)
   const explicitStage = String(raw?._pageStage ?? '').trim().toLowerCase()
@@ -211,12 +220,14 @@ export async function GET(req: NextRequest) {
       const missingItemDetail = !hasGrabDetailedItems(rawPayload)
       const missingPromotionDetail = Number(order.discount ?? 0) > 0 && !hasGrabPromotionDetail(rawPayload)
       const missingDeliveredAt = order.status === 'completed' && !order.deliveredAt && !hasDeliveredAtSignal(rawPayload)
+      const missingUtensilInfo = !isOldCompleted && !hasGrabUtensilInfo(rawPayload)
       const reasons = [
         missingCustomerPhone ? 'customer-phone' : null,
         missingDriverPhone ? 'driver-phone' : null,
         missingItemDetail ? 'item-detail' : null,
         missingPromotionDetail ? 'promotion-detail' : null,
         missingDeliveredAt ? 'delivered-at' : null,
+        missingUtensilInfo ? 'utensil-info' : null,
       ].filter((value): value is string => Boolean(value))
 
       return {
