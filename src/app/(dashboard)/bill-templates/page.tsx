@@ -26,7 +26,7 @@ const sizeColor: Record<BillSize, string> = {
 }
 
 const typeLabel: Record<BillType, string> = {
-  order: 'Đơn hàng cũ',
+  order: 'In đơn theo mẫu',
   delivery: 'Phiếu giao hàng',
   receipt: 'Mẫu tự động in',
   label: 'Mẫu tem 58mm',
@@ -244,7 +244,7 @@ export default function BillTemplatesPage() {
                       <option value="receipt">Mẫu tự động in</option>
                       <option value="label">Mẫu tem 58mm</option>
                       <option value="delivery">Phiếu giao hàng</option>
-                      <option value="order">Mẫu order cũ</option>
+                      <option value="order">In đơn theo mẫu</option>
                     </select>
                   </div>
                   <div className="form-group">

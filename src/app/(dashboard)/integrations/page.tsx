@@ -1281,11 +1281,7 @@ export default function IntegrationsPage() {
         </section>
       </div>
 
-      {/* ═══ Máy in nhiệt (LAN) ════════════════════════════════════════════ */}
-      <div className="rounded-3xl border border-dashed border-gray-200 bg-gray-50 px-5 py-4 text-sm text-gray-600">
-        Cấu hình máy in đã được tách sang mục <Link href="/settings" className="font-semibold text-primary-600 hover:text-primary-700">Cài đặt</Link>, gồm riêng `In hóa đơn` và `In tem`.
-      </div>
-      <PrinterSection />
+
 
       {/* ═══ MODAL: Create ══════════════════════════════════════════════════ */}
       {showForm && (() => {
