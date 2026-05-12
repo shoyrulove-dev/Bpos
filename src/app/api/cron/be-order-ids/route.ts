@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
     .filter((id): id is string => id !== null)
 
   // Deduplicate
-  const unique = [...new Set(orderIds)]
+  const unique = Array.from(new Set(orderIds))
 
   return NextResponse.json({ ok: true, orderIds: unique, total: unique.length })
 }
