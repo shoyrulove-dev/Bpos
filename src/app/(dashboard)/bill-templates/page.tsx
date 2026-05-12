@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Edit, Eye, FileText, Plus, Printer, Sparkles, ToggleLeft, ToggleRight } from 'lucide-react'
 import { useBillTemplates, useCreateBillTemplate, useUpdateBillTemplate } from '@/hooks/use-data'
 import { loadOrderAlertSettings } from '@/lib/order-alerts'
+import { isBridgePrintingEnabled, LOCAL_PRINTER_BRIDGE_ORIGIN } from '@/lib/local-printer'
 import { buildDemoPrintTemplateContext, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, PRINT_TEMPLATE_VARIABLES, renderPrintTemplateHtml } from '@/lib/print-template'
 import { cn } from '@/lib/utils'
 import type { BillSize, BillTemplate, BillType } from '@/types'
@@ -52,6 +53,8 @@ function getTemplateGuide(type: BillType, size: BillSize) {
   return 'Auto print và In đơn 80mm sẽ ưu tiên mẫu receipt đang bật.'
 }
 
+const NOTO_MONO_FONT_LINK = '<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap" rel="stylesheet">'
+
 function openTemplatePrintWindow(content: string, type: BillType, size: BillSize) {
   const templateType = type === 'label' ? 'label' : type === 'delivery' ? 'delivery' : getTemplateTypeForPaperSize(size)
   const context = buildDemoPrintTemplateContext(templateType)
@@ -63,14 +66,40 @@ function openTemplatePrintWindow(content: string, type: BillType, size: BillSize
   const printWindow = window.open('', '_blank', 'width=520,height=760')
   if (!printWindow) return
 
-  printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview</title><style>
+  printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview</title>${NOTO_MONO_FONT_LINK}<style>
     *{box-sizing:border-box}body{margin:0;background:#ebe7df;padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px;font-family:Arial,sans-serif}
     .toolbar{display:flex;gap:10px}.toolbar button{border:0;border-radius:999px;padding:10px 18px;font-weight:700;cursor:pointer}.print{background:#111827;color:#fff}.close{background:#fff;color:#111827;border:1px solid #d1d5db}
-    .paper{width:${paperWidth};max-width:100%;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.16);padding:12px;font-family:'Courier New',monospace;font-size:12px;line-height:1.35;border-radius:10px}
+    .paper{width:${paperWidth};max-width:100%;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.16);padding:12px;font-family:'Noto Sans Mono','Courier New',monospace;font-size:12px;line-height:1.35;border-radius:10px}
     .tpl-line{white-space:pre-wrap;word-break:break-word}.tpl-center{text-align:center}.tpl-strong{font-weight:800;letter-spacing:.04em}.tpl-divider{border-top:1px dashed #111;margin:6px 0}.tpl-indent{padding-left:12px}
     @media print{body{background:#fff;padding:0}.toolbar{display:none}.paper{box-shadow:none;border-radius:0;padding:4mm}@page{size:${paperWidth};margin:4mm}}
   </style></head><body><div class="toolbar"><button class="print" onclick="window.print()">In thử</button><button class="close" onclick="window.close()">Đóng</button></div><div class="paper">${html}</div></body></html>`)
   printWindow.document.close()
+}
+
+async function printTemplateWithBridgeFallback(content: string, type: BillType, size: BillSize) {
+  const bridgeType = type === 'label' ? 'label' as const : 'receipt' as const
+  if (isBridgePrintingEnabled(bridgeType)) {
+    try {
+      const demoOrder = {
+        source: 'grab', externalOrderId: 'DEMO-TEMPLATE', shortId: 'DEMO',
+        customerName: 'Khách Test', customerPhone: '0901234567',
+        items: [
+          { name: 'Trà sữa trân châu', quantity: 2, price: 35000, total: 70000, note: 'Ít đá' },
+          { name: 'Cơm sườn trứng', quantity: 1, price: 70000, total: 70000, note: '' },
+        ],
+        subtotal: 140000, discount: 0, total: 140000, note: 'In thử từ Hóa đơn mẫu', rawPayload: {},
+      }
+      const res = await fetch(`${LOCAL_PRINTER_BRIDGE_ORIGIN}/print-order?type=${bridgeType}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: bridgeType, order: demoOrder }),
+        signal: AbortSignal.timeout(5000),
+      })
+      const data = await res.json() as { ok?: boolean }
+      if (data.ok) return
+    } catch { /* bridge không có hoặc lỗi → dùng popup */ }
+  }
+  openTemplatePrintWindow(content, type, size)
 }
 
 export default function BillTemplatesPage() {
@@ -216,7 +245,7 @@ export default function BillTemplatesPage() {
         <span className="text-sm text-gray-700 font-medium">{printerName || 'Chưa cấu hình máy in'}</span>
         <span className="badge badge-gray">Auto print hiện tại: {printerSize}</span>
         <div className="flex-1" />
-        <button onClick={() => openTemplatePrintWindow(getDefaultTemplateContent(getTemplateTypeForPaperSize(printerSize)), getTemplateTypeForPaperSize(printerSize), printerSize)} className="btn-outline btn-sm gap-1.5">
+        <button onClick={() => void printTemplateWithBridgeFallback(getDefaultTemplateContent(getTemplateTypeForPaperSize(printerSize)), getTemplateTypeForPaperSize(printerSize), printerSize)} className="btn-outline btn-sm gap-1.5">
           <Printer className="h-3.5 w-3.5" /> In thử renderer chung
         </button>
         <Link href="/settings" className="btn-ghost btn-sm text-gray-500 text-xs">Cài đặt máy in →</Link>
@@ -232,7 +261,7 @@ export default function BillTemplatesPage() {
               <div className="flex items-center gap-1">
                 <button onClick={() => openEdit(template)} className="btn-ghost btn-sm p-1.5"><Edit className="w-3.5 h-3.5" /></button>
                 <button onClick={() => setPreviewTemplate(template)} className="btn-ghost btn-sm p-1.5"><Eye className="w-3.5 h-3.5" /></button>
-                <button onClick={() => openTemplatePrintWindow(template.templateContent, template.type, template.size)} className="btn-ghost btn-sm p-1.5" title="In thử"><Printer className="w-3.5 h-3.5" /></button>
+                <button onClick={() => void printTemplateWithBridgeFallback(template.templateContent, template.type, template.size)} className="btn-ghost btn-sm p-1.5" title="In thử"><Printer className="w-3.5 h-3.5" /></button>
                 <button onClick={() => toggleActive(template)} className={cn('btn-ghost btn-sm p-1.5', template.isActive ? 'text-green-500' : 'text-gray-400')}>
                   {template.isActive ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
                 </button>
@@ -326,7 +355,7 @@ export default function BillTemplatesPage() {
                     <p className="text-xs text-gray-500 mt-1">Đây là renderer thật đang được dùng cho preview và trang in.</p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <button onClick={() => openTemplatePrintWindow(form.templateContent, form.type, form.size)} className="btn-primary btn-sm gap-1.5 whitespace-nowrap">
+                    <button onClick={() => void printTemplateWithBridgeFallback(form.templateContent, form.type, form.size)} className="btn-primary btn-sm gap-1.5 whitespace-nowrap">
                       <Printer className="h-3.5 w-3.5" /> In thử demo
                     </button>
                     <div className="flex items-center gap-1.5">
@@ -385,7 +414,7 @@ export default function BillTemplatesPage() {
               </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2 sticky bottom-0 bg-white rounded-b-2xl">
-              <button onClick={() => openTemplatePrintWindow(previewTemplate.templateContent, previewTemplate.type, previewTemplate.size)} className="btn-outline gap-1.5">
+              <button onClick={() => void printTemplateWithBridgeFallback(previewTemplate.templateContent, previewTemplate.type, previewTemplate.size)} className="btn-outline gap-1.5">
                 <Printer className="h-4 w-4" /> In thử
               </button>
               <button onClick={() => setPreviewTemplate(null)} className="btn-primary">Đóng</button>
