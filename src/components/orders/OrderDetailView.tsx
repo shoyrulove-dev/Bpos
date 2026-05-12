@@ -218,8 +218,12 @@ function getBeDetailItems(order: Order) {
   return rawItems.map((item) => {
     const record = getRecord(item)
     const quantity = Math.max(1, Number(record?.quantity ?? record?.item_quantity ?? 1))
-    const originalAmount = Number(record?.original_amount ?? record?.amount ?? 0)
-    const sellingAmount = Number(record?.amount ?? record?.original_amount ?? 0)
+    const unitPriceRaw = Number(record?.unit_price ?? record?.uint_price ?? record?.item_price ?? 0)
+    const sellingAmountRaw = Number(record?.amount ?? 0)
+    const originalAmountRaw = Number(record?.original_amount ?? 0)
+    // Fallback: nếu amount=0 (list API cũ không có), dùng unit_price * quantity
+    const sellingAmount = sellingAmountRaw > 0 ? sellingAmountRaw : (originalAmountRaw > 0 ? originalAmountRaw : unitPriceRaw * quantity)
+    const originalAmount = originalAmountRaw > 0 ? originalAmountRaw : sellingAmount
     const originalPrice = Math.round(originalAmount / quantity)
     const sellingPrice = Math.round(sellingAmount / quantity)
     const strikePrice = Math.max(0, originalPrice - sellingPrice)
@@ -249,7 +253,7 @@ function getBeDetailItems(order: Order) {
       originalPrice,
       strikePrice,
       sellingPrice,
-      total: Number(record?.amount ?? 0),
+      total: sellingAmount || sellingPrice * quantity,
       note: String(record?.note ?? '').trim() || undefined,
       addonLines,
     }
