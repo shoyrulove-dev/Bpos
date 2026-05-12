@@ -213,17 +213,24 @@ export async function tryBridgePrintOrder(orderId: string, type: LocalPrinterTyp
   return Boolean(payload.ok)
 }
 
-export async function printOrderWithFallback(orderId: string, type: LocalPrinterType, options?: { autoprint?: boolean; allowBrowserFallback?: boolean }) {
+export async function printOrderWithFallback(orderId: string, type: LocalPrinterType, options?: { autoprint?: boolean; allowBrowserFallback?: boolean; alwaysShowPopup?: boolean }) {
+  let bridgePrinted = false
   if (isBridgePrintingEnabled(type)) {
     try {
-      const printed = await tryBridgePrintOrder(orderId, type)
-      if (printed) return true
+      bridgePrinted = await tryBridgePrintOrder(orderId, type)
     } catch {
       // Fall back to browser print below.
     }
   }
 
-  if (options?.allowBrowserFallback === false) return false
-  openFallbackPrintWindow(orderId, type, { autoprint: options?.autoprint })
+  if (!bridgePrinted) {
+    if (options?.allowBrowserFallback === false) return false
+    // Bridge failed/disabled: open popup with autoprint so OS dialog fires
+    openFallbackPrintWindow(orderId, type, { autoprint: options?.autoprint })
+  } else if (options?.alwaysShowPopup !== false) {
+    // Bridge succeeded: open popup in view-only mode (no autoprint) so user can see the rendered template
+    openFallbackPrintWindow(orderId, type, { autoprint: false })
+  }
+
   return true
 }

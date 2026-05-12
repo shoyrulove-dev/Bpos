@@ -28,6 +28,8 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
   const [templateName, setTemplateName] = useState<string>('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [bridgePrinting, setBridgePrinting] = useState(false)
+  const [bridgeStatus, setBridgeStatus] = useState<'idle' | 'ok' | 'error'>('idle')
   const templateType = getTemplateTypeForPaperSize(paperSize)
 
   useEffect(() => {
@@ -172,6 +174,32 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
 
   return (
     <ReceiptShell paperSize={paperSize}>
+      <div className="receipt-action-bar">
+        <button
+          type="button"
+          className="receipt-action-btn"
+          disabled={bridgePrinting}
+          onClick={() => {
+            if (!order) return
+            setBridgePrinting(true)
+            setBridgeStatus('idle')
+            fetch(`http://127.0.0.1:3846/print-order`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: templateType, orderId: order._id }),
+            })
+              .then((r) => r.json())
+              .then((d: { ok?: boolean }) => setBridgeStatus(d.ok ? 'ok' : 'error'))
+              .catch(() => setBridgeStatus('error'))
+              .finally(() => setBridgePrinting(false))
+          }}
+        >
+          {bridgePrinting ? 'Đang in...' : bridgeStatus === 'ok' ? '✓ Đã in LAN' : bridgeStatus === 'error' ? '✗ Lỗi máy in' : '🖨 In qua máy in LAN'}
+        </button>
+        <button type="button" className="receipt-action-btn" onClick={() => window.print()}>
+          🖨 In ra giấy
+        </button>
+      </div>
       <div className="receipt-template-badge">
         {templateName ? `Mẫu: ${templateName}` : 'Mẫu mặc định (chưa có mẫu active)'}
       </div>
@@ -362,6 +390,45 @@ function ReceiptShell({ children, paperSize }: { children: ReactNode; paperSize:
           .receipt-template-badge {
             display: none;
           }
+          .receipt-action-bar {
+            display: none;
+          }
+        }
+
+        .receipt-action-bar {
+          position: fixed;
+          bottom: 12px;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          gap: 8px;
+          z-index: 9999;
+          background: rgba(255,255,255,0.95);
+          border: 1px solid #ccc;
+          border-radius: 10px;
+          padding: 6px 10px;
+          box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+        }
+
+        .receipt-action-btn {
+          font-family: sans-serif;
+          font-size: 13px;
+          font-weight: 600;
+          padding: 6px 14px;
+          border-radius: 7px;
+          border: 1px solid #999;
+          background: #f5f5f5;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .receipt-action-btn:hover {
+          background: #e8e8e8;
+        }
+
+        .receipt-action-btn:disabled {
+          opacity: 0.6;
+          cursor: default;
         }
 
         .receipt-template-badge {

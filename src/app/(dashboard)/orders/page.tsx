@@ -8,7 +8,7 @@ import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { getActualReceived, getDisplayCustomerPhone, getDisplayDriverPhone } from '@/lib/order-financials'
-import { printOrderWithFallback, openFallbackPrintWindow } from '@/lib/local-printer'
+import { printOrderWithFallback } from '@/lib/local-printer'
 import { formatDateInput } from '@/lib/date-range'
 import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '@/lib/utils'
 import type { Order } from '@/types'
@@ -272,7 +272,7 @@ export default function OrdersPage() {
                   <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2.5">
                     <Link href={`/orders/${order._id}`} className="inline-flex items-center gap-2 rounded-full bg-[#20232A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-black">Chi tiết</Link>
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => openFallbackPrintWindow(order._id, 'receipt', { autoprint: true })} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In Đơn</button>
+                      <button type="button" onClick={() => void printOrderWithFallback(order._id, 'receipt', { autoprint: true })} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In Đơn</button>
                       <button type="button" onClick={() => void printOrderWithFallback(order._id, 'label')} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In phiếu tem</button>
 
                     </div>
