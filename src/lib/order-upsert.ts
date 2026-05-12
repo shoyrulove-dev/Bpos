@@ -8,6 +8,8 @@ type IntegrationRef = {
   hubId?: string
 }
 
+const FINALIZED_ORDER_STATUSES = new Set(['completed', 'cancelled'])
+
 function hasText(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0
 }
@@ -115,6 +117,62 @@ function mergeDriverInfoPreservingDetail(
 
 function hasItems(items: unknown) {
   return Array.isArray(items) && items.length > 0
+}
+
+function getRecord(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+}
+
+function hasDetailedItems(items: unknown) {
+  if (!Array.isArray(items) || items.length === 0) return false
+
+  return items.some((item) => {
+    const record = getRecord(item)
+    if (!record) return false
+
+    return Boolean(
+      (typeof record.note === 'string' && record.note.trim())
+      || (Array.isArray(record.addons) && record.addons.length)
+      || (Array.isArray(record.options) && record.options.length)
+      || (Array.isArray(record.modifiers) && record.modifiers.length)
+      || Number(record.price ?? 0) > 0
+      || Number(record.total ?? 0) > 0
+    )
+  })
+}
+
+function getComparableItemsSignature(items: unknown) {
+  if (!Array.isArray(items) || items.length === 0) return ''
+
+  return JSON.stringify(items.map((item) => {
+    const record = getRecord(item)
+    if (!record) return item
+
+    return {
+      name: toTrimmedText(record.name) ?? '',
+      quantity: Number(record.quantity ?? 0),
+      price: Number(record.price ?? 0),
+      total: Number(record.total ?? 0),
+      note: toTrimmedText(record.note) ?? '',
+      addons: Array.isArray(record.addons) ? record.addons.length : 0,
+      options: Array.isArray(record.options) ? record.options.length : 0,
+      modifiers: Array.isArray(record.modifiers) ? record.modifiers.length : 0,
+    }
+  }))
+}
+
+function numbersDiffer(left: unknown, right: unknown) {
+  return Number(left ?? 0) !== Number(right ?? 0)
+}
+
+function hasGrabUtensilInfo(rawPayload: unknown) {
+  const raw = getRecord(rawPayload)
+  if (!raw) return false
+  if ('needCutlery' in raw) return true
+  const itemInfo = getRecord(raw.itemInfo)
+  return Boolean(itemInfo && 'needCutlery' in itemInfo)
 }
 
 function pickNumber(incoming: unknown, existing: unknown, fallback = 0) {
@@ -259,6 +317,53 @@ function extractCancellationDate(normalized: NormalizedOrder) {
     parseDateValue(normalized.placedAt) ??
     new Date()
   )
+}
+
+export function hasMeaningfulFinalizedOrderChange(existing: Partial<NormalizedOrder> | Record<string, unknown> | null | undefined, incoming: NormalizedOrder) {
+  if (!existing) return true
+
+  const existingDriverInfo = getRecord(existing.driverInfo)
+  const existingRawPayload = getRecord(existing.rawPayload)
+  const incomingRawPayload = getRecord(incoming.rawPayload)
+
+  if (!hasMeaningfulPhone(existing.customerPhone) && hasMeaningfulPhone(incoming.customerPhone)) return true
+  if (!hasMeaningfulPhone(existingDriverInfo?.phone) && hasMeaningfulPhone(incoming.driverInfo?.phone)) return true
+
+  if (!hasDetailedItems(existing.items) && hasDetailedItems(incoming.items)) return true
+  if (hasItems(incoming.items) && getComparableItemsSignature(existing.items) !== getComparableItemsSignature(incoming.items)) return true
+
+  if (numbersDiffer(existing.subtotal, incoming.subtotal)) return true
+  if (numbersDiffer(existing.discount, incoming.discount)) return true
+  if (numbersDiffer(existing.total, incoming.total)) return true
+  if (numbersDiffer(existing.platformFee, incoming.platformFee)) return true
+
+  const existingPaymentMethod = toTrimmedText(existing.paymentMethod)
+  const incomingPaymentMethod = toTrimmedText(incoming.paymentMethod)
+  if (incomingPaymentMethod && existingPaymentMethod !== incomingPaymentMethod) return true
+
+  const existingDeliveredAt = parseDateValue(existing.deliveredAt)
+  const incomingDeliveredAt = parseDateValue(incoming.deliveredAt)
+    ?? parseDateValue(incomingRawPayload?.deliveredAt)
+    ?? parseDateValue(incomingRawPayload?.completedAt)
+  if (incomingDeliveredAt && existingDeliveredAt?.getTime() !== incomingDeliveredAt.getTime()) return true
+
+  const existingCancelReason = toTrimmedText(existing.cancelReason ?? existingRawPayload?.cancelReason ?? existingRawPayload?.cancellationReason)
+  const incomingCancelReason = toTrimmedText(incoming.cancelReason ?? incomingRawPayload?.cancelReason ?? incomingRawPayload?.cancellationReason)
+  if (incomingCancelReason && existingCancelReason !== incomingCancelReason) return true
+
+  if (!hasGrabUtensilInfo(existingRawPayload) && hasGrabUtensilInfo(incoming.rawPayload)) return true
+
+  return false
+}
+
+export function shouldSkipFinalizedOrderSync(existing: Partial<NormalizedOrder> | Record<string, unknown> | null | undefined, incoming: NormalizedOrder) {
+  const existingStatus = String(existing?.status ?? '').trim().toLowerCase()
+  const incomingStatus = String(incoming.orderStatus ?? '').trim().toLowerCase()
+
+  if (!FINALIZED_ORDER_STATUSES.has(existingStatus)) return false
+  if (existingStatus !== incomingStatus) return false
+
+  return !hasMeaningfulFinalizedOrderChange(existing, incoming)
 }
 
 function extractDeliveredDate(normalized: NormalizedOrder) {

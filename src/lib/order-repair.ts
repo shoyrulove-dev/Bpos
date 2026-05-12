@@ -2,7 +2,7 @@ import { decryptJSON } from '@/lib/crypto'
 import { hasBeCancelSignal } from '@/lib/be-order-status'
 import { calcCustomerTier, upsertCustomerProfile } from '@/lib/customer-upsert'
 import { getAdapter } from '@/integrations/registry'
-import { buildOrderUpsert, getComparableDriverName, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { buildOrderUpsert, getComparableDriverName, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
 import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
 import { buildSessionStoreId } from '@/lib/realtime-order-sync'
 import { normalizeCompactPhone } from '@/lib/phone'
@@ -161,6 +161,7 @@ async function upsertHistoricalOrders(days: number, providers: string[], targetE
     fetched: 0,
     updated: 0,
     upserted: 0,
+    skipped: 0,
     failed: 0,
   }
 
@@ -230,6 +231,8 @@ async function upsertHistoricalOrders(days: number, providers: string[], targetE
         existingOrders.map((order) => [String(order.externalOrderId ?? ''), order])
       )
 
+      let skipped = 0
+
       for (const normalized of orders) {
         if (!normalized.externalOrderId) continue
 
@@ -241,6 +244,11 @@ async function upsertHistoricalOrders(days: number, providers: string[], targetE
         const existingDbStatus = (existingOrdersByExternalId.get(normalized.externalOrderId) as { status?: string } | undefined)?.status
         if (existingDbStatus === 'cancelled' && mergedNormalized.orderStatus === 'completed') {
           mergedNormalized.orderStatus = 'cancelled'
+        }
+
+        if (shouldSkipFinalizedOrderSync(existingOrdersByExternalId.get(normalized.externalOrderId) as Record<string, unknown> | undefined, mergedNormalized)) {
+          skipped += 1
+          continue
         }
 
         const result = await OrderModel.findOneAndUpdate(
@@ -255,6 +263,7 @@ async function upsertHistoricalOrders(days: number, providers: string[], targetE
 
       summary.integrations += 1
       summary.fetched += orders.length
+      summary.skipped += skipped
     } catch {
       summary.failed += 1
     }

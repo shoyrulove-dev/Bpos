@@ -8,7 +8,7 @@ import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/aut
 import { requestAutomationLogin } from '@/lib/automation-login'
 import { upsertCustomerProfile } from '@/lib/customer-upsert'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, getComparableDriverName, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { buildOrderUpsert, getComparableDriverName, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
 import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone } from '@/lib/order-financials'
 import DriverModel from '@/models/Driver'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeOrdersByExternalOrderId, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
     .select('+credentials +sessionData +loginPassword')
     .lean()
 
-  const results: Array<{ id: string; provider: string; upserted: number; updated: number; error?: string }> = []
+  const results: Array<{ id: string; provider: string; upserted: number; updated: number; skipped?: number; error?: string }> = []
 
   for (const raw of integrations) {
     const intg = raw as unknown as {
@@ -144,6 +144,7 @@ export async function GET(req: NextRequest) {
     const startedAt = Date.now()
     let upserted = 0
     let updated = 0
+    let skipped = 0
     let orders: NormalizedOrder[] = []
 
     try {
@@ -281,6 +282,11 @@ export async function GET(req: NextRequest) {
             mergedNormalized.orderStatus = 'cancelled'
           }
 
+          if (shouldSkipFinalizedOrderSync(existingDoc as Record<string, unknown> | undefined, mergedNormalized)) {
+            skipped += 1
+            continue
+          }
+
           const result = await OrderModel.findOneAndUpdate(
             { source: mergedNormalized.source, externalOrderId: mergedNormalized.externalOrderId },
             buildOrderUpsert(intg, mergedNormalized),
@@ -384,12 +390,12 @@ export async function GET(req: NextRequest) {
       await SyncLogModel.create({
         type:    'order',
         status:  'success',
-        content: `[cron][${intg.provider}] +${upserted} mới, ${updated} cập nhật (${Date.now() - startedAt}ms)`,
+        content: `[cron][${intg.provider}] +${upserted} mới, ${updated} cập nhật, ${skipped} bỏ qua (${Date.now() - startedAt}ms)`,
         source:  intg.provider,
         brandId: intg.brandId,
       })
 
-      results.push({ id: String(intg._id), provider: intg.provider, upserted, updated })
+      results.push({ id: String(intg._id), provider: intg.provider, upserted, updated, skipped })
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e)
       await IntegrationModel.findByIdAndUpdate(intg._id, {
@@ -397,7 +403,7 @@ export async function GET(req: NextRequest) {
         syncError:  errMsg,
         lastSyncAt: new Date(),
       })
-      results.push({ id: String(intg._id), provider: intg.provider, upserted: 0, updated: 0, error: errMsg })
+      results.push({ id: String(intg._id), provider: intg.provider, upserted: 0, updated: 0, skipped: 0, error: errMsg })
     }
   }
 

@@ -10,7 +10,7 @@ import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/aut
 import { requestAutomationLogin } from '@/lib/automation-login'
 import { upsertCustomerProfile } from '@/lib/customer-upsert'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, getComparableDriverName, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { buildOrderUpsert, getComparableDriverName, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
 import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone } from '@/lib/order-financials'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeOrdersByExternalOrderId, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
 import { buildSessionFailureUpdate, buildSessionSuccessUpdate } from '@/lib/session-health'
@@ -131,6 +131,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const startedAt = Date.now()
   let upserted = 0
   let updated = 0
+  let skipped = 0
   const errors: string[] = []
   let orders: NormalizedOrder[] = []
 
@@ -267,6 +268,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           mergedNormalized.orderStatus = 'cancelled'
         }
 
+        if (shouldSkipFinalizedOrderSync(existingOrdersByExternalId.get(normalized.externalOrderId) as Record<string, unknown> | undefined, mergedNormalized)) {
+          skipped += 1
+          continue
+        }
+
         const result = await OrderModel.findOneAndUpdate(
           { source: mergedNormalized.source, externalOrderId: mergedNormalized.externalOrderId },
           buildOrderUpsert(intg, mergedNormalized),
@@ -371,7 +377,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     await SyncLogModel.create({
       type:    'order',
       status:  errors.length === 0 ? 'success' : 'failed',
-      content: `[${intg.provider}] Sync xong: +${upserted} mới, ${updated} cập nhật, ${errors.length} lỗi (${durationMs}ms)`,
+      content: `[${intg.provider}] Sync xong: +${upserted} mới, ${updated} cập nhật, ${skipped} bỏ qua, ${errors.length} lỗi (${durationMs}ms)`,
       source:  intg.provider,
       brandId: intg.brandId,
     })
@@ -380,6 +386,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       ok:        true,
       upserted,
       updated,
+      skipped,
       errors:    errors.slice(0, 10),
       durationMs,
     })
