@@ -324,6 +324,7 @@ function PlatformAccountsSection() {
 const SCRAPER_CONTROL = 'http://127.0.0.1:3846'
 
 function PrinterSection() {
+  const [refreshingConfig, setRefreshingConfig] = useState(false)
   const [checking, setChecking]     = useState(false)
   const [printing,  setPrinting]    = useState(false)
   const [savingConfig, setSavingConfig] = useState(false)
@@ -333,29 +334,52 @@ function PrinterSection() {
   const [printerStatus, setPrinterStatus] = useState<'ok' | 'offline' | 'unknown'>('unknown')
   const [autoDiscover, setAutoDiscover] = useState(true)
   const [discoveredPrinters, setDiscoveredPrinters] = useState<Array<{ ip: string; port: number }>>([])
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
+
+  const loadPrinterConfig = useCallback(async (options?: { showResult?: boolean }) => {
+    const showResult = options?.showResult === true
+    setRefreshingConfig(true)
+    if (showResult) setResult(null)
+
+    try {
+      const response = await fetch(`${SCRAPER_CONTROL}/printer-config`, { signal: AbortSignal.timeout(8000) })
+      const data = await response.json()
+      if (data?.ip) setPrinterIp(String(data.ip))
+      if (data?.port) setPrinterPort(String(data.port))
+      if (data?.status) setPrinterStatus(data.status)
+      setAutoDiscover(data?.autoDiscover !== false)
+      setDiscoveredPrinters(Array.isArray(data?.discovered) ? data.discovered : [])
+      setLastSyncedAt(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+      if (showResult) {
+        setResult({
+          ok: true,
+          message: `Đã đồng bộ cấu hình từ scraper: ${String(data?.ip ?? printerIp)}:${String(data?.port ?? printerPort)}`,
+        })
+      }
+    } catch (e) {
+      setPrinterStatus('unknown')
+      if (showResult) {
+        setResult({ ok: false, message: `Không đọc được cấu hình máy in từ scraper: ${(e as Error).message}` })
+      }
+    } finally {
+      setRefreshingConfig(false)
+    }
+  }, [printerIp, printerPort])
 
   useEffect(() => {
     let cancelled = false
 
-    const loadPrinterConfig = async () => {
-      try {
-        const response = await fetch(`${SCRAPER_CONTROL}/printer-config`, { signal: AbortSignal.timeout(8000) })
-        const data = await response.json()
-        if (cancelled) return
-        if (data?.ip) setPrinterIp(String(data.ip))
-        if (data?.port) setPrinterPort(String(data.port))
-        if (data?.status) setPrinterStatus(data.status)
-        setAutoDiscover(data?.autoDiscover !== false)
-        setDiscoveredPrinters(Array.isArray(data?.discovered) ? data.discovered : [])
-      } catch {
-        if (!cancelled) setPrinterStatus('unknown')
-      }
-    }
-
     void loadPrinterConfig()
-    return () => { cancelled = true }
-  }, [])
+    const intervalId = window.setInterval(() => {
+      if (!cancelled) void loadPrinterConfig()
+    }, 15000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [loadPrinterConfig])
 
   const check = async () => {
     setChecking(true); setResult(null)
@@ -459,11 +483,16 @@ function PrinterSection() {
           Trạng thái: {statusLabel}
         </span>
         <span className="text-xs text-gray-500">
-          Cấu hình hiện tại: {printerIp}:{printerPort}
+          Scraper đang dùng: {printerIp}:{printerPort}
         </span>
         <span className="text-xs text-gray-500">
           Auto-find: {autoDiscover ? 'Bật' : 'Tắt'}
         </span>
+        {lastSyncedAt && (
+          <span className="text-xs text-gray-500">
+            Đồng bộ lúc: {lastSyncedAt}
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -478,6 +507,10 @@ function PrinterSection() {
       </div>
 
       <div className="flex flex-wrap gap-2">
+        <button onClick={() => void loadPrinterConfig({ showResult: true })} disabled={refreshingConfig || checking || printing || savingConfig || discovering} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
+          {refreshingConfig ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          Đồng bộ từ scraper
+        </button>
         <button onClick={discoverPrinters} disabled={checking || printing || savingConfig || discovering} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
           {discovering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
           Tự tìm máy in
@@ -488,7 +521,7 @@ function PrinterSection() {
         </button>
         <button onClick={testPrint} disabled={checking || printing || savingConfig || discovering} className="btn-outline flex items-center gap-1.5 disabled:opacity-50">
           {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="text-base leading-none">🖨️</span>}
-          In thử
+          In thử hóa đơn
         </button>
         <button onClick={updatePrinterEnv} disabled={checking || printing || savingConfig || discovering} className="btn-ghost flex items-center gap-1.5 text-sm disabled:opacity-50">
           {savingConfig ? <Loader2 className="w-4 h-4 animate-spin" /> : <Settings className="w-4 h-4" />} {savingConfig ? 'Đang lưu...' : 'Cập nhật IP/Port'}
