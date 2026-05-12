@@ -547,6 +547,119 @@ export class GrabAdapter implements PlatformAdapter {
       .trim()
   }
 
+  private normalizeGrabPortalStructuredText(html: string) {
+    return this.decodeHtmlEntities(html)
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(?:p|div|section|article|li|tr|td|th|h[1-6]|ul|ol)>/gi, '\n')
+      .replace(/<(?:p|div|section|article|li|tr|td|th|h[1-6]|ul|ol)[^>]*>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\r/g, '')
+      .split('\n')
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  private extractGrabPortalItems(segment: string): Record<string, unknown>[] {
+    const lines = segment
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+    const items: Record<string, unknown>[] = []
+    let current: { name: string; quantity?: number; price?: number; total?: number; note?: string } | null = null
+
+    const pushCurrent = () => {
+      if (!current?.name) return
+
+      const quantity = Math.max(1, Number(current.quantity ?? 1) || 1)
+      const price = Number(current.price ?? 0)
+      const total = Number(current.total ?? (price > 0 ? price * quantity : 0))
+      const item: Record<string, unknown> = {
+        name: current.name,
+        quantity,
+      }
+
+      if (price > 0) item.price = price
+      if (total > 0) item.total = total
+      if (current.note) item.note = current.note
+      items.push(item)
+      current = null
+    }
+
+    for (const line of lines) {
+      const compactLine = line.replace(/\s+/g, ' ').trim()
+      const lowerLine = compactLine.toLowerCase()
+      if (!compactLine) continue
+
+      if (/^(?:sản phẩm|chi tiết đơn hàng|danh sách sản phẩm|tóm tắt đơn hàng|khách hàng|tài xế|mã đặt hàng|thanh toán|tài chính)$/i.test(compactLine)) {
+        continue
+      }
+
+      const quantityPriceMatch = compactLine.match(/(?:^|\s)(\d+)\s*(?:x|×)\s*([\d.,]+)\s*(?:₫|đ|vnd)?/i)
+        ?? compactLine.match(/([\d.,]+)\s*(?:₫|đ|vnd)\s*(?:x|×)\s*(\d+)/i)
+      if (current && quantityPriceMatch) {
+        if (quantityPriceMatch[2] && compactLine.indexOf(quantityPriceMatch[2]) > compactLine.indexOf(quantityPriceMatch[1])) {
+          current.quantity = Number(quantityPriceMatch[1]) || current.quantity
+          current.price = this.parseGrabPortalAmount(quantityPriceMatch[2]) ?? current.price
+        } else {
+          current.price = this.parseGrabPortalAmount(quantityPriceMatch[1]) ?? current.price
+          current.quantity = Number(quantityPriceMatch[2]) || current.quantity
+        }
+        const quantity = Math.max(1, Number(current.quantity ?? 1) || 1)
+        if (typeof current.price === 'number' && current.price > 0) current.total = current.price * quantity
+        continue
+      }
+
+      if (current && /^x\s*\d+$/i.test(compactLine)) {
+        current.quantity = Number(compactLine.replace(/\D/g, '')) || current.quantity
+        continue
+      }
+
+      if (current && /^\d+$/.test(compactLine) && typeof current.quantity !== 'number') {
+        current.quantity = Number(compactLine) || current.quantity
+        continue
+      }
+
+      const amount = this.parseGrabPortalAmount(compactLine)
+      if (current && typeof amount === 'number' && (/(?:₫|đ|vnd)/i.test(compactLine) || /\d[.,]\d{3}/.test(compactLine))) {
+        if (typeof current.price !== 'number' || current.price <= 0) current.price = amount
+        const quantity = Math.max(1, Number(current.quantity ?? 1) || 1)
+        current.total = current.price * quantity
+        continue
+      }
+
+      const looksLikeName = /[A-Za-zÀ-ỹ]/.test(compactLine)
+        && !this.extractGrabPortalPhone(compactLine)
+        && !/^(?:ghi chú|lưu ý|không cần dụng cụ|cần dụng cụ)/i.test(lowerLine)
+
+      if (!looksLikeName) continue
+
+      if (!current) {
+        current = { name: compactLine }
+        continue
+      }
+
+      const hasStructuredDetail = typeof current.quantity === 'number'
+        || typeof current.price === 'number'
+        || typeof current.total === 'number'
+        || Boolean(current.note)
+
+      if (hasStructuredDetail) {
+        pushCurrent()
+        current = { name: compactLine }
+        continue
+      }
+
+      current.note = current.note ? `${current.note} | ${compactLine}` : compactLine
+    }
+
+    pushCurrent()
+    return items
+  }
+
   private escapeRegExp(value: string) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   }
@@ -637,6 +750,25 @@ export class GrabAdapter implements PlatformAdapter {
   }
 
   private extractGrabPortalName(segment: string, phone?: string) {
+    const lines = segment
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+    for (const line of lines) {
+      const candidate = (phone ? line.replace(phone, ' ') : line)
+        .replace(/^(?:[:：-]|sdt|sđt|điện thoại|phone)\s*/i, '')
+        .replace(/[📞☎]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+      if (!candidate) continue
+      if (/^(?:khách hàng|tài xế|lưu ý từ khách hàng|ghi chú|mã đặt hàng)$/i.test(candidate)) continue
+      if (/(?:đang giao|dang giao|đang đến lấy|dang den lay|đang lấy hàng|dang lay hang|đã giao|da giao|đã hoàn tất|da hoan tat|hoàn tất|hoan tat|đã hủy|da huy|đã huỷ)/i.test(candidate)) continue
+      if (/\d/.test(candidate)) continue
+      return candidate.slice(0, 80).trim()
+    }
+
     const withoutPhone = phone ? segment.replace(phone, ' ') : segment
     const cleaned = withoutPhone
       .replace(/^(?:[:：-]|sdt|sđt|điện thoại|phone)\s*/i, '')
@@ -653,21 +785,34 @@ export class GrabAdapter implements PlatformAdapter {
 
   private extractGrabPortalOrderFromText(html: string, orderId: string): Record<string, unknown> | null {
     const text = this.normalizeGrabPortalText(html)
-    if (!text) return null
+    const structuredText = this.normalizeGrabPortalStructuredText(html)
+    if (!text && !structuredText) return null
 
     const NOTE_LABELS = ['Lưu ý từ khách hàng', 'Ghi chú từ khách hàng', 'Yêu cầu từ khách', 'Ghi chú', 'Yêu cầu đặc biệt']
-    const ITEM_LABELS = ['Sản phẩm', 'Tóm tắt đơn hàng', 'Chi tiết đơn hàng', 'Danh sách sản phẩm']
-    const ALL_NEXT_LABELS = ['Tài xế', ...NOTE_LABELS, ...ITEM_LABELS, 'Mã đặt hàng']
+    const ITEM_SECTION_LABELS = ['Sản phẩm', 'Chi tiết đơn hàng', 'Danh sách sản phẩm']
+    const ITEM_STOP_LABELS = ['Tóm tắt đơn hàng', 'Tài chính', 'Thanh toán', 'Phương thức thanh toán', 'Khách hàng', 'Tài xế', 'Mã đặt hàng']
+    const ALL_NEXT_LABELS = ['Tài xế', ...NOTE_LABELS, ...ITEM_SECTION_LABELS, 'Tóm tắt đơn hàng', 'Mã đặt hàng']
 
-    const customerSegment = this.extractGrabPortalSegment(text, 'Khách hàng', ALL_NEXT_LABELS)
-    const driverSegment = this.extractGrabPortalSegment(text, 'Tài xế', ['Mã đặt hàng', 'Khách hàng', ...NOTE_LABELS, ...ITEM_LABELS])
-    const statusSegment = this.extractGrabPortalSegment(text, 'Tài xế', ['Mã đặt hàng', 'Khách hàng'])
+    const segmentSource = structuredText || text
+
+    const customerSegment = this.extractGrabPortalSegment(segmentSource, 'Khách hàng', ALL_NEXT_LABELS)
+    const driverSegment = this.extractGrabPortalSegment(segmentSource, 'Tài xế', ['Mã đặt hàng', 'Khách hàng', ...NOTE_LABELS, ...ITEM_SECTION_LABELS, 'Tóm tắt đơn hàng'])
+    const statusSegment = this.extractGrabPortalSegment(segmentSource, 'Tài xế', ['Mã đặt hàng', 'Khách hàng'])
 
     // Extract "Lưu ý từ khách hàng" section
     let noteSegment = ''
     for (const label of NOTE_LABELS) {
-      const seg = this.extractGrabPortalSegment(text, label, ITEM_LABELS)
+      const seg = this.extractGrabPortalSegment(segmentSource, label, [...ITEM_SECTION_LABELS, 'Tóm tắt đơn hàng', 'Mã đặt hàng'])
       if (seg.trim()) { noteSegment = seg.trim(); break }
+    }
+
+    let itemSegment = ''
+    for (const label of ITEM_SECTION_LABELS) {
+      const seg = this.extractGrabPortalSegment(segmentSource, label, ITEM_STOP_LABELS)
+      if (seg.trim()) {
+        itemSegment = seg.trim()
+        break
+      }
     }
 
     const rawCustomerPhone = this.extractGrabPortalPhone(customerSegment)
@@ -676,6 +821,7 @@ export class GrabAdapter implements PlatformAdapter {
     const driverPhone = this.normalizeGrabPortalPhone(rawDriverPhone)
     const customerName = this.extractGrabPortalName(customerSegment, rawCustomerPhone)
     const driverName = this.extractGrabPortalName(driverSegment, rawDriverPhone)
+    const parsedItems = this.extractGrabPortalItems(itemSegment)
     const normalizedStatusText = statusSegment.toLowerCase()
     const inferredDeliveryStatus = normalizedStatusText.includes('đang giao') || normalizedStatusText.includes('dang giao')
       ? 'IN_DELIVERY'
@@ -695,6 +841,7 @@ export class GrabAdapter implements PlatformAdapter {
 
     const hasFinancialBreakdown = Object.values(financialBreakdown).some((value) => typeof value === 'number')
     const hasContacts = Boolean(customerPhone || driverPhone || customerName || driverName)
+  const hasItems = parsedItems.length > 0
 
     // Parse customer note: separate the cutlery hint from the free-text note
     let parsedNote = noteSegment
@@ -718,7 +865,9 @@ export class GrabAdapter implements PlatformAdapter {
       cutleryHint = 'Có'
     }
 
-    if (!hasFinancialBreakdown && !hasContacts && !parsedNote && !cutleryHint) return null
+    const needCutlery = cutleryHint === undefined ? undefined : cutleryHint === 'Có'
+
+    if (!hasFinancialBreakdown && !hasContacts && !hasItems && !parsedNote && !cutleryHint) return null
 
     const merged: Record<string, unknown> = {
       orderID: orderId,
@@ -726,20 +875,26 @@ export class GrabAdapter implements PlatformAdapter {
       financialBreakdown,
       ...(inferredDeliveryStatus ? { deliveryStatus: inferredDeliveryStatus, orderStatus: inferredDeliveryStatus } : {}),
       ...(parsedNote ? { specialRequest: parsedNote, customerNote: parsedNote, note: parsedNote } : {}),
-      ...(cutleryHint !== undefined ? { cutlery: cutleryHint } : {}),
+      ...(cutleryHint !== undefined ? { cutlery: cutleryHint, needCutlery, utensilRequired: needCutlery } : {}),
+      ...(hasItems ? { items: parsedItems, itemInfo: { items: parsedItems, ...(needCutlery !== undefined ? { needCutlery } : {}) } } : {}),
     }
 
     if (hasContacts) {
-      merged.customer = {
+      const customer = {
         name: customerName ?? 'Khách hàng',
         phone: customerPhone ?? '',
         phoneNumber: customerPhone ?? '',
       }
-      merged.driver = {
+      const driver = {
         name: driverName ?? '',
         phone: driverPhone ?? '',
         phoneNumber: driverPhone ?? '',
       }
+      merged.customer = customer
+      merged.consumer = customer
+      merged.receiver = customer
+      merged.driver = driver
+      merged.delivery = { driver }
     }
 
     if (typeof financialBreakdown.merchandiseAmount === 'number') merged.subtotal = financialBreakdown.merchandiseAmount
