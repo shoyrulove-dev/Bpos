@@ -172,11 +172,9 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
 
   return (
     <ReceiptShell paperSize={paperSize}>
-      {!autoPrint && (
-        <div className="receipt-template-badge">
-          {templateName ? `Mẫu: ${templateName}` : 'Mẫu mặc định (chưa có mẫu active)'}
-        </div>
-      )}
+      <div className="receipt-template-badge">
+        {templateName ? `Mẫu: ${templateName}` : 'Mẫu mặc định (chưa có mẫu active)'}
+      </div>
       <div className="receipt-wrap receipt-template" dangerouslySetInnerHTML={{ __html: renderedTemplate }} />
     </ReceiptShell>
   )
