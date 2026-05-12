@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Edit, Eye, FileText, Plus, Printer, Sparkles, ToggleLeft, ToggleRight } from 'lucide-react'
 import { useBillTemplates, useCreateBillTemplate, useUpdateBillTemplate } from '@/hooks/use-data'
 import { loadOrderAlertSettings } from '@/lib/order-alerts'
-import { buildDemoPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, PRINT_TEMPLATE_VARIABLES, renderPrintTemplateHtml } from '@/lib/print-template'
+import { buildDemoPrintTemplateContext, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, PRINT_TEMPLATE_VARIABLES, renderPrintTemplateHtml } from '@/lib/print-template'
 import { cn } from '@/lib/utils'
 import type { BillSize, BillTemplate, BillType } from '@/types'
 
@@ -82,6 +82,8 @@ export default function BillTemplatesPage() {
   const [editTemplate, setEditTemplate] = useState<BillTemplate | null>(null)
   const [previewTemplate, setPreviewTemplate] = useState<BillTemplate | null>(null)
   const [form, setForm] = useState<TemplateFormState>(createFormState())
+  const [testOrderId, setTestOrderId] = useState('')
+  const [loadingTestOrder, setLoadingTestOrder] = useState(false)
   const [printerName, setPrinterName] = useState('')
   const [printerSize, setPrinterSize] = useState<BillSize>('80mm')
   const saving = createMutation.isPending || updateMutation.isPending
@@ -134,6 +136,33 @@ export default function BillTemplatesPage() {
   const toggleActive = (template: BillTemplate) => updateMutation.mutate({ id: template._id, isActive: !template.isActive })
 
   const insertVariable = (token: string) => setForm((current) => ({ ...current, templateContent: `${current.templateContent}${current.templateContent.endsWith('\n') || !current.templateContent ? '' : '\n'}${token}` }))
+
+  const openRealOrderPrintWindow = async (orderId: string, content: string, type: BillType, size: BillSize) => {
+    const id = orderId.trim()
+    if (!id) return
+    setLoadingTestOrder(true)
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(id)}`)
+      if (!res.ok) { alert('Không tìm thấy đơn. Kiểm tra lại ID đơn.'); return }
+      const order = await res.json() as import('@/types').Order
+      const templateType = type === 'label' ? 'label' : type === 'delivery' ? 'delivery' : getTemplateTypeForPaperSize(size)
+      const context = buildPrintTemplateContext(order, {
+        BillName: templateType === 'label' ? 'TEM IN BẾP' : templateType === 'delivery' ? 'PHIẾU GIAO HÀNG' : 'PHIẾU LÀM MÓN',
+      })
+      const html = renderPrintTemplateHtml(content, context, order.items ?? [])
+      const paperWidth = size === '58mm' ? '58mm' : size === 'A4' ? '210mm' : size === 'A5' ? '148mm' : '80mm'
+      const printWindow = window.open('', '_blank', 'width=520,height=760')
+      if (!printWindow) return
+      printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>In thử (đơn thật)</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap" rel="stylesheet"><style>
+    *{box-sizing:border-box}body{margin:0;background:#ebe7df;padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px;font-family:Arial,sans-serif}
+    .toolbar{display:flex;gap:10px}.toolbar button{border:0;border-radius:999px;padding:10px 18px;font-weight:700;cursor:pointer}.print{background:#111827;color:#fff}.close{background:#fff;color:#111827;border:1px solid #d1d5db}
+    .paper{width:${paperWidth};max-width:100%;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.16);padding:12px;font-family:'Noto Sans Mono','Courier New',monospace;font-size:12px;line-height:1.35;border-radius:10px}
+    .tpl-line{white-space:pre-wrap;word-break:break-word}.tpl-center{text-align:center}.tpl-strong{font-weight:800;letter-spacing:.04em}.tpl-divider{border-top:1px dashed #111;margin:6px 0}.tpl-indent{padding-left:12px}
+    @media print{body{background:#fff;padding:0}.toolbar{display:none}.paper{box-shadow:none;border-radius:0;padding:4mm}@page{size:${paperWidth};margin:4mm}}
+  </style></head><body><div class="toolbar"><button class="print" onclick="window.print()">In thử</button><button class="close" onclick="window.close()">Đóng</button></div><div class="paper">${html}</div></body></html>`)
+      printWindow.document.close()
+    } catch { alert('Lỗi khi tải đơn hàng.') } finally { setLoadingTestOrder(false) }
+  }
 
   const handleTypeChange = (nextType: BillType) => {
     const nextSize: BillSize = nextType === 'label' ? '58mm' : form.size === '58mm' ? '80mm' : form.size
@@ -296,9 +325,26 @@ export default function BillTemplatesPage() {
                     <p className="text-sm font-semibold text-gray-900">Preview live</p>
                     <p className="text-xs text-gray-500 mt-1">Đây là renderer thật đang được dùng cho preview và trang in.</p>
                   </div>
-                  <button onClick={() => openTemplatePrintWindow(form.templateContent, form.type, form.size)} className="btn-primary btn-sm gap-1.5 whitespace-nowrap">
-                    <Printer className="h-3.5 w-3.5" /> In thử
-                  </button>
+                  <div className="flex flex-col items-end gap-2">
+                    <button onClick={() => openTemplatePrintWindow(form.templateContent, form.type, form.size)} className="btn-primary btn-sm gap-1.5 whitespace-nowrap">
+                      <Printer className="h-3.5 w-3.5" /> In thử demo
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        className="input h-7 text-xs w-[160px] px-2"
+                        placeholder="ID đơn để in thật..."
+                        value={testOrderId}
+                        onChange={(e) => setTestOrderId(e.target.value)}
+                      />
+                      <button
+                        onClick={() => void openRealOrderPrintWindow(testOrderId, form.templateContent, form.type, form.size)}
+                        disabled={!testOrderId.trim() || loadingTestOrder}
+                        className="btn-outline btn-sm gap-1 whitespace-nowrap disabled:opacity-50"
+                      >
+                        <Printer className="h-3 w-3" /> {loadingTestOrder ? 'Đang tải...' : 'Đơn thật'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="rounded-[24px] border border-black/5 bg-white shadow-[0_20px_45px_rgba(15,23,42,0.10)] p-5">

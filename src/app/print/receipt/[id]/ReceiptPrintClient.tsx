@@ -177,6 +177,8 @@ function ReceiptShell({ children, paperSize }: { children: ReactNode; paperSize:
   return (
     <>
       <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap');
+
         @page {
           size: ${layout.pageSize};
           margin: 4mm;
@@ -202,7 +204,7 @@ function ReceiptShell({ children, paperSize }: { children: ReactNode; paperSize:
         }
 
         .receipt-template {
-          font-family: 'Courier New', monospace;
+          font-family: 'Noto Sans Mono', 'Courier New', monospace;
           font-size: 4.1mm;
           line-height: 1.32;
           white-space: normal;
