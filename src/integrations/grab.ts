@@ -229,6 +229,18 @@ function shouldExposeGrabDriverInfo(raw: Record<string, unknown>, orderStatus: O
     return true
   }
 
+  // If the raw payload already has driver phone data (e.g. from DOM extraction or XHR fallback),
+  // always expose — the phone was explicitly fetched and should not be suppressed by stage logic
+  const rawDelivery = raw.delivery && typeof raw.delivery === 'object' ? raw.delivery as Record<string, unknown> : {}
+  const rawDeliveryDriver = rawDelivery.driver && typeof rawDelivery.driver === 'object' ? rawDelivery.driver as Record<string, unknown> : {}
+  const rawDriver = raw.driver && typeof raw.driver === 'object' ? raw.driver as Record<string, unknown> : {}
+  const hasDriverPhone = Boolean(
+    rawDriver.phone || rawDriver.phoneNumber ||
+    rawDeliveryDriver.phone || rawDeliveryDriver.phoneNumber ||
+    raw.driverPhone || raw.driverPhoneNumber || raw.driver_phone || raw.driver_phone_no
+  )
+  if (hasDriverPhone) return true
+
   const pageStage = resolveGrabPortalStage(raw)
   if (pageStage === 'ready' || pageStage === 'history' || pageStage === 'completed' || pageStage === 'cancelled') {
     return true
