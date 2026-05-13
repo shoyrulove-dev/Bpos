@@ -52,12 +52,12 @@ export async function POST(req: NextRequest) {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 
   // Load all Grab + Be orders from the last N days
-  const orders = await OrderModel.find({
+  const orders = (await OrderModel.find({
     source: { $in: ['grab', 'be'] },
     placedAt: { $gte: cutoff },
   })
     .select('externalOrderId source paymentMethod rawPayload')
-    .lean() as {
+    .lean()) as unknown as {
       _id: unknown
       externalOrderId?: string
       source: string
