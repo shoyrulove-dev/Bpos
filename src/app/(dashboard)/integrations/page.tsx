@@ -321,6 +321,193 @@ function PlatformAccountsSection() {
   )
 }
 
+// ─── PauseStoreSection: tạm dừng / mở lại cửa hàng qua scraper ─────────────
+
+type StoreStatus = {
+  integrationId?: string
+  storeId?: string
+  label: string
+  source: 'grab' | 'be'
+  loggedIn: boolean
+  paused: boolean
+  pausedUntil?: string
+}
+
+function PauseStoreSection() {
+  const [stores, setStores] = useState<StoreStatus[]>([])
+  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState<string>('')
+  const [selectedDur, setSelectedDur] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState<Record<string, boolean>>({})
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/integrations/pause-store', { signal: AbortSignal.timeout(10_000) })
+      const data = await res.json() as { stores?: StoreStatus[] }
+      setStores(data.stores ?? [])
+      setStatus('Cập nhật ' + new Date().toLocaleTimeString('vi-VN'))
+    } catch {
+      setStatus('Không kết nối được scraper')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { void load() }, [])
+
+  const getKey = (s: StoreStatus) => s.integrationId ?? s.storeId ?? s.label
+  const getDur  = (key: string) => selectedDur[key] ?? '24h'
+
+  const doPause = async (store: StoreStatus) => {
+    const key = getKey(store)
+    setBusy(b => ({ ...b, [key]: true }))
+    setStatus('Đang tạm dừng ' + store.label + '...')
+    try {
+      const res = await fetch('/api/integrations/pause-store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ integrationId: store.integrationId, source: store.source, action: 'pause', duration: getDur(key) }),
+        signal: AbortSignal.timeout(30_000),
+      })
+      const data = await res.json() as { ok?: boolean; message?: string }
+      setStatus(data.message ?? (data.ok ? 'Đã gửi lệnh tạm dừng' : 'Lỗi'))
+      setTimeout(() => void load(), 4000)
+    } catch {
+      setStatus('Lỗi kết nối')
+    } finally {
+      setBusy(b => ({ ...b, [key]: false }))
+    }
+  }
+
+  const doResume = async (store: StoreStatus) => {
+    const key = getKey(store)
+    setBusy(b => ({ ...b, [key]: true }))
+    setStatus('Đang mở lại ' + store.label + '...')
+    try {
+      const res = await fetch('/api/integrations/pause-store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ integrationId: store.integrationId, source: store.source, action: 'resume' }),
+        signal: AbortSignal.timeout(30_000),
+      })
+      const data = await res.json() as { ok?: boolean; message?: string }
+      setStatus(data.message ?? (data.ok ? 'Đã gửi lệnh mở lại' : 'Lỗi'))
+      setTimeout(() => void load(), 4000)
+    } catch {
+      setStatus('Lỗi kết nối')
+    } finally {
+      setBusy(b => ({ ...b, [key]: false }))
+    }
+  }
+
+  return (
+    <div className="rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <div className="px-5 py-4 flex items-center justify-between gap-2 border-b border-gray-100 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">⏸</span>
+          <div>
+            <p className="font-semibold text-gray-900 text-sm">Tạm dừng / Mở lại cửa hàng</p>
+            <p className="text-xs text-gray-400 mt-0.5">Dừng nhận đơn trên Grab / Be qua scraper</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {status && <span className="text-xs text-gray-500">{status}</span>}
+          <button onClick={() => void load()} disabled={loading}
+            className="btn-outline flex items-center gap-1.5 disabled:opacity-50 text-sm py-1.5">
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Làm mới
+          </button>
+        </div>
+      </div>
+
+      <div className="p-5">
+        {stores.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">
+            {loading ? 'Đang tải...' : 'Chưa có cửa hàng nào online. Kiểm tra scraper đã chạy chưa.'}
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {stores.map(store => {
+              const key = getKey(store)
+              const isBusy = busy[key] ?? false
+              const dur = getDur(key)
+              const isGrab = store.source === 'grab'
+              const pausedUntil = store.pausedUntil
+                ? new Date(store.pausedUntil).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                : null
+              return (
+                <div key={key}
+                  className={cn(
+                    'rounded-2xl border p-4 flex flex-col gap-3',
+                    store.paused ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-white'
+                  )}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-gray-900 text-sm flex-1">{store.label}</span>
+                    <span className={cn(
+                      'rounded-full px-2.5 py-0.5 text-[11px] font-bold',
+                      isGrab ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-800'
+                    )}>
+                      {isGrab ? 'Grab' : 'Be'}
+                    </span>
+                    <span className={cn(
+                      'rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+                      store.paused ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
+                    )}>
+                      {store.paused
+                        ? (pausedUntil ? `⏸ đến ${pausedUntil}` : '⏸ Tạm dừng')
+                        : '▶ Hoạt động'}
+                    </span>
+                    {!store.loggedIn && (
+                      <span className="text-[11px] text-red-500">⚠ Offline</span>
+                    )}
+                  </div>
+
+                  {isGrab && !store.paused && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs text-gray-500">Dừng:</span>
+                      {(['30m', '1h', '24h'] as const).map(d => (
+                        <button
+                          key={d}
+                          onClick={() => setSelectedDur(p => ({ ...p, [key]: d }))}
+                          className={cn(
+                            'rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors',
+                            dur === d
+                              ? 'bg-red-500 text-white border-red-500'
+                              : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                          )}
+                        >
+                          {d === '30m' ? '30 phút' : d === '1h' ? '1 giờ' : '24 giờ'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => store.paused ? void doResume(store) : void doPause(store)}
+                    disabled={isBusy || !store.loggedIn}
+                    className={cn(
+                      'w-full rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50',
+                      store.paused
+                        ? 'bg-green-500 hover:bg-green-600 text-white'
+                        : 'bg-red-500 hover:bg-red-600 text-white'
+                    )}
+                  >
+                    {isBusy
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : store.paused ? '▶ Mở lại' : '⏸ Tạm dừng'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── PrinterSection: kiểm tra + in thử máy in nhiệt LAN ────────────────────
 const SCRAPER_CONTROL = 'http://127.0.0.1:3846'
 const SCRAPER_PANEL   = 'http://127.0.0.1:3845'
@@ -1467,6 +1654,9 @@ export default function IntegrationsPage() {
 
       {/* ═══ SECTION: Tài khoản đăng nhập sàn ═════════════════════════════ */}
       <PlatformAccountsSection />
+
+      {/* ═══ SECTION: Tạm dừng / Mở lại cửa hàng ═════════════════════════ */}
+      <PauseStoreSection />
 
       {/* ═══ MODAL: Quick Test ══════════════════════════════════════════════ */}
       {showQt && (
