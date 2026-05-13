@@ -910,7 +910,6 @@ export default function IntegrationsPage() {
   }, [deleteMutation])
 
   function renderIntegrationCard(integ: Integ) {
-    const prov = provInfo(integ.provider)
     const tr = testResults[integ._id]
     const sr = syncResults[integ._id]
     const isPendingSetup = integ.isActive === false
@@ -919,165 +918,107 @@ export default function IntegrationsPage() {
     const displayedSyncStatus = isExternalScraperManaged ? (integ.scraperSyncStatus ?? 'pending') : integ.syncStatus
     const displayedSyncAt = isExternalScraperManaged ? integ.scraperLastSyncAt : integ.lastSyncAt
 
+    const syncBadgeClass = isPendingSetup ? 'badge-gray' :
+      displayedSyncStatus === 'success' ? 'badge-green' :
+      displayedSyncStatus === 'error' ? 'badge-red' :
+      (displayedSyncStatus === 'syncing' || displayedSyncStatus === 'starting' || displayedSyncStatus === 'logging-in') ? 'badge-blue' : 'badge-gray'
+
+    const syncLabel = isPendingSetup ? 'Chờ cấu hình' :
+      isExternalScraperManaged
+        ? displayedSyncStatus === 'success' ? 'OK'
+        : displayedSyncStatus === 'error' ? 'Stale'
+        : displayedSyncStatus === 'starting' ? 'Khởi động'
+        : displayedSyncStatus === 'logging-in' ? 'Đang login'
+        : 'Chờ scraper'
+        : displayedSyncStatus === 'success' ? 'Sync OK'
+        : displayedSyncStatus === 'error' ? 'Lỗi sync'
+        : displayedSyncStatus === 'syncing' ? 'Đang sync…' : 'Chưa sync'
+
+    const sessionBadge = integ.loginMode === 'auto' ? (() => {
+      if (integ.provider === 'be') {
+        const cls = integ.sessionStatus === 'active' ? 'text-teal-600' : integ.sessionStatus === 'error' ? 'text-red-500' : 'text-gray-400'
+        const label = integ.sessionStatus === 'active' ? '⚡ Token OK' : integ.sessionStatus === 'error' ? `⚡ ${integ.sessionError ?? 'Lỗi token'}` : '⚡ Chưa token'
+        return <span className={cn('text-[11px]', cls)} title={integ.sessionStatus === 'active' && integ.sessionExpiresAt ? `Hết hạn ${new Date(integ.sessionExpiresAt).toLocaleDateString('vi-VN')}` : ''}>{label}</span>
+      }
+      if (integ.automationRunning) return <span className="text-[11px] text-blue-600"><Loader2 className="w-2.5 h-2.5 animate-spin inline mr-0.5" />Login…</span>
+      if (integ.sessionStatus === 'active') return <span className="text-[11px] text-green-600">● Active</span>
+      if (integ.sessionStatus === 'expired') return <span className="text-[11px] text-amber-600">● Hết hạn</span>
+      if (integ.sessionStatus === 'error') return <span className="text-[11px] text-red-500 truncate max-w-[120px]" title={integ.sessionError ?? ''}>● {integ.sessionError ?? 'Lỗi'}</span>
+      return <span className="text-[11px] text-gray-400">● Chờ login</span>
+    })() : null
+
+    const brandName = getBrandName(integ)
+    const hubName = getHubName(integ)
+    const meta = [brandName !== '—' ? brandName : '', hubName !== '—' ? hubName : '', integ.loginUsername ?? ''].filter(Boolean).join(' · ')
+
     return (
-      <div key={integ._id} className={cn('rounded-2xl border border-gray-200 bg-white p-4 flex flex-col gap-3 shadow-sm', integ.isActive === false && 'opacity-60')}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
-              <PlatformIcon source={integ.provider} size="lg" />
-            </div>
+      <div key={integ._id} className={cn('rounded-2xl border border-gray-200 bg-white p-3 flex flex-col gap-2 shadow-sm', isPendingSetup && 'opacity-60')}>
+        {/* Row 1: icon + name + meta + delete */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <PlatformIcon source={integ.provider} size="sm" />
             <div className="min-w-0">
-              <p className="mt-0 text-sm font-medium text-gray-900 truncate">
-                {integ.externalStoreName || integ.externalStoreId || 'Chưa cấu hình cửa hàng'}
+              <p className="text-sm font-semibold text-gray-900 truncate leading-tight">
+                {integ.externalStoreName || integ.externalStoreId || 'Chưa cấu hình'}
               </p>
-              <p className="text-xs text-gray-400 truncate">
-                {integ.loginUsername
-                  ? integ.loginUsername
-                  : integ.externalStoreId || 'Chưa có mã cửa hàng'}
-              </p>
+              {meta && <p className="text-[11px] text-gray-400 truncate">{meta}</p>}
             </div>
           </div>
-          <button
-            onClick={() => void handleDelete(integ._id)}
-            className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50 shrink-0"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
+          <button onClick={() => void handleDelete(integ._id)} className="btn-ghost p-1 text-red-400 hover:bg-red-50 hover:text-red-600 shrink-0 rounded-lg">
+            <Trash2 className="w-3 h-3" />
           </button>
         </div>
 
-        <div className="grid gap-1 text-sm text-gray-600">
-          <p><span className="font-medium">Thương hiệu:</span> {getBrandName(integ)}</p>
-          <p><span className="font-medium">Điểm bán:</span> {getHubName(integ)}</p>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn('badge badge-sm',
-              isPendingSetup ? 'badge-gray' :
-              displayedSyncStatus === 'success' ? 'badge-green' :
-              displayedSyncStatus === 'error' ? 'badge-red' :
-              displayedSyncStatus === 'syncing' || displayedSyncStatus === 'starting' || displayedSyncStatus === 'logging-in' ? 'badge-blue' : 'badge-gray')}>
-              {isPendingSetup ? 'Chờ cấu hình' :
-               isExternalScraperManaged
-                 ? displayedSyncStatus === 'success' ? 'Scraper OK'
-                 : displayedSyncStatus === 'error' ? 'Scraper stale'
-                 : displayedSyncStatus === 'starting' ? 'Scraper khởi động'
-                 : displayedSyncStatus === 'logging-in' ? 'Scraper đăng nhập'
-                 : 'Chờ scraper'
-                 : displayedSyncStatus === 'success' ? 'Đồng bộ OK'
-                 : displayedSyncStatus === 'error' ? 'Lỗi đồng bộ'
-                 : displayedSyncStatus === 'syncing' ? 'Đang sync…' : 'Chưa đồng bộ'}
-            </span>
-            {displayedSyncAt && (
-              <span className="text-xs text-gray-400" title={new Date(displayedSyncAt).toLocaleString('vi-VN')}>
-                {timeAgo(displayedSyncAt)}
-              </span>
-            )}
-          </div>
+        {/* Row 2: sync status + session */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className={cn('badge badge-sm', syncBadgeClass)}>{syncLabel}</span>
+          {displayedSyncAt && <span className="text-[11px] text-gray-400" title={new Date(displayedSyncAt).toLocaleString('vi-VN')}>{timeAgo(displayedSyncAt)}</span>}
+          {sessionBadge && <span className="text-gray-300">·</span>}
+          {sessionBadge}
           {isExternalScraperManaged && integ.scraperSyncMessage && (
-            <p className="text-xs text-sky-700">
-              {integ.scraperSyncMessage}
-            </p>
-          )}
-          {isExternalScraperManaged && integ.provider === 'be' && integ.appLastSyncAt && (
-            <p className="text-xs text-gray-400" title={new Date(integ.appLastSyncAt).toLocaleString('vi-VN')}>
-              API nền: {integ.appSyncStatus === 'success' ? 'OK' : integ.appSyncStatus === 'error' ? 'lỗi' : integ.appSyncStatus ?? 'n/a'} · {timeAgo(integ.appLastSyncAt)}
-            </p>
+            <span className="text-[11px] text-sky-600 truncate max-w-full">{integ.scraperSyncMessage}</span>
           )}
         </div>
 
-        {isPendingSetup && (
-          <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-            Account này đang được tạo chờ sẵn để nhập OTP hoặc cấu hình chính thức sau. Hiện chưa bật sync tự động.
-          </div>
-        )}
-
-        {integ.loginMode === 'auto' && integ.provider === 'be' && (
-          /* BE dùng API inject trực tiếp — không cần browser */
-          <div className={cn('flex items-center gap-1.5 text-xs rounded-lg px-2.5 py-1.5 border',
-            integ.sessionStatus === 'active'
-              ? 'bg-teal-50 border-teal-200 text-teal-700'
-              : integ.sessionStatus === 'error'
-              ? 'bg-red-50 border-red-200 text-red-600'
-              : 'bg-gray-50 border-gray-200 text-gray-500')}>
-            <Zap className="w-3 h-3 shrink-0" />
-            {integ.sessionStatus === 'active'
-              ? <span>API trực tiếp · token còn hạn{integ.sessionExpiresAt ? ` đến ${new Date(integ.sessionExpiresAt).toLocaleDateString('vi-VN')}` : ''}</span>
-              : integ.sessionStatus === 'error'
-              ? <span className="truncate">{integ.sessionError ?? 'Lỗi token'}</span>
-              : <span>API trực tiếp · chưa inject token</span>}
-          </div>
-        )}
-
-        {integ.loginMode === 'auto' && integ.provider !== 'be' && (
-          /* Grab / các sàn khác: dùng browser automation */
-          <div className={cn('flex items-center gap-1.5 text-xs rounded-lg px-2.5 py-1.5 border',
-            integ.automationRunning
-              ? 'bg-blue-50 border-blue-200 text-blue-700'
-              : integ.sessionStatus === 'active'
-              ? 'bg-green-50 border-green-200 text-green-700'
-              : integ.sessionStatus === 'error'
-              ? 'bg-red-50 border-red-200 text-red-600'
-              : integ.sessionStatus === 'expired'
-              ? 'bg-amber-50 border-amber-200 text-amber-700'
-              : 'bg-gray-50 border-gray-200 text-gray-500')}>
-            {integ.automationRunning
-              ? <><Loader2 className="w-3 h-3 animate-spin shrink-0" /><span>Đang login browser…</span></>
-              : integ.sessionStatus === 'active'
-              ? <><Wifi className="w-3 h-3 shrink-0" /><span>Browser session active{integ.sessionExpiresAt ? ` · hết hạn ${new Date(integ.sessionExpiresAt).toLocaleDateString('vi-VN')}` : ''}</span></>
-              : integ.sessionStatus === 'expired'
-              ? <><Clock className="w-3 h-3 shrink-0" /><span>Session hết hạn – scraper sẽ tự relog</span></>
-              : integ.sessionStatus === 'error'
-              ? <><WifiOff className="w-3 h-3 shrink-0" /><span className="truncate">{integ.sessionError ?? 'Lỗi login'}</span></>
-              : <><Clock className="w-3 h-3 shrink-0" /><span>Chờ scraper login…</span></>}
-          </div>
+        {isExternalScraperManaged && integ.provider === 'be' && integ.appLastSyncAt && (
+          <p className="text-[11px] text-gray-400" title={new Date(integ.appLastSyncAt).toLocaleString('vi-VN')}>
+            API nền: {integ.appSyncStatus === 'success' ? 'OK' : integ.appSyncStatus === 'error' ? 'lỗi' : integ.appSyncStatus ?? 'n/a'} · {timeAgo(integ.appLastSyncAt)}
+          </p>
         )}
 
         {sr && !sr.loading && (
-          <div className={cn('flex items-start gap-1.5 text-xs rounded-lg px-3 py-2', sr.ok ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-600')}>
-            {sr.ok
-              ? <><RefreshCw className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>+{sr.upserted} mới, {sr.updated} cập nhật</span></>
-              : <><XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>{sr.message}</span></>}
+          <div className={cn('flex items-center gap-1.5 text-[11px] rounded-lg px-2.5 py-1.5', sr.ok ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-600')}>
+            {sr.ok ? <RefreshCw className="w-3 h-3 shrink-0" /> : <XCircle className="w-3 h-3 shrink-0" />}
+            <span>{sr.ok ? `+${sr.upserted ?? 0} mới · ${sr.updated ?? 0} cập nhật` : sr.message}</span>
           </div>
         )}
 
         {tr && !tr.loading && (
-          <div className={cn('flex items-start gap-1.5 text-xs rounded-lg px-3 py-2', tr.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>
-            {tr.ok
-              ? <CheckCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              : <XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
-            <span>
-              {tr.ok
-                ? `${tr.message ?? 'Kết nối thành công'}${tr.count !== undefined ? ` — ${tr.count} đơn` : ''}`
-                : tr.message}
-            </span>
+          <div className={cn('flex items-center gap-1.5 text-[11px] rounded-lg px-2.5 py-1.5', tr.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>
+            {tr.ok ? <CheckCircle className="w-3 h-3 shrink-0" /> : <XCircle className="w-3 h-3 shrink-0" />}
+            <span>{tr.ok ? `${tr.message ?? 'Kết nối thành công'}${tr.count !== undefined ? ` — ${tr.count} đơn` : ''}` : tr.message}</span>
           </div>
         )}
 
-        <div className="flex gap-2 pt-1 border-t border-gray-100">
-          <button onClick={() => openSettings(integ)} className="btn-outline btn-sm flex items-center gap-1 px-2">
-            <Settings className="w-3.5 h-3.5" /> Cài đặt
+        {/* Actions */}
+        <div className="flex gap-1.5 pt-1 border-t border-gray-100">
+          <button onClick={() => openSettings(integ)} className="btn-outline btn-sm flex items-center gap-1 px-2 text-xs">
+            <Settings className="w-3 h-3" /> Cài đặt
           </button>
           {supportsSessionLogin ? (
-            <button
-              onClick={() => openAutoLogin(integ)}
-              className="btn-outline btn-sm flex items-center gap-1 px-2 text-violet-600 border-violet-200 hover:bg-violet-50"
-            >
-              <KeyRound className="w-3.5 h-3.5" /> {usesBrowserRelog(integ) ? 'Login browser' : 'Login'}
+            <button onClick={() => openAutoLogin(integ)} className="btn-outline btn-sm flex items-center gap-1 px-2 text-xs text-violet-600 border-violet-200 hover:bg-violet-50">
+              <KeyRound className="w-3 h-3" /> Login
             </button>
           ) : (
-            <button
-              onClick={() => handleTest(integ._id)}
-              disabled={isPendingSetup || !!tr?.loading}
-              className="btn-outline btn-sm flex items-center gap-1 px-2 text-primary-600 border-primary-200 hover:bg-primary-50 disabled:opacity-50"
-            >
-              {tr?.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlayCircle className="w-3.5 h-3.5" />}
-              {isPendingSetup ? 'Chờ cấu hình' : 'Test'}
+            <button onClick={() => handleTest(integ._id)} disabled={isPendingSetup || !!tr?.loading}
+              className="btn-outline btn-sm flex items-center gap-1 px-2 text-xs text-primary-600 border-primary-200 hover:bg-primary-50 disabled:opacity-50">
+              {tr?.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <PlayCircle className="w-3 h-3" />}
+              Test
             </button>
           )}
-          <button
-            onClick={() => handleSync(integ._id)}
-            disabled={isPendingSetup || !!sr?.loading}
-            className="btn-primary btn-sm flex-1 flex items-center gap-1 justify-center disabled:opacity-50"
-          >
-            {sr?.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          <button onClick={() => handleSync(integ._id)} disabled={isPendingSetup || !!sr?.loading}
+            className="btn-primary btn-sm flex-1 flex items-center gap-1 justify-center text-xs disabled:opacity-50">
+            {sr?.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
             {isPendingSetup ? 'Chờ bật' : 'Sync'}
           </button>
         </div>

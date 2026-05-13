@@ -242,10 +242,17 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // BE completed orders: once marked completed in DB, never re-sync from scraper push
+      // (manual status changes via UI are preserved; use the order detail page to correct if needed)
+      const existingStatus = (existing as { status?: string } | undefined)?.status
+      if (intg.provider === 'be' && existingStatus === 'completed') {
+        skipped++
+        continue
+      }
+
       // Don't downgrade: once cancelled keep cancelled; once completed don't revert to active status
       // Exception: if incoming is from an ACTIVE platform bucket (PreparingV2 / in_progress / on_delivery),
       // allow overriding a wrongly-set 'completed' so operators can see the real live status.
-      const existingStatus = (existing as { status?: string } | undefined)?.status
       const rawPayloadIncoming = norm.rawPayload as Record<string, unknown> | undefined
       const incomingPageType = String(rawPayloadIncoming?._pageType ?? '').trim()
       const incomingFetchType = String(rawPayloadIncoming?._fetchType ?? '').trim()

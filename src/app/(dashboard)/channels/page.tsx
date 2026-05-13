@@ -160,41 +160,39 @@ export default function ChannelsPage() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
         {activeChannels.map((channel: Channel) => (
-          <div key={channel._id} className="card p-5">
-            <div className="flex items-start justify-between mb-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <PlatformIcon source={channel.source} size="sm" />
-                  <span className={cn('badge', channel.status === 'active' ? 'badge-green' : 'badge-red')}>
-                    {channel.status === 'active' ? 'Hoạt động' : 'Ngừng'}
-                  </span>
+          <div key={channel._id} className="card p-3">
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <PlatformIcon source={channel.source} size="sm" />
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-sm text-gray-900 truncate leading-tight">{channel.name}</h3>
+                  <p className="text-[11px] text-gray-400 truncate">
+                    {[channel.brandName, channel.hubName].filter(Boolean).join(' · ')}
+                  </p>
                 </div>
-                <h3 className="font-semibold text-gray-900 truncate">{channel.name}</h3>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {channel.brandName}
-                  {channel.hubName ? ` - ${channel.hubName}` : ''}
-                </p>
               </div>
-              <div className="flex gap-1 shrink-0">
-                <button onClick={() => openEdit(channel)} className="btn-ghost btn-sm p-1.5"><Edit className="w-3.5 h-3.5" /></button>
-                <button onClick={() => handleDelete(channel._id)} className="btn-ghost btn-sm p-1.5 text-red-500 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
+              <div className="flex items-center gap-1 shrink-0">
+                <span className={cn('badge badge-sm', channel.status === 'active' ? 'badge-green' : 'badge-red')}>
+                  {channel.status === 'active' ? 'Hoạt động' : 'Ngừng'}
+                </span>
+                <button onClick={() => openEdit(channel)} className="btn-ghost p-1 rounded-lg"><Edit className="w-3.5 h-3.5" /></button>
+                <button onClick={() => handleDelete(channel._id)} className="btn-ghost p-1 text-red-400 hover:text-red-600 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             </div>
-            <div className="space-y-2 pt-3 border-t border-gray-100">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 border-t border-gray-100 pt-2">
               {([
                 { key: 'isPageActive',    label: 'Trang bán hàng' },
                 { key: 'isStoreOpen',     label: 'Cửa hàng mở cửa' },
                 { key: 'isManualConfirm', label: 'Xác nhận thủ công' },
                 { key: 'autoInvoice',     label: 'Tự động HĐĐT' },
               ] as { key: keyof Channel; label: string }[]).map(({ key, label }) => (
-                <div key={key} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">{label}</span>
-                  <button onClick={() => toggle(channel._id, key, channel[key] as boolean)} className="text-gray-400 hover:text-primary-500">
-                    {channel[key] ? <ToggleRight className="w-5 h-5 text-primary-500" /> : <ToggleLeft className="w-5 h-5" />}
-                  </button>
-                </div>
+                <button key={key} onClick={() => toggle(channel._id, key, channel[key] as boolean)}
+                  className="flex items-center justify-between gap-1 text-left hover:bg-gray-50 rounded-lg px-1 py-0.5">
+                  <span className="text-[11px] text-gray-500 truncate">{label}</span>
+                  {channel[key] ? <ToggleRight className="w-4 h-4 text-primary-500 shrink-0" /> : <ToggleLeft className="w-4 h-4 text-gray-300 shrink-0" />}
+                </button>
               ))}
             </div>
           </div>

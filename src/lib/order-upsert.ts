@@ -265,6 +265,13 @@ function mergeRawPayloadPreservingContacts(
     if (nextValue) merged[key] = nextValue
   }
 
+  // Preserve promotion/discount detail from existing if incoming doesn't have it
+  for (const key of ['orderLevelDiscounts', 'voucherInfo', 'offers', 'order_discount']) {
+    if (existing?.[key] !== undefined && incoming?.[key] === undefined) {
+      merged[key] = existing[key]
+    }
+  }
+
   const mergedDelivery = mergeInfoObject(getRecord(existing?.delivery), getRecord(incoming?.delivery))
   if (mergedDelivery) {
     merged.delivery = mergedDelivery
@@ -509,8 +516,6 @@ export function hasMeaningfulFinalizedOrderChange(existing: Partial<NormalizedOr
   const existingCancelReason = toTrimmedText(existingRecord?.cancelReason ?? existingRawPayload?.cancelReason ?? existingRawPayload?.cancellationReason)
   const incomingCancelReason = toTrimmedText(incomingRecord?.cancelReason ?? incomingRawPayload?.cancelReason ?? incomingRawPayload?.cancellationReason)
   if (incomingCancelReason && existingCancelReason !== incomingCancelReason) return true
-
-  if (!hasGrabUtensilInfo(existingRawPayload) && hasGrabUtensilInfo(incoming.rawPayload)) return true
 
   return false
 }
