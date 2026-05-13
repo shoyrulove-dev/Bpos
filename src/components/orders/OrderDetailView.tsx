@@ -163,14 +163,31 @@ function getGrabTimeline(order: Order) {
 function getGrabDetailItems(order: Order) {
   const raw = getRecord(order.rawPayload)
   const itemInfo = getRecord(raw?.itemInfo)
-  const rawItems = Array.isArray(raw?.items)
-    ? raw.items
+
+  // itemInfo.items = Grab API canonical source (correct). raw.items may be stale
+  // DOM-extracted placeholders (e.g. "HOÁ ĐƠN / No data") — skip those.
+  const isPlaceholder = (i: unknown) => {
+    const r = getRecord(i)
+    const name = String(r?.name ?? '').toUpperCase()
+    const note = String(r?.note ?? '').toLowerCase()
+    return name.includes('HOÁ ĐƠN') || name.includes('HOA DON') || note === 'no data'
+  }
+
+  const itemInfoCandidates = Array.isArray(itemInfo?.items)
+    ? (itemInfo.items as unknown[]).filter((i) => !isPlaceholder(i))
+    : []
+  const rawDomCandidates = Array.isArray(raw?.items)
+    ? (raw.items as unknown[]).filter((i) => !isPlaceholder(i))
+    : []
+
+  const rawItems = itemInfoCandidates.length
+    ? itemInfoCandidates
+    : rawDomCandidates.length
+    ? rawDomCandidates
     : Array.isArray(raw?.orderItems)
-    ? raw.orderItems
+    ? raw.orderItems as unknown[]
     : Array.isArray(raw?.lineItems)
-    ? raw.lineItems
-    : Array.isArray(itemInfo?.items)
-    ? itemInfo.items
+    ? raw.lineItems as unknown[]
     : []
 
   if (!rawItems.length && order.items.length) {

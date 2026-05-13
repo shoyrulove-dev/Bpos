@@ -23,6 +23,11 @@ export interface IChannel extends Document {
   connectedAt?: Date
   accessToken?: string
   refreshToken?: string
+  // Scraper live status (pushed by scraper heartbeat)
+  scraperPaused?: boolean
+  scraperPausedUntil?: Date | null
+  scraperLoggedIn?: boolean
+  scraperLastSeen?: Date
 }
 
 const ChannelSchema = new Schema<IChannel>({
@@ -41,6 +46,10 @@ const ChannelSchema = new Schema<IChannel>({
   connectedAt:       { type: Date },
   accessToken:       { type: String, select: false },
   refreshToken:      { type: String, select: false },
+  scraperPaused:     { type: Boolean },
+  scraperPausedUntil:{ type: Date },
+  scraperLoggedIn:   { type: Boolean },
+  scraperLastSeen:   { type: Date },
 }, { timestamps: true })
 
 export default mongoose.models.Channel || mongoose.model<IChannel>('Channel', ChannelSchema)

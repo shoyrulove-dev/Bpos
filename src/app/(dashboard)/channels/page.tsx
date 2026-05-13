@@ -181,6 +181,14 @@ export default function ChannelsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
+                {channel.scraperPaused && (
+                  <span className="badge badge-sm bg-amber-100 text-amber-700 border-amber-200">
+                    ⏸ Pause{channel.scraperPausedUntil ? ` đến ${new Date(channel.scraperPausedUntil).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                  </span>
+                )}
+                {channel.scraperLastSeen && !channel.scraperLoggedIn && (
+                  <span className="badge badge-sm bg-red-100 text-red-700 border-red-200">Offline</span>
+                )}
                 <span className={cn('badge badge-sm', channel.status === 'active' ? 'badge-green' : 'badge-red')}>
                   {channel.status === 'active' ? 'Hoạt động' : 'Ngừng'}
                 </span>

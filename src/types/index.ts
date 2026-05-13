@@ -241,6 +241,11 @@ export interface Channel {
   connectedAt?: string
   createdAt: string
   updatedAt: string
+  // Scraper live status
+  scraperPaused?: boolean
+  scraperPausedUntil?: string | null
+  scraperLoggedIn?: boolean
+  scraperLastSeen?: string
 }
 
 export interface WorkingHour {
