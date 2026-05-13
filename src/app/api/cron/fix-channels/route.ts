@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
 import ChannelModel from '@/models/Channel'
 import IntegrationModel from '@/models/Integration'
+import UserModel from '@/models/User'
 import { encrypt } from '@/lib/crypto'
 import { ensureChannelForIntegration } from '@/lib/channel-sync'
 import mongoose from 'mongoose'
@@ -59,7 +60,11 @@ export async function POST(req: NextRequest) {
   const deleteResult = await ChannelModel.deleteMany({ _id: { $in: deleteIds } })
   result.channelsDeleted = deleteResult.deletedCount
 
-  // ── 2. Create new integrations for 1ketoan ────────────────────────────────
+  // ── 2. Find an admin user to use as createdBy ────────────────────────────
+  const adminUser = await UserModel.findOne({ role: 'admin' }).lean()
+  const createdById = adminUser?._id ?? new mongoose.Types.ObjectId()
+
+  // ── 3. Create new integrations for 1ketoan ────────────────────────────────
   const created: string[] = []
   const skipped: string[] = []
 
@@ -75,8 +80,8 @@ export async function POST(req: NextRequest) {
       // Still ensure channel exists
       await ensureChannelForIntegration({
         provider: 'grab',
-        brandId: acc.brandId,
-        hubId: acc.hubId,
+        brandId: new mongoose.Types.ObjectId(acc.brandId),
+        hubId: new mongoose.Types.ObjectId(acc.hubId),
         externalStoreId: acc.storeId,
         externalStoreName: acc.storeName,
         isActive: true,
@@ -86,8 +91,8 @@ export async function POST(req: NextRequest) {
 
     const integration = await IntegrationModel.create({
       provider:            'grab',
-      brandId:             acc.brandId,
-      hubId:               acc.hubId,
+      brandId:             new mongoose.Types.ObjectId(acc.brandId),
+      hubId:               new mongoose.Types.ObjectId(acc.hubId),
       externalStoreId:     acc.storeId,
       externalStoreName:   acc.storeName,
       loginMode:           'auto',
@@ -96,12 +101,13 @@ export async function POST(req: NextRequest) {
       sessionRefreshMode:  'auto',
       credentials:         {},
       isActive:            true,
+      createdBy:           createdById,
     })
 
     await ensureChannelForIntegration({
       provider: 'grab',
-      brandId: acc.brandId,
-      hubId: acc.hubId,
+      brandId: new mongoose.Types.ObjectId(acc.brandId),
+      hubId: new mongoose.Types.ObjectId(acc.hubId),
       externalStoreId: acc.storeId,
       externalStoreName: acc.storeName,
       isActive: true,
