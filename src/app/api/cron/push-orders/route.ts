@@ -230,10 +230,13 @@ export async function POST(req: NextRequest) {
         norm,
       )
 
-      // Don't downgrade: once cancelled keep cancelled
+      // Don't downgrade: once cancelled keep cancelled; once completed don't revert to active status
       const existingStatus = (existing as { status?: string } | undefined)?.status
       if (existingStatus === 'cancelled' && merged.orderStatus === 'completed') {
         merged.orderStatus = 'cancelled'
+      }
+      if (existingStatus === 'completed' && (merged.orderStatus === 'waiting_pickup' || merged.orderStatus === 'waiting_confirm' || merged.orderStatus === 'delivering' || merged.orderStatus === 'preparing')) {
+        merged.orderStatus = 'completed'
       }
 
       if (shouldSkipFinalizedOrderSync(existing as Record<string, unknown> | undefined, merged)) {

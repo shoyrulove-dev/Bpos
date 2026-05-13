@@ -24,12 +24,12 @@ const BE_MERCHANT_DEVICE_TYPE = '2'
 
 // Status integer → fetch_type context mapping (Be API uses int, not string enum)
 // Inferred from docs examples: status 21 = completed (previous), status 2 = in-process
-// in_progress fetch_type = awaiting confirmation, pending = being prepared
+// All 3 active tabs (pending=new, in_progress=preparing, on_delivery=ready for pickup) → waiting_pickup
 const STATUS_BY_FETCH: Record<string, OrderStatus> = {
-  in_progress: 'waiting_confirm',
-  on_delivery: 'delivering',
+  in_progress: 'waiting_pickup',
+  on_delivery: 'waiting_pickup',
   pending:     'waiting_pickup',
-  previous:    'completed',
+  previous:    'waiting_pickup',  // default for history; overridden to completed(21) or cancelled below
   cancelled:   'cancelled',
 }
 
@@ -472,14 +472,14 @@ export class BeAdapter implements PlatformAdapter {
       if (isDefinitelyCompleted) {
         orderStatus = 'completed'
       } else if (fetchType === 'previous') {
-        // previous bucket = completed tab — trust as completed unless cancel signal is definitive
-        // (cancel_code, cancel_reason etc. may appear spuriously in BE completed order payloads)
+        // previous bucket includes: đang giao (driver delivering) → waiting_pickup,
+        // đã giao (delivered, status 21) → completed, hủy → cancelled
         const CANCELLED_INTS = new Set([3, 4, 5, 6, 7, 8, 9, 10, 99, 100])
         if (CANCELLED_INTS.has(statusInt)) {
           orderStatus = 'cancelled'
         } else {
-          // Require BOTH a cancel integer AND an explicit cancel signal to override completed
-          orderStatus = 'completed'
+          // default = waiting_pickup (đang giao); completed only when status 21/20 (handled above)
+          orderStatus = 'waiting_pickup'
         }
       } else {
         // Broad cancelled detection: 99/100 (partner), 3-10 (merchant portal cancel reasons)
