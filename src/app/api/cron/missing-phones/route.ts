@@ -209,8 +209,8 @@ export async function GET(req: NextRequest) {
       const storedStage = getGrabStoredPageStage(rawPayload)
       const isFinalizedStage = ['history', 'completed', 'cancelled'].includes(storedStage)
       const isFinalizedStatus = ['completed', 'cancelled'].includes(String(order.status ?? '').trim().toLowerCase())
-      const isActivelyDelivering = String(order.status ?? '').trim().toLowerCase() === 'delivering'
-      // Don't skip retry if the order is currently in delivery — phones still accessible
+      // Grab không còn dùng 'delivering' — tất cả đang giao vẫn là waiting_pickup
+      const isActivelyDelivering = storedStage === 'history' && !isFinalizedStatus
       const skipFinalizedRetry = (isFinalizedStage || isFinalizedStatus) && !isActivelyDelivering
 
       // Customer phone: available while preparing/ready/upcoming or actively delivering

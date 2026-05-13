@@ -691,7 +691,7 @@ async function repairStoredOrders(
         unset.deliveredAt = ''
       }
 
-      if (order.source === 'grab' && order.rawPayload && ['waiting_confirm', 'waiting_pickup', 'delivering'].includes(order.status)) {
+      if (order.source === 'grab' && order.rawPayload && ['waiting_confirm', 'waiting_pickup'].includes(order.status)) {
         const grabPageStage = getGrabStoredPageStage(order.rawPayload)
         const rawGrabStatus = String(
           order.rawPayload.deliveryStatus

@@ -117,7 +117,7 @@ function mergeDriverInfoPreservingDetail(
 
 function shouldSuppressDriverInfo(incoming: NormalizedOrder) {
   if (incoming.source !== 'grab') return false
-  if (incoming.orderStatus === 'delivering' || incoming.orderStatus === 'completed' || incoming.orderStatus === 'cancelled') {
+  if (incoming.orderStatus === 'delivering' || incoming.orderStatus === 'waiting_pickup' || incoming.orderStatus === 'completed' || incoming.orderStatus === 'cancelled') {
     return false
   }
 
@@ -558,7 +558,7 @@ function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
       || nestedTimes.completedAt
     )
     if (hasCompletionTimestamp) return 'completed'
-    return normalized.orderStatus === 'delivering' ? 'delivering' : 'waiting_pickup'
+    return 'waiting_pickup'
   }
 
   if (

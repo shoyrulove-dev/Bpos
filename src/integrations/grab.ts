@@ -91,8 +91,8 @@ function mapGrabStatus(rawStatus: string): OrderStatus {
     DRIVER_ALLOCATED: 'waiting_pickup',
     DRIVER_ARRIVED: 'waiting_pickup',
     READY_FOR_PICKUP: 'waiting_pickup',
-    COLLECTED: 'delivering',
-    IN_DELIVERY: 'delivering',
+    COLLECTED: 'waiting_pickup',
+    IN_DELIVERY: 'waiting_pickup',
     DELIVERED: 'completed',
     COMPLETED: 'completed',
     BILL_PAID: 'completed',
@@ -169,8 +169,9 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
 
   if (pageStage === 'cancelled') return 'cancelled'
 
+  // "Đang giao" không phải trạng thái riêng trên BPOS — giữ là waiting_pickup
   if (hasGrabDeliverySignal(secondarySignals) || mappedStatus === 'delivering') {
-    return 'delivering'
+    return 'waiting_pickup'
   }
 
   // Check completion TRƯỚC khi check pageStage === 'ready', để tránh downgrade
@@ -190,12 +191,14 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
     return 'completed'
   }
 
-  if (pageStage === 'upcoming') return 'pre_order'
+  // Upcoming (đặt trước) vẫn hiển thị là chờ lấy hàng trên BPOS
+  if (pageStage === 'upcoming') return 'waiting_pickup'
 
   if (pageStage === 'history') {
-    // Only treat as completed if there's actual completion evidence.
-    // Backfill may accidentally navigate to the history page for an active (preparing) order,
-    // setting _pageStage='history' without real completion signals — don't blindly complete it.
+    // history tab: chỉ completed/cancelled khi có bằng chứng rõ ràng
+    // Đang giao (driver đã lấy, chưa giao xong) → vẫn là waiting_pickup từ góc nhìn nhà hàng
+    if (secondarySignals.some(v => v.includes('cancel') || v.includes('fail') || v.includes('refund'))) return 'cancelled'
+    if (raw.cancelCode || hasGrabDateValue(raw.cancelledAt) || hasGrabDateValue(raw.canceledAt) || hasGrabDateValue(times?.cancelledAt)) return 'cancelled'
     const hasCompletionEvidence = hasGrabCompletionSignal(secondarySignals)
       || hasGrabDateValue(raw.completedAt)
       || hasGrabDateValue(raw.deliveredAt)
@@ -204,15 +207,11 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
       || hasGrabDateValue(times?.completedAt)
       || hasGrabDateValue(times?.deliveredAt)
     if (hasCompletionEvidence) return 'completed'
-    // No evidence → trust the raw status signal, don't falsely complete
-    return mappedStatus
+    // Đang giao hoặc chưa rõ → waiting_pickup (không dùng delivering)
+    return 'waiting_pickup'
   }
 
-  if (pageStage === 'ready') {
-    return secondarySignals.some((value) => value.includes('collect') || value.includes('delivery') || value.includes('picking_up'))
-      ? 'delivering'
-      : 'waiting_pickup'
-  }
+  if (pageStage === 'ready') return 'waiting_pickup'
 
   if (['preparing', 'upcoming', 'ready'].includes(pageStage) && (mappedStatus === 'waiting_confirm' || mappedStatus === 'waiting_pickup' || mappedStatus === 'pre_order') && secondarySignals.some((value) => (
     value.includes('prepare')
@@ -235,7 +234,7 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
 }
 
 function shouldExposeGrabDriverInfo(raw: Record<string, unknown>, orderStatus: OrderStatus) {
-  if (orderStatus === 'delivering' || orderStatus === 'completed' || orderStatus === 'cancelled') {
+  if (orderStatus === 'delivering' || orderStatus === 'waiting_pickup' || orderStatus === 'completed' || orderStatus === 'cancelled') {
     return true
   }
 
@@ -1497,13 +1496,17 @@ export class GrabAdapter implements PlatformAdapter {
       : 0
     const discount = Number(priceObj.basketPromo ?? priceObj.discount ?? raw.discount ?? raw.discountAmount ?? 0)
       || voucherDiscount || orderLevelDiscount
-    const total    = Number(
+    const totalFromAPI = Number(
       priceObj.eaterPayment ??
       priceObj.total ??
       raw.total ??
       raw.orderTotal ??
       this.parseGrabDisplayAmount(raw.priceDisplay ?? raw.orderValue)
     )
+    // Nếu total === subtotal nhưng có discount → total thực = subtotal - discount
+    const total = (totalFromAPI > 0 && discount > 0 && totalFromAPI === subtotal)
+      ? subtotal - discount
+      : totalFromAPI
     const platformFee = Number(
       priceObj.platformCommission ??
       priceObj.platformFee ??
