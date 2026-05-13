@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { Download, Loader2, Plus, Printer, RefreshCw, Search } from 'lucide-react'
+import { Download, Loader2, Plus, Printer, RefreshCw, Search, ArrowLeftRight } from 'lucide-react'
 import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { useOrders } from '@/hooks/use-orders-channels'
@@ -289,11 +289,11 @@ export default function OrdersPage() {
 
                   {/* Footer */}
                   <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2.5">
-                    <Link href={`/orders/${order._id}`} className="inline-flex items-center gap-2 rounded-full bg-[#20232A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-black">Chi tiết</Link>
                     <div className="flex items-center gap-2">
+                      <button type="button" title="Đổi trạng thái" onClick={() => setStatusTarget({ orderId: order._id, currentStatus: order.status })} className="btn-outline h-9 w-9 justify-center px-0 rounded-full"><ArrowLeftRight className="h-3.5 w-3.5" /></button>
+                      <Link href={`/orders/${order._id}`} className="inline-flex items-center gap-2 rounded-full bg-[#20232A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-black">Chi tiết</Link>
                       <button type="button" onClick={() => void printOrderWithFallback(order._id, 'receipt', { autoprint: true })} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In Đơn</button>
                       <button type="button" onClick={() => void printOrderWithFallback(order._id, 'label')} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In phiếu tem</button>
-                      <button type="button" onClick={() => setStatusTarget({ orderId: order._id, currentStatus: order.status })} className="btn-outline rounded-full text-sm">Đổi trạng thái</button>
                     </div>
                   </div>
                 </article>

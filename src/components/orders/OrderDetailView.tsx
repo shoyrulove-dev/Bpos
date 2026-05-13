@@ -497,7 +497,14 @@ function getGrabUtensilRequest(order: Order) {
 
   for (const value of candidateValues) {
     if (typeof value === 'boolean') return value ? 'Có' : 'Không'
-    if (typeof value === 'number') return value > 0 ? `Có (${value})` : 'Không'
+    if (typeof value === 'number') {
+      // Grab encodes cutlery as integer enum:
+      // 0 = không cần dụng cụ, 1 = cần dụng cụ, 2 = không cần (eco/no plastic)
+      if (value === 0) return 'Không'
+      if (value === 2) return 'Không (eco)'
+      if (value === 1) return 'Có'
+      return value > 0 ? `Có (${value})` : 'Không'
+    }
 
     const normalized = String(value ?? '').trim().toLowerCase()
     if (!normalized) continue

@@ -169,6 +169,17 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
 
   if (pageStage === 'cancelled') return 'cancelled'
 
+  // Nếu order đang ở tab ACTIVE (PreparingV2, Ready, Upcoming), trust page bucket — không check completion timestamps
+  // vì các field completedAt/deliveredAt có thể là stale/null từ order trước
+  const isActivePageStage = pageStage === 'preparing' || pageStage === 'ready' || pageStage === 'upcoming'
+  if (isActivePageStage) {
+    // "Đang giao" không phải trạng thái riêng trên BPOS — giữ là waiting_pickup
+    if (hasGrabDeliverySignal(secondarySignals)) return 'waiting_pickup'
+    if (pageStage === 'ready') return 'waiting_pickup'
+    if (pageStage === 'upcoming') return 'waiting_pickup'
+    return mappedStatus
+  }
+
   // "Đang giao" không phải trạng thái riêng trên BPOS — giữ là waiting_pickup
   if (hasGrabDeliverySignal(secondarySignals) || mappedStatus === 'delivering') {
     return 'waiting_pickup'

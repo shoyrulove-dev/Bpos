@@ -243,11 +243,18 @@ export async function POST(req: NextRequest) {
       }
 
       // Don't downgrade: once cancelled keep cancelled; once completed don't revert to active status
+      // Exception: if incoming is from an ACTIVE platform bucket (PreparingV2 / in_progress / on_delivery),
+      // allow overriding a wrongly-set 'completed' so operators can see the real live status.
       const existingStatus = (existing as { status?: string } | undefined)?.status
+      const rawPayloadIncoming = norm.rawPayload as Record<string, unknown> | undefined
+      const incomingPageType = String(rawPayloadIncoming?._pageType ?? '').trim()
+      const incomingFetchType = String(rawPayloadIncoming?._fetchType ?? '').trim()
+      const isFromActiveBucket = ['PreparingV2', 'Ready', 'Upcoming'].includes(incomingPageType)
+        || ['in_progress', 'on_delivery', 'pending'].includes(incomingFetchType)
       if (existingStatus === 'cancelled' && merged.orderStatus === 'completed') {
         merged.orderStatus = 'cancelled'
       }
-      if (existingStatus === 'completed' && (merged.orderStatus === 'waiting_pickup' || merged.orderStatus === 'waiting_confirm' || merged.orderStatus === 'delivering')) {
+      if (!isFromActiveBucket && existingStatus === 'completed' && (merged.orderStatus === 'waiting_pickup' || merged.orderStatus === 'waiting_confirm' || merged.orderStatus === 'delivering')) {
         merged.orderStatus = 'completed'
       }
 
