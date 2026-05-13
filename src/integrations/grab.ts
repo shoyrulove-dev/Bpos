@@ -1418,11 +1418,14 @@ export class GrabAdapter implements PlatformAdapter {
     raw = decorateGrabPortalOrderContext(raw)
     // Portal might use different field names than Partner API
     const itemInfo = (raw.itemInfo ?? {}) as Record<string, unknown>
-    const itemsRaw = (raw.items ?? raw.orderItems ?? raw.lineItems ?? itemInfo.items ?? []) as Record<string, unknown>[]
+    // Prefer itemInfo.items (from XHR intercept, has fare/modifierGroups) over raw.items which
+    // may be overwritten by DOM extraction with partial/garbage data (e.g. "HOÁ ĐƠN" placeholder)
+    const itemsRaw = (raw.orderItems ?? raw.lineItems ?? itemInfo.items ?? raw.items ?? []) as Record<string, unknown>[]
     const items: OrderItem[] = itemsRaw.map(i => {
       // Flatten modifiers/add-ons into item note
       const modifiers = Array.isArray(i.modifiers) ? i.modifiers as Record<string, unknown>[] : []
       const addons = Array.isArray(i.addons) ? i.addons as Record<string, unknown>[] : []
+      const modifierGroups = Array.isArray(i.modifierGroups) ? i.modifierGroups as Record<string, unknown>[] : []
       const modifierTexts: string[] = []
       for (const m of [...modifiers, ...addons]) {
         const mItems = Array.isArray(m.modifierItems) ? m.modifierItems as Record<string, unknown>[] : Array.isArray(m.items) ? m.items as Record<string, unknown>[] : []
@@ -1433,6 +1436,14 @@ export class GrabAdapter implements PlatformAdapter {
         // Some formats have name directly on modifier item
         const mName = String(m.name ?? '').trim()
         if (mName && mItems.length === 0) modifierTexts.push(mName)
+      }
+      // Grab portal format: modifierGroups[].modifiers[].modifierName
+      for (const mg of modifierGroups) {
+        const mgMods = Array.isArray(mg.modifiers) ? mg.modifiers as Record<string, unknown>[] : []
+        for (const m of mgMods) {
+          const mName = String(m.modifierName ?? m.name ?? m.itemName ?? '').trim()
+          if (mName) modifierTexts.push(mName)
+        }
       }
       const itemNote = [
         String(i.remarks ?? i.note ?? i.specialInstruction ?? i.comment ?? '').trim(),
@@ -1547,9 +1558,16 @@ export class GrabAdapter implements PlatformAdapter {
 
     const estimatedTime = this.getGrabEstimatedTime(raw)
 
-    // Order-level note (special request + any customer note text)
-    const rawNote = String(raw.specialRequest ?? raw.customerNote ?? raw.note ?? raw.remarks ?? raw.deliveryNote ?? '')
-    const deliveryNote = rawNote.trim() || undefined
+    // Order-level note: prefer eater.comment (direct from Grab API JSON) over DOM-extracted fields
+    // which may contain '-' placeholder when DOM extraction found no note section.
+    const eaterObj = (raw.eater ?? {}) as Record<string, unknown>
+    const eaterComment = String(eaterObj.comment ?? '').trim()
+    const rawNote = (() => {
+      if (eaterComment && eaterComment !== '-') return eaterComment
+      const s = String(raw.specialRequest ?? raw.customerNote ?? raw.note ?? raw.remarks ?? raw.deliveryNote ?? '').trim()
+      return s !== '-' ? s : ''
+    })()
+    const deliveryNote = rawNote || undefined
 
     return {
       source:          'grab',
@@ -1586,6 +1604,7 @@ export class GrabAdapter implements PlatformAdapter {
       // Flatten modifiers into item note
       const modifiers = Array.isArray(i.modifiers) ? i.modifiers as Record<string, unknown>[] : []
       const addons = Array.isArray(i.addons) ? i.addons as Record<string, unknown>[] : []
+      const modifierGroups = Array.isArray(i.modifierGroups) ? i.modifierGroups as Record<string, unknown>[] : []
       const modifierTexts: string[] = []
       for (const m of [...modifiers, ...addons]) {
         const mItems = Array.isArray(m.modifierItems) ? m.modifierItems as Record<string, unknown>[] : Array.isArray(m.items) ? m.items as Record<string, unknown>[] : []
@@ -1595,6 +1614,14 @@ export class GrabAdapter implements PlatformAdapter {
         }
         const mName = String(m.name ?? '').trim()
         if (mName && mItems.length === 0) modifierTexts.push(mName)
+      }
+      // Grab portal format: modifierGroups[].modifiers[].modifierName
+      for (const mg of modifierGroups) {
+        const mgMods = Array.isArray(mg.modifiers) ? mg.modifiers as Record<string, unknown>[] : []
+        for (const m of mgMods) {
+          const mName = String(m.modifierName ?? m.name ?? m.itemName ?? '').trim()
+          if (mName) modifierTexts.push(mName)
+        }
       }
       const itemNote = [
         String(i.remarks ?? i.note ?? i.specialInstruction ?? i.comment ?? '').trim(),
