@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
 
   const result: Record<string, unknown> = {}
 
+  try {
   // ── 1. Delete duplicate channels ──────────────────────────────────────────
   const deleteIds = CHANNEL_IDS_TO_DELETE.map(id => new mongoose.Types.ObjectId(id))
   const deleteResult = await ChannelModel.deleteMany({ _id: { $in: deleteIds } })
@@ -118,6 +119,9 @@ export async function POST(req: NextRequest) {
 
   result.integrationsCreated = created
   result.integrationsSkipped = skipped
+  } catch (e: unknown) {
+    result.error = e instanceof Error ? e.message : String(e)
+  }
 
   return NextResponse.json({ ok: true, ...result })
 }
