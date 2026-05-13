@@ -856,7 +856,10 @@ export default function IntegrationsPage() {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
   const provInfo  = (v: string) => PROVIDERS.find(p => p.value === v)
-  const filteredHubs = form.brandId ? hubs.filter(h => h.brandId === form.brandId) : hubs
+  const filteredHubs = form.brandId ? hubs.filter(h => {
+    const bid = typeof h.brandId === 'object' && h.brandId ? (h.brandId as { _id: string })._id : String(h.brandId ?? '')
+    return bid === form.brandId
+  }) : hubs
   const providerCounts = PROVIDERS.reduce((acc, provider) => {
     acc[provider.value] = integrations.filter((integration) => integration.provider === provider.value).length
     return acc
@@ -1752,7 +1755,10 @@ export default function IntegrationsPage() {
                 <select className="input w-full" value={creds.__hubId ?? ''}
                   onChange={e => setCreds(p => ({ ...p, __hubId: e.target.value }))}>
                   <option value="">— Tất cả —</option>
-                  {(creds.__brandId ? hubs.filter(h => h.brandId === creds.__brandId) : hubs).map(h =>
+                  {(creds.__brandId ? hubs.filter(h => {
+                    const bid = typeof h.brandId === 'object' && h.brandId ? (h.brandId as { _id: string })._id : String(h.brandId ?? '')
+                    return bid === creds.__brandId
+                  }) : hubs).map(h =>
                     <option key={h._id} value={h._id}>{h.name}</option>
                   )}
                 </select>
