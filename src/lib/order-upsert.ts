@@ -15,7 +15,7 @@ function hasText(value: unknown) {
 }
 
 const CUSTOMER_NAME_PLACEHOLDERS = new Set(['khách hàng', 'khach hang'])
-const DRIVER_NAME_PLACEHOLDERS = new Set(['tài xế', 'tai xe', 'driver', 'shipper'])
+const DRIVER_NAME_PLACEHOLDERS = new Set(['tài xế', 'tai xe', 'driver', 'shipper', 'hóa đơn', 'hoá đơn', 'hoa don', 'invoice'])
 
 function toTrimmedText(value: unknown) {
   return hasText(value) ? String(value).trim() : undefined

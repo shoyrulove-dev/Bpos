@@ -763,7 +763,8 @@ export class GrabAdapter implements PlatformAdapter {
         .trim()
 
       if (!candidate) continue
-      if (/^(?:khách hàng|tài xế|lưu ý từ khách hàng|ghi chú|mã đặt hàng|hóa đơn|hoá đơn|hoa don|invoice|thanh toán|tóm tắt đơn hàng|tài chính)$/i.test(candidate)) continue
+      const candidateNFC = candidate.normalize('NFC')
+      if (/^(?:khách hàng|tài xế|lưu ý từ khách hàng|ghi chú|mã đặt hàng|hóa đơn|hoá đơn|hoa don|invoice|thanh toán|tóm tắt đơn hàng|tài chính|hóa đơn điện tử|hoá đơn điện tử|phương thức thanh toán)$/i.test(candidateNFC)) continue
       if (/(?:đang giao|dang giao|đang đến lấy|dang den lay|đang lấy hàng|dang lay hang|đã giao|da giao|đã hoàn tất|da hoan tat|hoàn tất|hoan tat|đã hủy|da huy|đã huỷ)/i.test(candidate)) continue
       if (/\d/.test(candidate)) continue
       return candidate.slice(0, 80).trim()
@@ -780,6 +781,8 @@ export class GrabAdapter implements PlatformAdapter {
       .trim()
 
     if (!cleaned || /\d/.test(cleaned)) return undefined
+    const cleanedNFC = cleaned.normalize('NFC')
+    if (/^(?:khách hàng|tài xế|lưu ý từ khách hàng|ghi chú|mã đặt hàng|hóa đơn|hoá đơn|hoa don|invoice|thanh toán|tóm tắt đơn hàng|tài chính|hóa đơn điện tử|hoá đơn điện tử|phương thức thanh toán)$/i.test(cleanedNFC)) return undefined
     return cleaned.slice(0, 80).trim()
   }
 
@@ -880,21 +883,28 @@ export class GrabAdapter implements PlatformAdapter {
     }
 
     if (hasContacts) {
-      const customer = {
-        name: customerName ?? 'Khách hàng',
-        phone: customerPhone ?? '',
-        phoneNumber: customerPhone ?? '',
+      // Only set customer fields if we actually have customer data (not just masked/empty)
+      // This prevents overwriting existing real data when the page shows masked info
+      if (customerName || customerPhone) {
+        const customer = {
+          name: customerName ?? 'Khách hàng',
+          phone: customerPhone ?? '',
+          phoneNumber: customerPhone ?? '',
+        }
+        merged.customer = customer
+        merged.consumer = customer
+        merged.receiver = customer
       }
-      const driver = {
-        name: driverName ?? '',
-        phone: driverPhone ?? '',
-        phoneNumber: driverPhone ?? '',
+      // Only set driver fields if we actually have driver data
+      if (driverName || driverPhone) {
+        const driver = {
+          name: driverName ?? '',
+          phone: driverPhone ?? '',
+          phoneNumber: driverPhone ?? '',
+        }
+        merged.driver = driver
+        merged.delivery = { driver }
       }
-      merged.customer = customer
-      merged.consumer = customer
-      merged.receiver = customer
-      merged.driver = driver
-      merged.delivery = { driver }
     }
 
     if (typeof financialBreakdown.merchandiseAmount === 'number') merged.subtotal = financialBreakdown.merchandiseAmount
@@ -1510,7 +1520,9 @@ export class GrabAdapter implements PlatformAdapter {
       raw.driver_contact,
       raw.driver_phone,
     ]))
-    const driverName = String(driver.name ?? driver.displayName ?? driver.fullName ?? '') || undefined
+    const driverNameRaw = String(driver.name ?? driver.displayName ?? driver.fullName ?? '').trim()
+    const INVALID_DRIVER_NAMES = /^(?:hóa đơn|hoá đơn|hoa don|hóa đơn điện tử|hoá đơn điện tử|invoice|tài xế|tai xe|khách hàng|khach hang|phương thức thanh toán|thanh toán|mã đặt hàng|tóm tắt đơn hàng)$/i
+    const driverName = driverNameRaw && !INVALID_DRIVER_NAMES.test(driverNameRaw.normalize('NFC')) ? driverNameRaw : undefined
     const driverInfo = shouldExposeGrabDriverInfo(raw, orderStatus) && (driverName || driverPhone)
       ? {
         name: driverName,

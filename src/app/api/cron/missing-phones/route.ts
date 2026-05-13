@@ -209,19 +209,24 @@ export async function GET(req: NextRequest) {
       const storedStage = getGrabStoredPageStage(rawPayload)
       const isFinalizedStage = ['history', 'completed', 'cancelled'].includes(storedStage)
       const isFinalizedStatus = ['completed', 'cancelled'].includes(String(order.status ?? '').trim().toLowerCase())
-      const skipFinalizedRetry = isFinalizedStage || isFinalizedStatus
+      const isActivelyDelivering = String(order.status ?? '').trim().toLowerCase() === 'delivering'
+      // Don't skip retry if the order is currently in delivery — phones still accessible
+      const skipFinalizedRetry = (isFinalizedStage || isFinalizedStatus) && !isActivelyDelivering
 
-      const missingCustomerPhone = ['preparing', 'ready', 'upcoming'].includes(storedStage)
+      // Customer phone: available while preparing/ready/upcoming or actively delivering
+      const canGetCustomerPhone = !skipFinalizedRetry && (
+        ['preparing', 'ready', 'upcoming'].includes(storedStage) || isActivelyDelivering
+      )
+      const missingCustomerPhone = canGetCustomerPhone
         && !hasMeaningfulPhone(getDisplayCustomerPhone(order as unknown as Order))
       const missingDriverPhone = !skipFinalizedRetry
         && !hasMeaningfulPhone(getDisplayDriverPhone(order as unknown as Order))
-      // Item/promo detail: always try even for history/completed orders — Grab portal
-      // still shows items/vouchers/addons on the history detail page even after
-      // customer/driver info has expired.
+      // Item/promo/utensil detail: always try even for history/completed orders — Grab portal
+      // still shows items/vouchers/addons/utensil info on the history detail page
       const missingItemDetail = !hasGrabDetailedItems(rawPayload)
       const missingPromotionDetail = Number(order.discount ?? 0) > 0 && !hasGrabPromotionDetail(rawPayload)
       const missingDeliveredAt = order.status === 'completed' && !order.deliveredAt && !hasDeliveredAtSignal(rawPayload)
-      const missingUtensilInfo = !skipFinalizedRetry && !hasGrabUtensilInfo(rawPayload)
+      const missingUtensilInfo = !hasGrabUtensilInfo(rawPayload)
       const reasons = [
         missingCustomerPhone ? 'customer-phone' : null,
         missingDriverPhone ? 'driver-phone' : null,
@@ -231,6 +236,12 @@ export async function GET(req: NextRequest) {
         missingUtensilInfo ? 'utensil-info' : null,
       ].filter((value): value is string => Boolean(value))
 
+      // Short order ID (GF-xxx style) from raw Grab payload
+      const shortOrderId = String(
+        rawPayload?.displayID ?? rawPayload?.shortOrderID ?? rawPayload?.shortOrderId ??
+        rawPayload?.displayId ?? rawPayload?.shortId ?? ''
+      ) || undefined
+
       return {
         externalOrderId: order.externalOrderId ? String(order.externalOrderId) : '',
         externalStoreId: String(
@@ -239,6 +250,7 @@ export async function GET(req: NextRequest) {
           storeId ?? ''
         ),
         pageStage: storedStage,
+        shortOrderId,
         reasons,
       }
     })
