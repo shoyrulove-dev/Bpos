@@ -139,7 +139,9 @@ function hasGrabDateValue(value: unknown) {
 
 function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): OrderStatus {
   const mappedStatus = mapGrabStatus(rawStatus)
-  if (mappedStatus === 'completed' || mappedStatus === 'cancelled') return mappedStatus
+  // cancelled is always final — no override possible
+  if (mappedStatus === 'cancelled') return mappedStatus
+
   const pageStage = resolveGrabPortalStage(raw)
 
   const times = raw.times && typeof raw.times === 'object' && !Array.isArray(raw.times)
@@ -180,10 +182,16 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
     return mappedStatus
   }
 
-  // "Đang giao" không phải trạng thái riêng trên BPOS — giữ là waiting_pickup
+  // Delivery signal check MUST come BEFORE the mappedStatus === 'completed' early return.
+  // Grab sets deliveryStatus = 'DELIVERED' (or similar) the moment driver picks up the food
+  // and the order moves to the history bucket — while driver is still "đang giao".
+  // If we don't catch the delivery signal first, we'd incorrectly return 'completed'.
   if (hasGrabDeliverySignal(secondarySignals) || mappedStatus === 'delivering') {
     return 'waiting_pickup'
   }
+
+  // Now safe to trust mappedStatus === 'completed' — no active delivery signals present
+  if (mappedStatus === 'completed') return mappedStatus
 
   // Check completion TRƯỚC khi check pageStage === 'ready', để tránh downgrade
   // đơn đã hoàn thành (có completedAt/deliveredAt) xuống waiting_pickup
