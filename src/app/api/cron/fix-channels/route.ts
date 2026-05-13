@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     result.channelsDeleted = deleteResult.deletedCount
 
     // ── 2. Find an admin user to use as createdBy ────────────────────────────
-    const adminUser = await UserModel.findOne({ role: 'admin' }).lean()
+    const adminUser = await UserModel.findOne({ role: 'admin' }).lean<{ _id: mongoose.Types.ObjectId }>()
     const createdById = adminUser?._id ?? new mongoose.Types.ObjectId()
     result.adminUserId = String(createdById)
 
