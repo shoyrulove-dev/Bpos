@@ -5,6 +5,7 @@ import { Plus, Search, ToggleLeft, ToggleRight, Edit, Trash2, Loader2, Link2 } f
 import { useChannels, useCreateChannel, useUpdateChannel, useDeleteChannel } from '@/hooks/use-orders-channels'
 import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
+import { useIntegrations } from '@/hooks/use-data'
 import { useDebounce } from '@/hooks/use-debounce'
 import { cn } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
@@ -40,6 +41,8 @@ export default function ChannelsPage() {
   const brands = rawBrands as { _id: string; name: string }[]
   const { data: rawHubs = [] } = useHubs()
   const hubs = rawHubs as { _id: string; name: string; brandId: string }[]
+  const { data: rawIntegrations = [] } = useIntegrations(undefined)
+  const integrations = rawIntegrations as { _id: string; provider: string; externalStoreName?: string; externalStoreId?: string; brandId: string | { _id: string; name: string } }[]
 
   const createMutation = useCreateChannel()
   const updateMutation = useUpdateChannel()
@@ -254,6 +257,34 @@ export default function ChannelsPage() {
                   ))}
                 </div>
               </div>
+              {(() => {
+                const sourceIntegrations = integrations.filter(i => i.provider === form.source && (i.externalStoreName || i.externalStoreId))
+                if (sourceIntegrations.length === 0) return null
+                return (
+                  <div>
+                    <label className="label">Lấy từ tích hợp <span className="text-gray-400 font-normal text-xs">(tùy chọn)</span></label>
+                    <select className="input w-full" defaultValue=""
+                      onChange={e => {
+                        const integ = sourceIntegrations.find(i => i._id === e.target.value)
+                        if (!integ) return
+                        const bId = typeof integ.brandId === 'object' && integ.brandId ? (integ.brandId as { _id: string })._id : String(integ.brandId ?? '')
+                        setForm(p => ({
+                          ...p,
+                          name: integ.externalStoreName || integ.externalStoreId || p.name,
+                          brandId: bId || p.brandId,
+                          hubId: '',
+                        }))
+                      }}>
+                      <option value="">— Chọn tài khoản để điền tự động —</option>
+                      {sourceIntegrations.map(i => (
+                        <option key={i._id} value={i._id}>
+                          {i.externalStoreName || i.externalStoreId}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )
+              })()}
               <div>
                 <label className="label">Tên kênh bán *</label>
                 <input className="input w-full" placeholder="VD: GrabFood - 3B Cau Giay"

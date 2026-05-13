@@ -1117,7 +1117,11 @@ export default function IntegrationsPage() {
   const openSettings = (integ: Integ) => {
     setActionStatus(null)
     setSettingsId(integ._id)
+    const brandIdStr = typeof integ.brandId === 'object' && integ.brandId ? (integ.brandId as { _id: string })._id : String(integ.brandId ?? '')
+    const hubIdStr   = integ.hubId ? (typeof integ.hubId === 'object' ? (integ.hubId as { _id: string })._id : String(integ.hubId)) : ''
     const init: Record<string, string> = {
+      __brandId: brandIdStr,
+      __hubId: hubIdStr,
       __externalStoreId: integ.externalStoreId ?? '',
       __loginMode: integ.loginMode ?? 'api',
       __sessionRefreshMode: integ.sessionRefreshMode ?? getDefaultSessionRefreshMode(integ.provider),
@@ -1130,12 +1134,14 @@ export default function IntegrationsPage() {
 
   const handleSaveSettings = async () => {
     if (!settingsId || !settingsInteg) return
-    const { __externalStoreId, __loginMode, __sessionRefreshMode, __loginUsername, __loginPassword, ...credFields } = creds
+    const { __externalStoreId, __loginMode, __sessionRefreshMode, __loginUsername, __loginPassword, __brandId, __hubId, ...credFields } = creds
     const usesSmsOtp = providerUsesSmsOtp(settingsInteg.provider)
     const body: Record<string, unknown> = {}
-    if (__loginMode) body.loginMode = __loginMode
-    if (__sessionRefreshMode) body.sessionRefreshMode = __sessionRefreshMode
-    if (__externalStoreId?.trim()) body.externalStoreId = __externalStoreId.trim()
+    if (__brandId)                       body.brandId           = __brandId
+    if (__hubId !== undefined)           body.hubId             = __hubId || null
+    if (__loginMode)                     body.loginMode         = __loginMode
+    if (__sessionRefreshMode)            body.sessionRefreshMode = __sessionRefreshMode
+    if (__externalStoreId?.trim())       body.externalStoreId   = __externalStoreId.trim()
     if (__loginMode !== 'auto') {
       const credUpdate: Record<string, string> = {}
       Object.entries(credFields).forEach(([k, v]) => { if (v.trim()) credUpdate[k] = v.trim() })
@@ -1789,6 +1795,27 @@ export default function IntegrationsPage() {
 
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
               🔐 Thông tin đăng nhập được mã hoá khi lưu. Để trống các trường không muốn cập nhật.
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Thương hiệu</label>
+                <select className="input w-full" value={creds.__brandId ?? ''}
+                  onChange={e => setCreds(p => ({ ...p, __brandId: e.target.value, __hubId: '' }))}>
+                  <option value="">— Chọn —</option>
+                  {brands.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Điểm bán</label>
+                <select className="input w-full" value={creds.__hubId ?? ''}
+                  onChange={e => setCreds(p => ({ ...p, __hubId: e.target.value }))}>
+                  <option value="">— Tất cả —</option>
+                  {(creds.__brandId ? hubs.filter(h => h.brandId === creds.__brandId) : hubs).map(h =>
+                    <option key={h._id} value={h._id}>{h.name}</option>
+                  )}
+                </select>
+              </div>
             </div>
 
             <div>

@@ -19,7 +19,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (res) return res
   await connectDB()
   const body = await req.json()
-  const { credentials, externalStoreId, externalStoreName, isActive, loginMode, loginUsername, loginPassword, sessionRefreshMode } = body
+  const { credentials, externalStoreId, externalStoreName, isActive, loginMode, loginUsername, loginPassword, sessionRefreshMode, brandId, hubId } = body
   const update: Record<string, unknown> = {}
   if (externalStoreId)                 update.externalStoreId   = externalStoreId
   if (externalStoreName !== undefined) update.externalStoreName  = externalStoreName
@@ -28,6 +28,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (loginUsername !== undefined)     update.loginUsername      = loginUsername
   if (loginPassword)                   update.loginPassword      = encrypt(String(loginPassword))
   if (sessionRefreshMode)              update.sessionRefreshMode = sessionRefreshMode
+  if (brandId)                         update.brandId            = brandId
+  if (hubId !== undefined)             update.hubId              = hubId || null
   // Merge individual credential keys using dot notation
   if (credentials && typeof credentials === 'object') {
     Object.entries(credentials as Record<string, string>).forEach(([k, v]) => {
