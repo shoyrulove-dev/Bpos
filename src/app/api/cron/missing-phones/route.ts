@@ -157,6 +157,9 @@ export async function GET(req: NextRequest) {
 
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
   const storeId = intg.externalStoreId
+  const AGE_24H_MS = 24 * 60 * 60 * 1000
+  const ACTIVE_STATUSES = new Set(['waiting_confirm', 'waiting_pickup', 'delivering', 'preparing'])
+
   type GrabBackfillCandidate = {
     externalOrderId?: string
     externalStoreId?: string
@@ -164,6 +167,7 @@ export async function GET(req: NextRequest) {
     customerPhone?: string
     driverInfo?: { phone?: string }
     status?: string
+    placedAt?: string | Date
     deliveredAt?: string | Date
     discount?: number
   }
@@ -178,7 +182,7 @@ export async function GET(req: NextRequest) {
 
   if (storeId) {
     orders = await OrderModel.find({ ...baseQuery, externalStoreId: storeId })
-      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status deliveredAt discount')
+      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status placedAt deliveredAt discount')
       .sort({ placedAt: -1 })
       .limit(limit * 8)
       .lean() as GrabBackfillCandidate[]
@@ -186,7 +190,7 @@ export async function GET(req: NextRequest) {
 
   if (orders.length === 0 && storeId) {
     orders = await OrderModel.find({ ...baseQuery, 'rawPayload.merchantID': storeId })
-      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status deliveredAt discount')
+      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status placedAt deliveredAt discount')
       .sort({ placedAt: -1 })
       .limit(limit * 8)
       .lean() as GrabBackfillCandidate[]
@@ -197,7 +201,7 @@ export async function GET(req: NextRequest) {
       ...baseQuery,
       brandId: intg.brandId,
     })
-      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status deliveredAt discount')
+      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status placedAt deliveredAt discount')
       .sort({ placedAt: -1 })
       .limit(limit * 8)
       .lean() as GrabBackfillCandidate[]
@@ -226,6 +230,14 @@ export async function GET(req: NextRequest) {
       // BUT: if needCutlery is present in rawPayload it means the detail page was already fetched
       // for this order (needCutlery is only set from the Grab detail page XHR). Skip re-fetching
       // to avoid hammering the same order repeatedly when items genuinely have no addons/prices.
+      // Skip active orders older than 24h — they are stale and push-orders would reject them anyway
+      const placedAtMs = order.placedAt ? new Date(String(order.placedAt)).getTime() : 0
+      const isOlderThan24h = placedAtMs > 0 && Date.now() - placedAtMs > AGE_24H_MS
+      const isActiveStatus = ACTIVE_STATUSES.has(String(order.status ?? '').toLowerCase())
+      if (isOlderThan24h && isActiveStatus) {
+        return { externalOrderId: String(order.externalOrderId ?? ''), externalStoreId: '', pageStage: '', shortOrderId: undefined, reasons: [] }
+      }
+
       const alreadyFetchedDetail = hasGrabUtensilInfo(rawPayload)
       const missingItemDetail = !hasGrabDetailedItems(rawPayload) && !alreadyFetchedDetail
       const missingPromotionDetail = Number(order.discount ?? 0) > 0 && !hasGrabPromotionDetail(rawPayload) && !alreadyFetchedDetail
