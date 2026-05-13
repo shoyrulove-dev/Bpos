@@ -221,19 +221,17 @@ export async function GET(req: NextRequest) {
         && !hasMeaningfulPhone(getDisplayCustomerPhone(order as unknown as Order))
       const missingDriverPhone = !skipFinalizedRetry
         && !hasMeaningfulPhone(getDisplayDriverPhone(order as unknown as Order))
-      // Item/promo/utensil detail: always try even for history/completed orders — Grab portal
-      // still shows items/vouchers/addons/utensil info on the history detail page
+      // Item/promo detail: always try even for history/completed orders — Grab portal
+      // still shows items/vouchers/addons on the history detail page
       const missingItemDetail = !hasGrabDetailedItems(rawPayload)
       const missingPromotionDetail = Number(order.discount ?? 0) > 0 && !hasGrabPromotionDetail(rawPayload)
       const missingDeliveredAt = order.status === 'completed' && !order.deliveredAt && !hasDeliveredAtSignal(rawPayload)
-      const missingUtensilInfo = !hasGrabUtensilInfo(rawPayload)
       const reasons = [
         missingCustomerPhone ? 'customer-phone' : null,
         missingDriverPhone ? 'driver-phone' : null,
         missingItemDetail ? 'item-detail' : null,
         missingPromotionDetail ? 'promotion-detail' : null,
         missingDeliveredAt ? 'delivered-at' : null,
-        missingUtensilInfo ? 'utensil-info' : null,
       ].filter((value): value is string => Boolean(value))
 
       // Short order ID (GF-xxx style) from raw Grab payload

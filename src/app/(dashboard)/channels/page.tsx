@@ -63,10 +63,7 @@ export default function ChannelsPage() {
     [channels, tabSourceSet]
   )
 
-  const filteredHubs = form.brandId ? hubs.filter(h => {
-    const bid = typeof h.brandId === 'object' && h.brandId ? (h.brandId as { _id: string })._id : String(h.brandId ?? '')
-    return bid === form.brandId
-  }) : hubs
+  const filteredHubs = hubs
 
   const openCreate = () => {
     setEditId(null)
