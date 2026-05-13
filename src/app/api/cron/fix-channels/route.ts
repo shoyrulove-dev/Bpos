@@ -51,34 +51,60 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  await connectDB()
-
   const result: Record<string, unknown> = {}
 
   try {
-  // ── 1. Delete duplicate channels ──────────────────────────────────────────
-  const deleteIds = CHANNEL_IDS_TO_DELETE.map(id => new mongoose.Types.ObjectId(id))
-  const deleteResult = await ChannelModel.deleteMany({ _id: { $in: deleteIds } })
-  result.channelsDeleted = deleteResult.deletedCount
+    await connectDB()
 
-  // ── 2. Find an admin user to use as createdBy ────────────────────────────
-  const adminUser = await UserModel.findOne({ role: 'admin' }).lean()
-  const createdById = adminUser?._id ?? new mongoose.Types.ObjectId()
+    // ── 1. Delete duplicate channels ──────────────────────────────────────────
+    const deleteIds = CHANNEL_IDS_TO_DELETE.map(id => new mongoose.Types.ObjectId(id))
+    const deleteResult = await ChannelModel.deleteMany({ _id: { $in: deleteIds } })
+    result.channelsDeleted = deleteResult.deletedCount
 
-  // ── 3. Create new integrations for 1ketoan ────────────────────────────────
-  const created: string[] = []
-  const skipped: string[] = []
+    // ── 2. Find an admin user to use as createdBy ────────────────────────────
+    const adminUser = await UserModel.findOne({ role: 'admin' }).lean()
+    const createdById = adminUser?._id ?? new mongoose.Types.ObjectId()
+    result.adminUserId = String(createdById)
 
-  for (const acc of NEW_GRAB_INTEGRATIONS) {
-    // Skip if integration already exists for this storeId
-    const existing = await IntegrationModel.findOne({
-      provider: 'grab',
-      externalStoreId: acc.storeId,
-    }).lean()
+    // ── 3. Create new integrations for 1ketoan ────────────────────────────────
+    const created: string[] = []
+    const skipped: string[] = []
 
-    if (existing) {
-      skipped.push(acc.storeId)
-      // Still ensure channel exists
+    for (const acc of NEW_GRAB_INTEGRATIONS) {
+      const existing = await IntegrationModel.findOne({
+        provider: 'grab',
+        externalStoreId: acc.storeId,
+      }).lean()
+
+      if (existing) {
+        skipped.push(acc.storeId)
+        await ensureChannelForIntegration({
+          provider: 'grab',
+          brandId: new mongoose.Types.ObjectId(acc.brandId),
+          hubId: new mongoose.Types.ObjectId(acc.hubId),
+          externalStoreId: acc.storeId,
+          externalStoreName: acc.storeName,
+          isActive: true,
+        })
+        continue
+      }
+
+      const encryptedPw = encrypt(acc.password)
+      const integration = await IntegrationModel.create({
+        provider:            'grab',
+        brandId:             new mongoose.Types.ObjectId(acc.brandId),
+        hubId:               new mongoose.Types.ObjectId(acc.hubId),
+        externalStoreId:     acc.storeId,
+        externalStoreName:   acc.storeName,
+        loginMode:           'auto',
+        loginUsername:       acc.username,
+        loginPassword:       encryptedPw,
+        sessionRefreshMode:  'auto',
+        credentials:         new Map(),
+        isActive:            true,
+        createdBy:           createdById,
+      })
+
       await ensureChannelForIntegration({
         provider: 'grab',
         brandId: new mongoose.Types.ObjectId(acc.brandId),
@@ -87,40 +113,17 @@ export async function POST(req: NextRequest) {
         externalStoreName: acc.storeName,
         isActive: true,
       })
-      continue
+
+      created.push(`${acc.storeId} → ${String(integration._id)}`)
     }
 
-    const integration = await IntegrationModel.create({
-      provider:            'grab',
-      brandId:             new mongoose.Types.ObjectId(acc.brandId),
-      hubId:               new mongoose.Types.ObjectId(acc.hubId),
-      externalStoreId:     acc.storeId,
-      externalStoreName:   acc.storeName,
-      loginMode:           'auto',
-      loginUsername:       acc.username,
-      loginPassword:       encrypt(acc.password),
-      sessionRefreshMode:  'auto',
-      credentials:         {},
-      isActive:            true,
-      createdBy:           createdById,
-    })
-
-    await ensureChannelForIntegration({
-      provider: 'grab',
-      brandId: new mongoose.Types.ObjectId(acc.brandId),
-      hubId: new mongoose.Types.ObjectId(acc.hubId),
-      externalStoreId: acc.storeId,
-      externalStoreName: acc.storeName,
-      isActive: true,
-    })
-
-    created.push(`${acc.storeId} → ${String(integration._id)}`)
-  }
-
-  result.integrationsCreated = created
-  result.integrationsSkipped = skipped
+    result.integrationsCreated = created
+    result.integrationsSkipped = skipped
   } catch (e: unknown) {
-    result.error = e instanceof Error ? e.message : String(e)
+    const msg = e instanceof Error ? e.message : String(e)
+    const stack = e instanceof Error ? e.stack : undefined
+    result.error = msg
+    result.stack = stack?.split('\n').slice(0, 5).join(' | ')
   }
 
   return NextResponse.json({ ok: true, ...result })
