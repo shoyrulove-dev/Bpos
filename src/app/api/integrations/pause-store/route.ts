@@ -24,8 +24,8 @@ async function proxyToScraper(path: string, body: unknown) {
  * Body: { integrationId, source: 'grab'|'be', duration?: '30m'|'1h'|'24h', action: 'pause'|'resume' }
  */
 export async function POST(req: NextRequest) {
-  const authErr = await requireAdmin(req)
-  if (authErr) return authErr
+  const { res: authRes } = await requireAdmin(req)
+  if (authRes) return authRes
 
   const body = await req.json().catch(() => null)
   if (!body || !body.source || !body.action) {
@@ -55,8 +55,8 @@ export async function POST(req: NextRequest) {
  * Returns current pause status from scraper
  */
 export async function GET(req: NextRequest) {
-  const authErr = await requireAdmin(req)
-  if (authErr) return authErr
+  const { res: authRes } = await requireAdmin(req)
+  if (authRes) return authRes
 
   try {
     const res = await fetch(`${SCRAPER_URL}/store-status`, {
