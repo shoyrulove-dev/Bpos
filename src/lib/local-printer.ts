@@ -220,18 +220,20 @@ export async function tryBridgePrintOrder(orderId: string, type: LocalPrinterTyp
 // On Windows, Consolas/Arial/Tahoma all support Vietnamese Unicode properly
 function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58mm' | 'A4'): string {
   const wrapWidth = paperWidth === '58mm' ? '50mm' : paperWidth === 'A4' ? '190mm' : '72mm'
+  // NOTE: No @page rule here — Playwright uses screenshot (not print), so @page is irrelevant.
+  // html/body height must be fit-content so scrollHeight = actual content height (not viewport 4000px).
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print</title>
 <style>
-@page{size:${paperWidth} auto;margin:4mm}
-html,body{margin:0;padding:0;background:#fff!important;color:#000}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#fff!important;color:#000;height:fit-content;min-height:0}
 body{width:${paperWidth};font-family:'Courier New',Consolas,'Lucida Console',monospace}
-.receipt-wrap{box-sizing:border-box;width:${wrapWidth};margin:0 auto;padding:2mm 0 4mm}
+.receipt-wrap{width:${wrapWidth};margin:0 auto;padding:2mm 2mm 6mm}
 .receipt-template{font-family:'Courier New',Consolas,'Lucida Console',monospace;font-size:4.2mm;line-height:1.35;white-space:normal}
-.tpl-line{white-space:pre-wrap;word-break:break-word}
-.tpl-empty{min-height:1.35em}
+.tpl-line{white-space:pre-wrap;word-break:break-word;margin:0}
+.tpl-empty{height:1.35em;margin:0}
 .tpl-center{text-align:center}
 .tpl-strong{font-weight:800;letter-spacing:.04em}
-.tpl-divider{border-top:.35mm dashed #000;margin:1.5mm 0}
+.tpl-divider{border:none;border-top:.35mm dashed #000;margin:1.5mm 0}
 .tpl-indent{padding-left:3mm}
 </style></head><body>
 <div class="receipt-wrap receipt-template">${renderedContent}</div>
