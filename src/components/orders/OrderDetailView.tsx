@@ -173,7 +173,7 @@ function getGrabDetailItems(order: Order) {
     ? itemInfo.items
     : []
 
-  if (!rawItems.length && order.items.length && order.items.some((item) => (item.price ?? 0) > 0 || (item.total ?? 0) > 0)) {
+  if (!rawItems.length && order.items.length) {
     return order.items.map((item): GrabDetailItem => ({
       name: item.name,
       quantity: Number(item.quantity ?? 1),
@@ -181,7 +181,7 @@ function getGrabDetailItems(order: Order) {
       strikePrice: 0,
       sellingPrice: Number(item.price ?? 0),
       total: Number(item.total ?? 0),
-      note: item.note,
+      note: item.note === 'No data' || item.note === 'no data' ? undefined : item.note,
       addonGroups: [],
     }))
   }
@@ -287,8 +287,8 @@ function getBeDetailItems(order: Order) {
       strikePrice: 0,
       sellingPrice: Number(item.price ?? 0),
       total: Number(item.total ?? 0),
-      note: item.note,
-      addonGroups: item.note
+      note: item.note === 'No data' || item.note === 'no data' ? undefined : item.note,
+      addonGroups: item.note && item.note !== 'No data' && item.note !== 'no data'
         ? [{ title: '', lines: item.note.split('|').map((line) => line.trim()).filter(Boolean) }]
         : [],
     }))
