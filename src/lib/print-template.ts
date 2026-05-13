@@ -139,9 +139,16 @@ function renderItemBlock(block: string, item: OrderItem) {
     NoteLine: noteLine,
   }
 
-  return Object.entries(replacements).reduce((output, [key, value]) => {
-    return output.replace(new RegExp(`\\{\\{\\s*\\.${key}\\s*\\}\\}`, 'g'), value)
+  // Use function replacer to avoid special $ sequences in values being misinterpreted
+  const rendered = Object.entries(replacements).reduce((output, [key, value]) => {
+    return output.replace(new RegExp(`\\{\\{\\s*\\.${key}\\s*\\}\\}`, 'g'), () => value)
   }, block)
+
+  // If noteLine is empty, remove lines that became blank after NoteLine substitution
+  if (!noteLine) {
+    return rendered.split('\n').filter((l) => l.trim() !== '').join('\n')
+  }
+  return rendered
 }
 
 export function getDefaultTemplateContent(type: EditablePrintTemplateType) {
@@ -154,8 +161,9 @@ export function getTemplateTypeForPaperSize(size: BillSize): EditablePrintTempla
 }
 
 export function buildPrintTemplateContext(order: PrintableTemplateOrder, overrides?: Partial<TemplateContext>) {
-  const itemLines = order.items.length
-    ? order.items.map((item) => `${item.name} x${item.quantity} ${formatCurrency(getItemTotal(item))}${item.note ? ` (${item.note})` : ''}`).join('\n')
+  const safeItems = Array.isArray(order.items) ? order.items : []
+  const itemLines = safeItems.length
+    ? safeItems.map((item) => `${item.name} x${item.quantity} ${formatCurrency(getItemTotal(item))}${item.note ? ` (${item.note})` : ''}`).join('\n')
     : 'Chưa có món nào'
 
   return {
@@ -216,14 +224,16 @@ export function buildDemoPrintTemplateContext(type: EditablePrintTemplateType = 
 
 export function renderPrintTemplateText(content: string, context: TemplateContext, items: OrderItem[]) {
   const source = content.trim() || DEFAULT_TEMPLATES.receipt
+  const safeItems = Array.isArray(items) ? items : []
 
   const withItems = source.replace(/\{\{\s*range\s+\.Items\s*\}\}([\s\S]*?)\{\{\s*end\s*\}\}/g, (_match, block: string) => {
-    if (!items.length) return ''
-    return items.map((item) => renderItemBlock(block, item)).join('')
+    if (!safeItems.length) return ''
+    return safeItems.map((item) => renderItemBlock(block, item)).join('\n')
   })
 
+  // Use function replacer to safely handle $ in context values
   return Object.entries(context).reduce((output, [key, value]) => {
-    return output.replace(new RegExp(`\\{\\{\\s*\\.${key}\\s*\\}\\}`, 'g'), value)
+    return output.replace(new RegExp(`\\{\\{\\s*\\.${key}\\s*\\}\\}`, 'g'), () => value)
   }, withItems)
 }
 
@@ -232,7 +242,10 @@ export function renderPrintTemplateHtml(content: string, context: TemplateContex
 }
 
 export function renderTemplateTextAsHtml(content: string) {
-  return content.split('\n').map((line) => {
+  const lines = content.split('\n')
+  // Trim trailing empty lines to prevent excess blank space at bottom of print
+  while (lines.length > 0 && !lines[lines.length - 1].trim()) lines.pop()
+  return lines.map((line) => {
     const trimmed = line.trim()
     if (!trimmed) return '<div class="tpl-line tpl-empty">&nbsp;</div>'
     if (/^={3,}/.test(trimmed)) return `<div class="tpl-line tpl-center tpl-strong">${escapeHtml(trimmed)}</div>`
