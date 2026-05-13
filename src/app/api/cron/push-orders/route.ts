@@ -266,6 +266,12 @@ export async function POST(req: NextRequest) {
       if (!isFromActiveBucket && existingStatus === 'completed' && (merged.orderStatus === 'waiting_pickup' || merged.orderStatus === 'waiting_confirm' || merged.orderStatus === 'delivering')) {
         merged.orderStatus = 'completed'
       }
+      // Backfill source: never UPGRADE an active order to completed
+      // Backfill only enriches items/phones/vouchers — it should not change status
+      const isBackfillSource = source === 'browser-grab-backfill'
+      if (isBackfillSource && ACTIVE_ORDER_STATUSES.has(existingStatus ?? '') && merged.orderStatus === 'completed') {
+        merged.orderStatus = (existingStatus as NormalizedOrder['orderStatus']) ?? 'waiting_pickup'
+      }
 
       if (shouldSkipFinalizedOrderSync(existing as Record<string, unknown> | undefined, merged)) {
         const skippedProfiles = getOrderContactProfileCandidates(merged, {

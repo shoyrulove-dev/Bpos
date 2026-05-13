@@ -215,7 +215,9 @@ export function getGrabMoneyBreakdown(order: Order) {
   const deliveryFee = getAmountFromSources([fare, price, raw], ['deliveryFeeDisplay', 'deliveryFee']) ?? 0
   const smallOrderFee = getAmountFromSources([fare, price, raw], ['smallOrderFeeDisplay', 'smallOrderFee']) ?? 0
   const serviceFee = getAmountFromSources([fare, price, raw], ['serviceChargeFeeDisplay', 'serviceFee']) ?? 0
-  const customerPaid = getAmountFromSources([fare, price, raw], ['passengerTotalDisplay', 'eaterPayment', 'total', 'orderTotal']) ?? (revenueAfterPromotion + deliveryFee + smallOrderFee + serviceFee)
+  // Use only explicit Grab customer-paid fields, NOT 'total'/'orderTotal' (those are order totals
+  // always present on active orders and would incorrectly trigger the payment breakdown section)
+  const customerPaid = getAmountFromSources([fare, price, raw], ['passengerTotalDisplay', 'eaterPayment']) ?? 0
   const platformCommission = getDeductionAmountFromSources(
     [financialBreakdown, fare, price, raw],
     ['platformCommission', 'mexCommissionDisplay', 'platformFee', 'commissionFee', 'merchantCommission', 'merchantFee', 'serviceFee'],

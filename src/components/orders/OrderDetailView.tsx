@@ -785,7 +785,7 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
             </div>
           </div>
 
-          {(grabMoneyBreakdown?.customerPaid || grabMoneyBreakdown?.deliveryFee || grabMoneyBreakdown?.smallOrderFee || grabMoneyBreakdown?.serviceFee) && (
+          {order.status === 'completed' && (grabMoneyBreakdown?.customerPaid || grabMoneyBreakdown?.deliveryFee || grabMoneyBreakdown?.smallOrderFee || grabMoneyBreakdown?.serviceFee) && (
             <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
               <p className="font-medium text-gray-900">Thông tin khách thanh toán</p>
               <div className="mt-2 space-y-1.5">
