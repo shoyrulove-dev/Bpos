@@ -218,8 +218,10 @@ const PLATFORM_ACCOUNTS: {
   // BDT - ĐMX
   { brand: 'BDT', hub: 'ĐMX',  provider: 'grab',    username: 'dmx.nexdor.bdt',                     password: 'Nexdor@123' },
   { brand: 'BDT', hub: 'ĐMX',  provider: 'be',      username: 'deliveryapp+dmmbdt@nexdor.tech',      password: 'Be@99347' },
-  // 30B - 3B
-  { brand: '30B', hub: '3B',   provider: 'grab',    username: '1ketoan@takogroup.com.vn',            password: 'Bdt2026@' },
+  // 30B - 3B (grab 1ketoan: 3 cua hang chung 1 tai khoan)
+  { brand: '30B', hub: '3B',            provider: 'grab', username: '1ketoan@takogroup.com.vn', password: 'Bdt2026@',  note: '3B chinh' },
+  { brand: '30B', hub: '3B Duong so 3', provider: 'grab', username: '1ketoan@takogroup.com.vn', password: 'Bdt2026@',  note: 'chung TK' },
+  { brand: '30B', hub: '3B moi',        provider: 'grab', username: '1ketoan@takogroup.com.vn', password: 'Bdt2026@',  note: 'chung TK' },
   { brand: '30B', hub: '3B',   provider: 'be',      username: 'ketoan@takogroup.com.vn',             password: 'Bdt2026@' },
   { brand: '30B', hub: '3B',   provider: 'shopee',  username: '0393655295',                         password: 'Trung2002' },
   // 30B - Ò Ó O
@@ -854,12 +856,17 @@ export default function IntegrationsPage() {
     acc[provider.value] = integrations.filter((integration) => integration.provider === provider.value).length
     return acc
   }, {} as Record<string, number>)
-  const providerSections = PROVIDERS.map((provider) => ({
-    ...provider,
-    integrations: integrations.filter((integration) => integration.provider === provider.value),
-    target: TARGET_PROVIDER_COUNTS[provider.value],
-    note: PROVIDER_NOTES[provider.value],
-  }))
+  const providerSections = PROVIDERS.map((provider) => {
+    const provIntegrations = [...integrations.filter((i) => i.provider === provider.value)]
+    // Group by loginUsername so shared-account entries (e.g. 1ketoan × 3 stores) appear together
+    provIntegrations.sort((a, b) => (a.loginUsername ?? '').localeCompare(b.loginUsername ?? ''))
+    return {
+      ...provider,
+      integrations: provIntegrations,
+      target: TARGET_PROVIDER_COUNTS[provider.value],
+      note: PROVIDER_NOTES[provider.value],
+    }
+  })
   const activeProviderSection = providerSections.find((section) => section.value === activeProviderTab) ?? providerSections[0]
 
   const getBrandName = (integ: Integ) =>
@@ -1389,8 +1396,23 @@ export default function IntegrationsPage() {
               </button>
             )
           })}
+          <button
+            onClick={() => setActiveProviderTab('pause')}
+            className={cn(
+              'flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-medium transition-all',
+              activeProviderTab === 'pause'
+                ? 'border-gray-900 bg-gray-900 text-white shadow-sm'
+                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+            )}
+          >
+            <span className="text-base leading-none">⏸</span>
+            <span className="font-semibold">Tạm dừng</span>
+          </button>
         </div>
 
+        {activeProviderTab === 'pause' ? (
+          <PauseStoreSection />
+        ) : (
         <section key={activeProviderSection.value} className="flex flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -1445,6 +1467,7 @@ export default function IntegrationsPage() {
             )}
           </div>
         </section>
+        )}
       </div>
 
 
@@ -1594,9 +1617,6 @@ export default function IntegrationsPage() {
 
       {/* ═══ SECTION: Tài khoản đăng nhập sàn ═════════════════════════════ */}
       <PlatformAccountsSection />
-
-      {/* ═══ SECTION: Tạm dừng / Mở lại cửa hàng ═════════════════════════ */}
-      <PauseStoreSection />
 
       {/* ═══ MODAL: Quick Test ══════════════════════════════════════════════ */}
       {showQt && (
