@@ -31,12 +31,12 @@ function hasGrabDetailedItems(rawPayload?: Record<string, unknown>) {
     const itemRecord = getRecord(item)
     const fare = getRecord(itemRecord?.fare)
 
+    // NOTE: deliberately exclude note/remark/specialInstruction — DOM extraction
+    // can inject garbage strings like 'No data', causing false positives.
+    // Real signals are prices and modifiers from Grab XHR data.
     return Boolean(
-      (typeof itemRecord?.note === 'string' && itemRecord.note.trim())
-      || (typeof itemRecord?.remark === 'string' && itemRecord.remark.trim())
-      || (typeof itemRecord?.specialInstruction === 'string' && itemRecord.specialInstruction.trim())
-      || (typeof itemRecord?.specialInstructions === 'string' && itemRecord.specialInstructions.trim())
-      || (Array.isArray(itemRecord?.modifiers) && itemRecord.modifiers.length)
+      (Array.isArray(itemRecord?.modifiers) && itemRecord.modifiers.length)
+      || (Array.isArray(itemRecord?.modifierGroups) && itemRecord.modifierGroups.length)
       || (Array.isArray(itemRecord?.addons) && itemRecord.addons.length)
       || (Array.isArray(itemRecord?.options) && itemRecord.options.length)
       || (Array.isArray(itemRecord?.discountInfo) && itemRecord.discountInfo.length)

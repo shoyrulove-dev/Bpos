@@ -24,7 +24,7 @@ const SOURCES = [
   { value: 'other',    label: 'Khác' },
 ]
 
-const emptyForm = { name: '', source: 'grab', brandId: '', hubId: '' }
+const emptyForm = { name: '', source: 'grab', brandId: '', hubId: '', externalStoreId: '' }
 
 export default function ChannelsPage() {
   const [search, setSearch]   = useState('')
@@ -42,7 +42,7 @@ export default function ChannelsPage() {
   const { data: rawHubs = [] } = useHubs()
   const hubs = rawHubs as { _id: string; name: string; brandId: string }[]
   const { data: rawIntegrations = [] } = useIntegrations(undefined)
-  const integrations = rawIntegrations as { _id: string; provider: string; externalStoreName?: string; externalStoreId?: string; brandId: string | { _id: string; name: string } }[]
+  const integrations = rawIntegrations as { _id: string; provider: string; externalStoreName?: string; externalStoreId?: string; loginUsername?: string; brandId: string | { _id: string; name: string } }[]
 
   const createMutation = useCreateChannel()
   const updateMutation = useUpdateChannel()
@@ -76,7 +76,7 @@ export default function ChannelsPage() {
     setEditId(c._id)
     const bid = typeof c.brandId === 'object' && c.brandId ? (c.brandId as { _id: string })._id : String(c.brandId ?? '')
     const hid = typeof c.hubId === 'object' && c.hubId ? (c.hubId as { _id: string })._id : String(c.hubId ?? '')
-    setForm({ name: c.name, source: c.source, brandId: bid, hubId: hid })
+    setForm({ name: c.name, source: c.source, brandId: bid, hubId: hid, externalStoreId: String((c as unknown as Record<string, unknown>).externalStoreId ?? '') })
     setSaveError('')
     setShowForm(true)
   }
@@ -93,6 +93,7 @@ export default function ChannelsPage() {
         source: form.source,
         brandId: form.brandId,
         hubId: form.hubId || undefined,
+        externalStoreId: form.externalStoreId || undefined,
       }
       if (editId) {
         await updateMutation.mutateAsync({ id: editId, ...payload })
@@ -169,7 +170,13 @@ export default function ChannelsPage() {
                 <div className="min-w-0">
                   <h3 className="font-semibold text-sm text-gray-900 truncate leading-tight">{channel.name}</h3>
                   <p className="text-[11px] text-gray-400 truncate">
-                    {[channel.brandName, channel.hubName].filter(Boolean).join(' · ')}
+                    {[channel.brandName, channel.hubName, (() => {
+                      const integ = integrations.find(i =>
+                        i.provider === channel.source &&
+                        i.externalStoreId && i.externalStoreId === (channel as unknown as Record<string, unknown>).externalStoreId
+                      )
+                      return integ?.loginUsername || null
+                    })()].filter(Boolean).join(' · ')}
                   </p>
                 </div>
               </div>
@@ -271,6 +278,7 @@ export default function ChannelsPage() {
                           name: integ.externalStoreName || integ.externalStoreId || p.name,
                           brandId: bId || p.brandId,
                           hubId: '',
+                          externalStoreId: integ.externalStoreId || '',
                         }))
                       }}>
                       <option value="">— Chọn tài khoản để điền tự động —</option>
