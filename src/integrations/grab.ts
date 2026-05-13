@@ -202,9 +202,6 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
     return 'completed'
   }
 
-  // Upcoming (đặt trước) vẫn hiển thị là chờ lấy hàng trên BPOS
-  if (pageStage === 'upcoming') return 'waiting_pickup'
-
   if (pageStage === 'history') {
     // history tab: chỉ completed/cancelled khi có bằng chứng rõ ràng
     // Đang giao (driver đã lấy, chưa giao xong) → vẫn là waiting_pickup từ góc nhìn nhà hàng
@@ -220,21 +217,6 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
     if (hasCompletionEvidence) return 'completed'
     // Đang giao hoặc chưa rõ → waiting_pickup (không dùng delivering)
     return 'waiting_pickup'
-  }
-
-  if (pageStage === 'ready') return 'waiting_pickup'
-
-  if (['preparing', 'upcoming', 'ready'].includes(pageStage) && (mappedStatus === 'waiting_confirm' || mappedStatus === 'waiting_pickup' || mappedStatus === 'pre_order') && secondarySignals.some((value) => (
-    value.includes('prepare')
-    || value.includes('ready')
-    || value.includes('upcoming')
-    || value.includes('pickup')
-    || value.includes('accepted')
-    || value.includes('allocat')
-    || value.includes('execut')
-  ))) {
-    if (pageStage === 'preparing' && mappedStatus === 'waiting_confirm') return 'waiting_confirm'
-    return mappedStatus
   }
 
   if (raw.cancelCode || hasGrabDateValue(raw.cancelledAt) || hasGrabDateValue(raw.canceledAt) || hasGrabDateValue(times?.cancelledAt)) {
