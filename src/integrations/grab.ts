@@ -1483,7 +1483,20 @@ export class GrabAdapter implements PlatformAdapter {
       raw.subTotal ??
       this.parseGrabDisplayAmount(raw.cancelledOriginalPriceDisplay ?? raw.priceDisplay ?? raw.orderValue)
     )
+    // Discount: check voucherInfo and orderLevelDiscounts in addition to price object
+    const voucherInfo = raw.voucherInfo && typeof raw.voucherInfo === 'object' && !Array.isArray(raw.voucherInfo)
+      ? raw.voucherInfo as Record<string, unknown>
+      : undefined
+    const voucherDiscount = Array.isArray(voucherInfo?.vouchers)
+      ? (voucherInfo.vouchers as Record<string, unknown>[]).reduce((s, v) => s + Number(v?.discountAmount ?? v?.amount ?? v?.value ?? 0), 0)
+      : Array.isArray(voucherInfo?.discounts)
+      ? (voucherInfo.discounts as Record<string, unknown>[]).reduce((s, v) => s + Number(v?.discountAmount ?? v?.amount ?? v?.value ?? 0), 0)
+      : 0
+    const orderLevelDiscount = Array.isArray(raw.orderLevelDiscounts)
+      ? (raw.orderLevelDiscounts as Record<string, unknown>[]).reduce((s, d) => s + Number(d?.discountAmount ?? d?.amount ?? d?.value ?? 0), 0)
+      : 0
     const discount = Number(priceObj.basketPromo ?? priceObj.discount ?? raw.discount ?? raw.discountAmount ?? 0)
+      || voucherDiscount || orderLevelDiscount
     const total    = Number(
       priceObj.eaterPayment ??
       priceObj.total ??

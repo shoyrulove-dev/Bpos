@@ -41,7 +41,7 @@ function hasGrabDetailedItems(rawPayload?: Record<string, unknown>) {
       || (Array.isArray(itemRecord?.options) && itemRecord.options.length)
       || (Array.isArray(itemRecord?.discountInfo) && itemRecord.discountInfo.length)
       || Number(itemRecord?.price ?? itemRecord?.itemPrice ?? itemRecord?.totalPrice ?? itemRecord?.subtotal ?? itemRecord?.total ?? 0) > 0
-      || Number(fare?.priceFloat ?? fare?.amount ?? fare?.price ?? 0) > 0
+      || Number(fare?.priceFloat ?? fare?.priceInMin ?? fare?.amount ?? fare?.price ?? 0) > 0
     )
   })
 }
