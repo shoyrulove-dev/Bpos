@@ -275,7 +275,17 @@ export function primeOrderAlertAudio() {
   try {
     const alertAudio = new Audio(ORDER_ALERT_AUDIO_URL)
     alertAudio.preload = 'auto'
+    alertAudio.volume = 0  // silent — just to unlock HTML audio playback policy
     alertAudio.load()
+    // Playing at zero volume within a user-gesture handler unlocks HTMLAudioElement
+    // for future (non-gesture) playback in browsers that enforce autoplay policy
+    const primePlay = alertAudio.play()
+    if (primePlay && typeof primePlay.then === 'function') {
+      primePlay.then(() => {
+        alertAudio.pause()
+        alertAudio.currentTime = 0
+      }).catch(() => { /* blocked — that's ok, AudioContext fallback will handle it */ })
+    }
 
     if ('speechSynthesis' in window) {
       window.speechSynthesis.getVoices()
