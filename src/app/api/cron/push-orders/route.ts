@@ -251,9 +251,11 @@ export async function POST(req: NextRequest) {
       const incomingFetchType = String(rawPayloadIncoming?._fetchType ?? '').trim()
       const isFromActiveBucket = ['PreparingV2', 'Ready', 'Upcoming'].includes(incomingPageType)
         || ['in_progress', 'on_delivery', 'pending'].includes(incomingFetchType)
-      if (existingStatus === 'cancelled' && merged.orderStatus === 'completed') {
+      // Cancelled orders never change status via auto-sync (any source)
+      if (existingStatus === 'cancelled') {
         merged.orderStatus = 'cancelled'
       }
+      // Completed orders don't revert to active unless pushed from a live active bucket
       if (!isFromActiveBucket && existingStatus === 'completed' && (merged.orderStatus === 'waiting_pickup' || merged.orderStatus === 'waiting_confirm' || merged.orderStatus === 'delivering')) {
         merged.orderStatus = 'completed'
       }

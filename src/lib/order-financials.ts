@@ -192,9 +192,22 @@ export function getGrabMoneyBreakdown(order: Order) {
   const explicitPromotionDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['orderDiscount', 'merchantDiscount', 'merchantPromotionDiscount', 'basketPromo', 'discountAmount', 'discount'])
   const explicitRevenueAfterPromotion = getAmountFromSources([financialBreakdown], ['revenueAfterPromotion'])
   const itemDiscount = explicitItemDiscount ?? getGrabItemDiscountTotal(order)
-  const promotionDiscount = typeof explicitPromotionDiscount === 'number'
-    ? explicitPromotionDiscount
+  // Voucher / order-level discount from voucherInfo (used when explicit discount fields are 0 or absent)
+  const voucherInfoRecord = getRecord(raw?.voucherInfo)
+  const voucherDiscount = Array.isArray(voucherInfoRecord?.vouchers)
+    ? (voucherInfoRecord.vouchers as Record<string, unknown>[]).reduce(
+        (s, v) => s + Math.abs(Number((v as Record<string, unknown>)?.discountAmount ?? (v as Record<string, unknown>)?.amount ?? (v as Record<string, unknown>)?.value ?? 0)), 0)
+    : Array.isArray(voucherInfoRecord?.discounts)
+    ? (voucherInfoRecord.discounts as Record<string, unknown>[]).reduce(
+        (s, v) => s + Math.abs(Number((v as Record<string, unknown>)?.discountAmount ?? (v as Record<string, unknown>)?.amount ?? (v as Record<string, unknown>)?.value ?? 0)), 0)
     : 0
+  const orderLevelDiscount = Array.isArray(raw?.orderLevelDiscounts)
+    ? (raw.orderLevelDiscounts as Record<string, unknown>[]).reduce(
+        (s, d) => s + Math.abs(Number((d as Record<string, unknown>)?.discountAmountValueInMin ?? (d as Record<string, unknown>)?.discountAmount ?? (d as Record<string, unknown>)?.amount ?? (d as Record<string, unknown>)?.value ?? 0)), 0)
+    : 0
+  const promotionDiscount = (typeof explicitPromotionDiscount === 'number' && explicitPromotionDiscount > 0)
+    ? explicitPromotionDiscount
+    : (voucherDiscount || orderLevelDiscount || 0)
   const computedRevenueAfterPromotion = Math.max(0, originalSubtotal - itemDiscount - promotionDiscount)
   const revenueAfterPromotion = typeof explicitRevenueAfterPromotion === 'number'
     ? explicitRevenueAfterPromotion
