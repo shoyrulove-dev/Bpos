@@ -222,9 +222,13 @@ export async function GET(req: NextRequest) {
       const missingDriverPhone = !skipFinalizedRetry
         && !hasMeaningfulPhone(getDisplayDriverPhone(order as unknown as Order))
       // Item/promo detail: always try even for history/completed orders — Grab portal
-      // still shows items/vouchers/addons on the history detail page
-      const missingItemDetail = !hasGrabDetailedItems(rawPayload)
-      const missingPromotionDetail = Number(order.discount ?? 0) > 0 && !hasGrabPromotionDetail(rawPayload)
+      // still shows items/vouchers/addons on the history detail page.
+      // BUT: if needCutlery is present in rawPayload it means the detail page was already fetched
+      // for this order (needCutlery is only set from the Grab detail page XHR). Skip re-fetching
+      // to avoid hammering the same order repeatedly when items genuinely have no addons/prices.
+      const alreadyFetchedDetail = hasGrabUtensilInfo(rawPayload)
+      const missingItemDetail = !hasGrabDetailedItems(rawPayload) && !alreadyFetchedDetail
+      const missingPromotionDetail = Number(order.discount ?? 0) > 0 && !hasGrabPromotionDetail(rawPayload) && !alreadyFetchedDetail
       const missingDeliveredAt = order.status === 'completed' && !order.deliveredAt && !hasDeliveredAtSignal(rawPayload)
       const reasons = [
         missingCustomerPhone ? 'customer-phone' : null,
