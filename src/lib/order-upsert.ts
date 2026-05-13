@@ -1,5 +1,5 @@
 import { generateId } from '@/lib/utils'
-import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
+import { extractGrabCustomerFinancials, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
 import { normalizeCompactPhone } from '@/lib/phone'
 import type { NormalizedOrder, Order } from '@/types'
 
@@ -649,6 +649,15 @@ export function buildOrderUpsert(integration: IntegrationRef, normalized: Normal
   }
 
   const unsetFields: Record<string, ''> = {}
+
+  // Grab completed orders: store customerPaid + customerDeliveryFee from fare data
+  if (resolvedOrderStatus === 'completed' && normalized.source === 'grab') {
+    const grabFinancials = extractGrabCustomerFinancials(normalized.rawPayload as Record<string, unknown> | undefined)
+    if (grabFinancials) {
+      if (grabFinancials.customerPaid > 0) baseSet.customerPaid = grabFinancials.customerPaid
+      if (grabFinancials.customerDeliveryFee > 0) baseSet.customerDeliveryFee = grabFinancials.customerDeliveryFee
+    }
+  }
 
   if (resolvedOrderStatus === 'completed') {
     const deliveredAt = extractDeliveredDate(normalized)

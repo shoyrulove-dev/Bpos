@@ -308,6 +308,8 @@ export interface Order {
   total: number
   platformFee?: number
   paymentMethod?: string
+  customerPaid?: number        // Khách thanh toán Grab (backfilled)
+  customerDeliveryFee?: number // Phí giao hàng Grab (backfilled)
   deliveryInfo?: DeliveryInfo
   driverInfo?: DriverInfo
   status: OrderStatus

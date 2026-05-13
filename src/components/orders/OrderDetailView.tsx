@@ -785,14 +785,13 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
             </div>
           </div>
 
-          {order.status === 'completed' && (grabMoneyBreakdown?.customerPaid || grabMoneyBreakdown?.deliveryFee || grabMoneyBreakdown?.smallOrderFee || grabMoneyBreakdown?.serviceFee) && (
+          {/* Thông tin khách thanh toán — chỉ hiển thị khi đã backfill (stored fields) */}
+          {order.status === 'completed' && (order.customerPaid || order.customerDeliveryFee) && (
             <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
               <p className="font-medium text-gray-900">Thông tin khách thanh toán</p>
               <div className="mt-2 space-y-1.5">
-                {grabMoneyBreakdown?.customerPaid ? <div className="flex items-center justify-between gap-3"><span>Khách thanh toán</span><span className="font-medium text-gray-900">{formatCurrency(grabMoneyBreakdown.customerPaid)}</span></div> : null}
-                {grabMoneyBreakdown?.deliveryFee ? <div className="flex items-center justify-between gap-3"><span>Phí giao hàng</span><span className="font-medium text-gray-900">{formatCurrency(grabMoneyBreakdown.deliveryFee)}</span></div> : null}
-                {grabMoneyBreakdown?.smallOrderFee ? <div className="flex items-center justify-between gap-3"><span>Phí đơn nhỏ</span><span className="font-medium text-gray-900">{formatCurrency(grabMoneyBreakdown.smallOrderFee)}</span></div> : null}
-                {grabMoneyBreakdown?.serviceFee ? <div className="flex items-center justify-between gap-3"><span>Phí dịch vụ</span><span className="font-medium text-gray-900">{formatCurrency(grabMoneyBreakdown.serviceFee)}</span></div> : null}
+                {order.customerPaid ? <div className="flex items-center justify-between gap-3"><span>Khách thanh toán</span><span className="font-medium text-gray-900">{formatCurrency(order.customerPaid)}</span></div> : null}
+                {order.customerDeliveryFee ? <div className="flex items-center justify-between gap-3"><span>Phí giao hàng</span><span className="font-medium text-gray-900">{formatCurrency(order.customerDeliveryFee)}</span></div> : null}
               </div>
             </div>
           )}

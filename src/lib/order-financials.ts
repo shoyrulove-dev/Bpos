@@ -5,7 +5,17 @@ function parseAmount(value: unknown) {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value !== 'string') return undefined
 
-  const normalized = value.replace(/[^\d-]/g, '')
+  const trimmed = value.trim()
+
+  // Pure decimal string like "92500.00" or "21000" — parse as float, round to integer (VND)
+  // Must NOT match Vietnamese thousands-separated display like "92.500" (3 digits after dot)
+  if (/^-?\d+(\.\d{1,2})?$/.test(trimmed)) {
+    const amount = Math.round(parseFloat(trimmed))
+    return Number.isFinite(amount) ? amount : undefined
+  }
+
+  // Display-formatted string like "92.500 ₫" or "92.500₫" → strip all non-digit chars
+  const normalized = trimmed.replace(/[^\d-]/g, '')
   if (!normalized || normalized === '-') return undefined
 
   const amount = Number(normalized)
@@ -107,6 +117,32 @@ function getBreakdownAmount(raw: Record<string, unknown>, keys: string[]) {
 
 export function extractPhone(value?: string) {
   return extractCompactPhone(value)
+}
+
+/**
+ * Trích xuất customerPaid và customerDeliveryFee từ rawPayload của đơn Grab.
+ * Dùng cho backfill và khi push đơn hoàn thành.
+ * Trả về null nếu rawPayload không có dữ liệu fare/price.
+ */
+export function extractGrabCustomerFinancials(rawPayload: Record<string, unknown> | undefined | null): {
+  customerPaid: number
+  customerDeliveryFee: number
+} | null {
+  if (!rawPayload) return null
+  const raw = getRecord(rawPayload)
+  if (!raw) return null
+
+  const fare  = getRecord(raw.fare)
+  const price = getRecord(raw.price ?? raw.pricing)
+
+  const customerPaid = getAmountFromSources([fare, price, raw], ['passengerTotalDisplay', 'eaterPayment'])
+  const customerDeliveryFee = getAmountFromSources([fare, price, raw], ['deliveryFeeDisplay', 'deliveryFee'])
+
+  if (typeof customerPaid !== 'number' && typeof customerDeliveryFee !== 'number') return null
+  return {
+    customerPaid: customerPaid ?? 0,
+    customerDeliveryFee: customerDeliveryFee ?? 0,
+  }
 }
 
 function getGrabFareRecord(order: Order) {

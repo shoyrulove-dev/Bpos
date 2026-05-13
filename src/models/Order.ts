@@ -40,6 +40,8 @@ export interface IOrder extends Document {
   total: number
   platformFee?: number
   paymentMethod?: string
+  customerPaid?: number
+  customerDeliveryFee?: number
   deliveryInfo?: unknown
   driverInfo?: unknown
   status: string
@@ -67,6 +69,8 @@ const OrderSchema = new Schema<IOrder>({
   total:          { type: Number, required: true },
   platformFee:    { type: Number, default: 0 },
   paymentMethod:  { type: String },
+  customerPaid:        { type: Number },  // Khách thanh toán — từ fare.passengerTotalDisplay
+  customerDeliveryFee: { type: Number },  // Phí giao hàng — từ fare.deliveryFeeDisplay
   deliveryInfo:   { type: DeliveryInfoSchema },
   driverInfo:     { type: DriverInfoSchema },
   status:         { type: String, enum: ['draft','pre_order','waiting_confirm','waiting_pickup','delivering','completed','cancelled'], default: 'waiting_confirm' },
