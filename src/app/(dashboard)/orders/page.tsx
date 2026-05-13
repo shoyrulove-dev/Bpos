@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, Plus, Printer, RefreshCw, Search } from 'lucide-react'
+import { Download, Loader2, Plus, Printer, RefreshCw, Search } from 'lucide-react'
 import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { useOrders } from '@/hooks/use-orders-channels'
@@ -294,18 +294,65 @@ export default function OrdersPage() {
 }
 
 function PaginationControls({ page, pageSize, total, totalPages, currentFrom, currentTo, onPageChange, onPageSizeChange }: { page: number; pageSize: (typeof PAGE_SIZE_OPTIONS)[number]; total: number; totalPages: number; currentFrom: number; currentTo: number; onPageChange: (page: number) => void; onPageSizeChange: (size: (typeof PAGE_SIZE_OPTIONS)[number]) => void }) {
+  // Build visible page numbers: always show first, last, and up to 3 around current
+  const pages: (number | '...')[] = []
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i)
+  } else {
+    const near = new Set([1, totalPages, page - 1, page, page + 1].filter(p => p >= 1 && p <= totalPages))
+    let prev = 0
+    for (const p of Array.from(near).sort((a, b) => a - b)) {
+      if (prev && p - prev > 1) pages.push('...')
+      pages.push(p)
+      prev = p
+    }
+  }
+
   return (
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
-        <span>{total > 0 ? `Hiển thị ${currentFrom}-${currentTo} / ${total} đơn` : 'Chưa có đơn hàng'}</span>
-        <label className="flex items-center gap-2"><span>Mỗi trang</span><select className="input h-9 w-24 py-1" value={pageSize} onChange={(event) => onPageSizeChange(Number(event.target.value) as (typeof PAGE_SIZE_OPTIONS)[number])}>{PAGE_SIZE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
+        <span>{total > 0 ? `${currentFrom}–${currentTo} / ${total} đơn` : 'Chưa có đơn hàng'}</span>
+        <select
+          className="input h-8 w-20 py-0 text-xs"
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number])}
+        >
+          {PAGE_SIZE_OPTIONS.map((o) => <option key={o} value={o}>{o} / trang</option>)}
+        </select>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <button onClick={() => onPageChange(1)} disabled={page <= 1} className="btn-outline btn-sm disabled:opacity-50"><ChevronsLeft className="h-4 w-4" /> Đầu</button>
-        <button onClick={() => onPageChange(page - 1)} disabled={page <= 1} className="btn-outline btn-sm disabled:opacity-50"><ChevronLeft className="h-4 w-4" /> Trước</button>
-        <span className="px-2 text-sm font-medium text-gray-700">Trang {page} / {totalPages}</span>
-        <button onClick={() => onPageChange(page + 1)} disabled={page >= totalPages} className="btn-outline btn-sm disabled:opacity-50">Sau <ChevronRight className="h-4 w-4" /></button>
-        <button onClick={() => onPageChange(totalPages)} disabled={page >= totalPages} className="btn-outline btn-sm disabled:opacity-50">Cuối <ChevronsRight className="h-4 w-4" /></button>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1}
+          className="h-8 w-8 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-sm"
+          title="Trang trước"
+        >
+          ‹
+        </button>
+        {pages.map((p, i) =>
+          p === '...'
+            ? <span key={`ellipsis-${i}`} className="h-8 w-6 flex items-center justify-center text-gray-400 text-xs select-none">…</span>
+            : <button
+                key={p}
+                onClick={() => onPageChange(p)}
+                className={cn(
+                  'h-8 min-w-[2rem] px-2 flex items-center justify-center rounded-lg border text-sm font-medium transition-colors',
+                  p === page
+                    ? 'border-gray-900 bg-gray-900 text-white'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                )}
+              >
+                {p}
+              </button>
+        )}
+        <button
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= totalPages}
+          className="h-8 w-8 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-sm"
+          title="Trang sau"
+        >
+          ›
+        </button>
       </div>
     </div>
   )

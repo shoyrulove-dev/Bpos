@@ -1492,18 +1492,24 @@ export class GrabAdapter implements PlatformAdapter {
       ? (voucherInfo.discounts as Record<string, unknown>[]).reduce((s, v) => s + Number(v?.discountAmount ?? v?.amount ?? v?.value ?? 0), 0)
       : 0
     const orderLevelDiscount = Array.isArray(raw.orderLevelDiscounts)
-      ? (raw.orderLevelDiscounts as Record<string, unknown>[]).reduce((s, d) => s + Number(d?.discountAmount ?? d?.amount ?? d?.value ?? 0), 0)
+      ? (raw.orderLevelDiscounts as Record<string, unknown>[]).reduce(
+          (s, d) => s + Number(
+            d?.discountAmountValueInMin ?? d?.discountAmount ?? d?.amount ?? d?.value ?? 0
+          ), 0)
       : 0
     const discount = Number(priceObj.basketPromo ?? priceObj.discount ?? raw.discount ?? raw.discountAmount ?? 0)
       || voucherDiscount || orderLevelDiscount
+    // eaterPayment > price.total > orderValue (already net of discounts) > raw total fields
+    const orderValueParsed = this.parseGrabDisplayAmount(raw.priceDisplay ?? raw.orderValue)
     const totalFromAPI = Number(
       priceObj.eaterPayment ??
       priceObj.total ??
       raw.total ??
       raw.orderTotal ??
-      this.parseGrabDisplayAmount(raw.priceDisplay ?? raw.orderValue)
-    )
+      null
+    ) || (orderValueParsed ?? 0)
     // Nếu total === subtotal nhưng có discount → total thực = subtotal - discount
+    // (happens when orderValue wasn't available at first sync)
     const total = (totalFromAPI > 0 && discount > 0 && totalFromAPI === subtotal)
       ? subtotal - discount
       : totalFromAPI

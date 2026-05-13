@@ -356,7 +356,22 @@ export function mergeNormalizedOrderPreservingDetail(existing: OrderSnapshot | n
     })(),
     subtotal: pickNumber(incoming.subtotal, existing?.subtotal),
     discount: pickNumber(incoming.discount, existing?.discount),
-    total: pickNumber(incoming.total, existing?.total),
+    // If incoming has a discount and a clearly-correct net total, always prefer it
+    // (fixes cases where existing.total was stored before discount info arrived)
+    total: (() => {
+      const incomingDiscount = Number(incoming.discount ?? 0)
+      const incomingTotal = Number(incoming.total ?? 0)
+      const incomingSubtotal = Number(incoming.subtotal ?? 0)
+      if (
+        incomingDiscount > 0 &&
+        incomingTotal > 0 &&
+        incomingTotal < (incomingSubtotal || Infinity) &&
+        Math.abs(incomingTotal - (incomingSubtotal - incomingDiscount)) < 2
+      ) {
+        return incomingTotal
+      }
+      return pickNumber(incoming.total, existing?.total)
+    })(),
     platformFee: pickNumber(incoming.platformFee, existing?.platformFee),
     paymentMethod: hasText(incoming.paymentMethod)
       ? String(incoming.paymentMethod).trim()
