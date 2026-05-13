@@ -184,14 +184,14 @@ export default function ShiftsPage() {
       {/* Open Shift Modal */}
       {showOpenModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90dvh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
               <h2 className="font-semibold text-gray-900">Mở ca bán hàng</h2>
               <button onClick={() => setShowOpenModal(false)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
               <div>
                 <label className="label">ID Cửa hàng (Hub) *</label>
                 <input className="input" value={openForm.hubId} onChange={e => setOpenForm({ ...openForm, hubId: e.target.value })} placeholder="hub_001" />
@@ -209,7 +209,7 @@ export default function ShiftsPage() {
                 <textarea className="input resize-none" rows={2} value={openForm.note} onChange={e => setOpenForm({ ...openForm, note: e.target.value })} placeholder="Ghi chú ca làm việc..." />
               </div>
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 shrink-0">
               <button onClick={() => setShowOpenModal(false)} className="btn-outline">Hủy</button>
               <button onClick={handleOpenShift} disabled={openShiftMutation.isPending} className="btn-primary min-w-[80px]">
                 {openShiftMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Mở ca'}
@@ -222,14 +222,14 @@ export default function ShiftsPage() {
       {/* Close Shift Modal */}
       {showCloseModal && closingShift && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90dvh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
               <h2 className="font-semibold text-gray-900">Đóng ca bán hàng</h2>
               <button onClick={() => setShowCloseModal(false)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
               <div className="p-4 bg-gray-50 rounded-xl space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Cửa hàng</span>
@@ -256,7 +256,7 @@ export default function ShiftsPage() {
                 Hệ thống sẽ tự động tổng hợp doanh thu và số đơn hàng trong ca này.
               </div>
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 shrink-0">
               <button onClick={() => setShowCloseModal(false)} className="btn-outline">Hủy</button>
               <button onClick={handleCloseShift} disabled={closeShiftMutation.isPending} className="btn-primary min-w-[80px]">
                 {closeShiftMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Đóng ca'}

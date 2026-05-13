@@ -132,12 +132,12 @@ export default function EInvoicesPage() {
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90dvh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
               <h2 className="font-semibold text-gray-900">Thêm kết nối HĐĐT</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
               <div className="form-group">
                 <label className="label">Nhà cung cấp</label>
                 <select className="input" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })}>
@@ -157,7 +157,7 @@ export default function EInvoicesPage() {
                 <input type="password" className="input" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="••••••" />
               </div>
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 shrink-0">
               <button onClick={() => setShowForm(false)} className="btn-outline">Hủy</button>
               <button onClick={handleConnect} className="btn-primary">Kết nối</button>
             </div>
