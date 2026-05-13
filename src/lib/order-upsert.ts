@@ -564,20 +564,32 @@ function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
   }
 
   if (hasGrabActiveStatusSignal(normalized) && normalized.orderStatus !== 'cancelled') {
-    // Nếu có timestamp hoàn thành, ưu tiên completed hơn active signal
-    // (tránh trường hợp Grab giữ status cũ như READY_FOR_PICKUP nhưng đơn đã giao xong)
-    const hasCompletionTimestamp = Boolean(
-      parseDateValue(normalized.deliveredAt)
-      || parseDateValue(rawPayload.deliveredAt)
-      || parseDateValue(rawPayload.delivered_at)
-      || parseDateValue(rawPayload.completedAt)
-      || parseDateValue(rawPayload.completed_at)
-      || parseDateValue(rawPayload.deliveryCompletedAt)
-      || parseDateValue(rawPayload.delivered_time)
-      || nestedTimes.deliveredAt
-      || nestedTimes.completedAt
-    )
-    if (hasCompletionTimestamp) return 'completed'
+    // Nếu order đang ở tab ACTIVE của Grab portal (preparing/ready/upcoming),
+    // tin tuyệt đối vào page bucket — KHÔNG check completion timestamps.
+    // Các field completedAt/deliveredAt có thể là zero-value hoặc stale từ Grab API
+    // khiến đơn mới nhất bị mark nhầm là completed.
+    const pageStage = String(rawPayload._pageStage ?? '').toLowerCase()
+    const pageType  = String(rawPayload._pageType  ?? rawPayload.pageType ?? '').toLowerCase()
+    const isActivePageBucket = pageStage === 'preparing' || pageStage === 'ready' || pageStage === 'upcoming'
+      || pageType === 'preparingv2' || pageType === 'ready' || pageType === 'upcoming'
+
+    if (!isActivePageBucket) {
+      // Order có active signal nhưng không rõ bucket (có thể đang trong history).
+      // Kiểm tra completion timestamps để xử lý trường hợp Grab giữ READY_FOR_PICKUP
+      // nhưng đơn thực tế đã giao xong.
+      const hasCompletionTimestamp = Boolean(
+        parseDateValue(normalized.deliveredAt)
+        || parseDateValue(rawPayload.deliveredAt)
+        || parseDateValue(rawPayload.delivered_at)
+        || parseDateValue(rawPayload.completedAt)
+        || parseDateValue(rawPayload.completed_at)
+        || parseDateValue(rawPayload.deliveryCompletedAt)
+        || parseDateValue(rawPayload.delivered_time)
+        || nestedTimes.deliveredAt
+        || nestedTimes.completedAt
+      )
+      if (hasCompletionTimestamp) return 'completed'
+    }
     return 'waiting_pickup'
   }
 

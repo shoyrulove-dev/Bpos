@@ -262,6 +262,11 @@ export async function POST(req: NextRequest) {
       if (existingStatus === 'cancelled') {
         merged.orderStatus = 'cancelled'
       }
+      // Active bucket orders (PreparingV2/Ready/Upcoming) must NEVER be completed
+      // — resolveNormalizedOrderStatus may still compute 'completed' from stale timestamps
+      if (isFromActiveBucket && merged.orderStatus === 'completed') {
+        merged.orderStatus = 'waiting_pickup'
+      }
       // Completed orders don't revert to active unless pushed from a live active bucket
       if (!isFromActiveBucket && existingStatus === 'completed' && (merged.orderStatus === 'waiting_pickup' || merged.orderStatus === 'waiting_confirm' || merged.orderStatus === 'delivering')) {
         merged.orderStatus = 'completed'
