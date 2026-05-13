@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   const orders = await OrderModel.find(filter)
     .select('_id shortId externalOrderId rawPayload customerPaid customerDeliveryFee')
     .limit(limit)
-    .lean() as Array<{
+    .lean() as unknown as Array<{
       _id: unknown
       shortId: string
       externalOrderId?: string
