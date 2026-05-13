@@ -230,7 +230,6 @@ const PLATFORM_ACCOUNTS: {
 function PlatformAccountsSection() {
   const [revealed, setRevealed] = useState<Set<number>>(new Set())
   const [showSection, setShowSection] = useState(false)
-  const [filterBrand, setFilterBrand] = useState('')
   const [filterProvider, setFilterProvider] = useState('')
 
   const toggle = (idx: number) =>
@@ -241,11 +240,9 @@ function PlatformAccountsSection() {
     })
 
   const filtered = PLATFORM_ACCOUNTS.filter(a =>
-    (!filterBrand || a.brand === filterBrand) &&
     (!filterProvider || a.provider === filterProvider)
   )
 
-  const brands = Array.from(new Set(PLATFORM_ACCOUNTS.map(a => a.brand)))
   const providers = Array.from(new Set(PLATFORM_ACCOUNTS.map(a => a.provider)))
 
   return (
@@ -270,10 +267,6 @@ function PlatformAccountsSection() {
         <div className="px-5 pb-5 space-y-3 border-t border-gray-100">
           {/* Filter bar */}
           <div className="flex gap-2 pt-3 flex-wrap">
-            <select className="input text-sm w-28 h-8" value={filterBrand} onChange={e => setFilterBrand(e.target.value)}>
-              <option value="">Tất cả brand</option>
-              {brands.map(b => <option key={b} value={b}>{b}</option>)}
-            </select>
             <select className="input text-sm w-36 h-8" value={filterProvider} onChange={e => setFilterProvider(e.target.value)}>
               <option value="">Tất cả sàn</option>
               {providers.map(p => <option key={p} value={p}>{p}</option>)}
