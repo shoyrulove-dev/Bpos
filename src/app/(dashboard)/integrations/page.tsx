@@ -323,27 +323,37 @@ type StoreStatus = {
   storeId?: string
   label: string
   source: 'grab' | 'be'
+  username?: string
   loggedIn: boolean
   paused: boolean
-  pausedUntil?: string
+  pausedUntil?: string | null
 }
 
+const SCRAPER_DIRECT = 'http://127.0.0.1:3845'
+
 function PauseStoreSection() {
-  const [stores, setStores] = useState<StoreStatus[]>([])
-  const [loading, setLoading] = useState(false)
-  const [status, setStatus] = useState<string>('')
-  const [selectedDur, setSelectedDur] = useState<Record<string, string>>({})
-  const [busy, setBusy] = useState<Record<string, boolean>>({})
+  const [stores, setStores]         = useState<StoreStatus[]>([])
+  const [loading, setLoading]       = useState(false)
+  const [statusMsg, setStatusMsg]   = useState<string>('')
+  const [activeTab, setActiveTab]   = useState<'grab' | 'be'>('grab')
+  const [selectedDur, setSelectedDur] = useState<string>('24h')
+  const [busyKey, setBusyKey]       = useState<string | null>(null)
+  const [bulkDur, setBulkDur]       = useState<string>('24h')
+  const [selected, setSelected]     = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy]    = useState(false)
+
+  const getKey = (s: StoreStatus) => s.integrationId ?? String(s.storeId ?? '') ?? s.label
 
   const load = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/integrations/pause-store', { signal: AbortSignal.timeout(10_000) })
+      const res = await fetch(`${SCRAPER_DIRECT}/store-status`, { signal: AbortSignal.timeout(10_000) })
       const data = await res.json() as { stores?: StoreStatus[] }
       setStores(data.stores ?? [])
-      setStatus('Cập nhật ' + new Date().toLocaleTimeString('vi-VN'))
+      setStatusMsg('Cập nhật ' + new Date().toLocaleTimeString('vi-VN'))
+      setSelected(new Set())
     } catch {
-      setStatus('Không kết nối được scraper')
+      setStatusMsg('Không kết nối được scraper (127.0.0.1:3845)')
     } finally {
       setLoading(false)
     }
@@ -351,53 +361,65 @@ function PauseStoreSection() {
 
   useEffect(() => { void load() }, [])
 
-  const getKey = (s: StoreStatus) => s.integrationId ?? s.storeId ?? s.label
-  const getDur  = (key: string) => selectedDur[key] ?? '24h'
+  const doAction = async (action: 'pause' | 'resume', storeList: StoreStatus[], dur?: string) => {
+    const path = action === 'pause' ? '/pause-store' : '/resume-store'
+    const results = await Promise.allSettled(storeList.map(s =>
+      fetch(`${SCRAPER_DIRECT}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ integrationId: s.integrationId, source: s.source, ...(dur ? { duration: dur } : {}) }),
+        signal: AbortSignal.timeout(35_000),
+      }).then(r => r.json())
+    ))
+    const ok = results.filter(r => r.status === 'fulfilled').length
+    setStatusMsg(`${action === 'pause' ? 'Đã dừng' : 'Đã mở lại'} ${ok}/${storeList.length} cửa hàng`)
+    setTimeout(() => void load(), 3000)
+  }
 
   const doPause = async (store: StoreStatus) => {
     const key = getKey(store)
-    setBusy(b => ({ ...b, [key]: true }))
-    setStatus('Đang tạm dừng ' + store.label + '...')
-    try {
-      const res = await fetch('/api/integrations/pause-store', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ integrationId: store.integrationId, source: store.source, action: 'pause', duration: getDur(key) }),
-        signal: AbortSignal.timeout(30_000),
-      })
-      const data = await res.json() as { ok?: boolean; message?: string }
-      setStatus(data.message ?? (data.ok ? 'Đã gửi lệnh tạm dừng' : 'Lỗi'))
-      setTimeout(() => void load(), 4000)
-    } catch {
-      setStatus('Lỗi kết nối')
-    } finally {
-      setBusy(b => ({ ...b, [key]: false }))
-    }
+    setBusyKey(key)
+    try { await doAction('pause', [store], selectedDur) } finally { setBusyKey(null) }
   }
 
   const doResume = async (store: StoreStatus) => {
     const key = getKey(store)
-    setBusy(b => ({ ...b, [key]: true }))
-    setStatus('Đang mở lại ' + store.label + '...')
-    try {
-      const res = await fetch('/api/integrations/pause-store', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ integrationId: store.integrationId, source: store.source, action: 'resume' }),
-        signal: AbortSignal.timeout(30_000),
-      })
-      const data = await res.json() as { ok?: boolean; message?: string }
-      setStatus(data.message ?? (data.ok ? 'Đã gửi lệnh mở lại' : 'Lỗi'))
-      setTimeout(() => void load(), 4000)
-    } catch {
-      setStatus('Lỗi kết nối')
-    } finally {
-      setBusy(b => ({ ...b, [key]: false }))
-    }
+    setBusyKey(key)
+    try { await doAction('resume', [store]) } finally { setBusyKey(null) }
   }
+
+  const doBulk = async (action: 'pause' | 'resume') => {
+    const tabStores = stores.filter(s => s.source === activeTab)
+    const targets = selected.size > 0
+      ? tabStores.filter(s => selected.has(getKey(s)))
+      : tabStores
+    setBulkBusy(true)
+    try { await doAction(action, targets, action === 'pause' ? bulkDur : undefined) }
+    finally { setBulkBusy(false) }
+  }
+
+  const toggleSelect = (key: string) => setSelected(prev => {
+    const next = new Set(prev)
+    next.has(key) ? next.delete(key) : next.add(key)
+    return next
+  })
+
+  const toggleAll = (checked: boolean) => {
+    const tabStores = stores.filter(s => s.source === activeTab)
+    setSelected(checked ? new Set(tabStores.map(getKey)) : new Set())
+  }
+
+  const tabStores = stores.filter(s => s.source === activeTab)
+  const grabCount = stores.filter(s => s.source === 'grab').length
+  const beCount   = stores.filter(s => s.source === 'be').length
+
+  // Group by username
+  const uCount: Record<string, number> = {}
+  for (const s of tabStores) if (s.username) uCount[s.username] = (uCount[s.username] ?? 0) + 1
 
   return (
     <div className="rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      {/* Header */}
       <div className="px-5 py-4 flex items-center justify-between gap-2 border-b border-gray-100 flex-wrap">
         <div className="flex items-center gap-2">
           <span className="text-xl">⏸</span>
@@ -406,8 +428,8 @@ function PauseStoreSection() {
             <p className="text-xs text-gray-400 mt-0.5">Dừng nhận đơn trên Grab / Be qua scraper</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {status && <span className="text-xs text-gray-500">{status}</span>}
+        <div className="flex items-center gap-2 flex-wrap">
+          {statusMsg && <span className="text-xs text-gray-400">{statusMsg}</span>}
           <button onClick={() => void load()} disabled={loading}
             className="btn-outline flex items-center gap-1.5 disabled:opacity-50 text-sm py-1.5">
             {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
@@ -416,88 +438,174 @@ function PauseStoreSection() {
         </div>
       </div>
 
-      <div className="p-5">
-        {stores.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-4">
-            {loading ? 'Đang tải...' : 'Chưa có cửa hàng nào online. Kiểm tra scraper đã chạy chưa.'}
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {stores.map(store => {
-              const key = getKey(store)
-              const isBusy = busy[key] ?? false
-              const dur = getDur(key)
-              const isGrab = store.source === 'grab'
-              const pausedUntil = store.pausedUntil
-                ? new Date(store.pausedUntil).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-                : null
-              return (
-                <div key={key}
-                  className={cn(
-                    'rounded-2xl border p-4 flex flex-col gap-3',
-                    store.paused ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-white'
-                  )}
-                >
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-gray-900 text-sm flex-1">{store.label}</span>
-                    <span className={cn(
-                      'rounded-full px-2.5 py-0.5 text-[11px] font-bold',
-                      isGrab ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-800'
-                    )}>
-                      {isGrab ? 'Grab' : 'Be'}
-                    </span>
-                    <span className={cn(
-                      'rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
-                      store.paused ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
-                    )}>
-                      {store.paused
-                        ? (pausedUntil ? `⏸ đến ${pausedUntil}` : '⏸ Tạm dừng')
-                        : '▶ Hoạt động'}
-                    </span>
-                    {!store.loggedIn && (
-                      <span className="text-[11px] text-red-500">⚠ Offline</span>
-                    )}
+      {/* Grab / Be tabs */}
+      <div className="flex gap-2 px-4 pt-3 pb-0">
+        <button
+          onClick={() => { setActiveTab('grab'); setSelected(new Set()) }}
+          className={cn(
+            'flex items-center gap-1.5 px-4 py-1.5 rounded-t-xl border-b-2 text-sm font-semibold transition-colors',
+            activeTab === 'grab'
+              ? 'border-green-500 text-green-700 bg-green-50'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          )}
+        >
+          <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+          Grab
+          <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-bold', activeTab === 'grab' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
+            {grabCount}
+          </span>
+        </button>
+        <button
+          onClick={() => { setActiveTab('be'); setSelected(new Set()) }}
+          className={cn(
+            'flex items-center gap-1.5 px-4 py-1.5 rounded-t-xl border-b-2 text-sm font-semibold transition-colors',
+            activeTab === 'be'
+              ? 'border-yellow-500 text-yellow-700 bg-yellow-50'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          )}
+        >
+          <span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />
+          Be
+          <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-bold', activeTab === 'be' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500')}>
+            {beCount}
+          </span>
+        </button>
+      </div>
+
+      {/* Toolbar: select all + bulk actions */}
+      <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2 flex-wrap bg-gray-50">
+        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="w-3.5 h-3.5"
+            checked={tabStores.length > 0 && selected.size === tabStores.length}
+            onChange={e => toggleAll(e.target.checked)}
+          />
+          Chọn tất cả
+        </label>
+        <div className="flex-1" />
+        {/* Duration for bulk pause */}
+        {(['30m', '1h', '24h'] as const).map(d => (
+          <button key={d}
+            onClick={() => setBulkDur(d)}
+            className={cn(
+              'rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors',
+              bulkDur === d ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            )}
+          >{d === '30m' ? '30 phút' : d === '1h' ? '1 giờ' : '24 giờ'}</button>
+        ))}
+        <button
+          onClick={() => void doBulk('pause')}
+          disabled={bulkBusy || tabStores.length === 0}
+          className="flex items-center gap-1 rounded-lg bg-red-500 text-white px-3 py-1.5 text-xs font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors"
+        >
+          {bulkBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : '⏸'}
+          Dừng {selected.size > 0 ? `(${selected.size})` : 'tất cả'}
+        </button>
+        <button
+          onClick={() => void doBulk('resume')}
+          disabled={bulkBusy || tabStores.length === 0}
+          className="flex items-center gap-1 rounded-lg bg-green-500 text-white px-3 py-1.5 text-xs font-semibold hover:bg-green-600 disabled:opacity-50 transition-colors"
+        >
+          {bulkBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : '▶'}
+          Mở lại {selected.size > 0 ? `(${selected.size})` : 'tất cả'}
+        </button>
+      </div>
+
+      {/* Store list */}
+      <div className="divide-y divide-gray-100">
+        {loading && tabStores.length === 0 ? (
+          <div className="py-8 text-center text-sm text-gray-400 flex items-center justify-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" /> Đang tải...
+          </div>
+        ) : tabStores.length === 0 ? (
+          <div className="py-8 text-center text-sm text-gray-400">
+            Chưa có cửa hàng nào online. Kiểm tra scraper đã chạy chưa.
+          </div>
+        ) : (() => {
+          let lastUsername = ''
+          return tabStores.map((store, idx) => {
+            const key = getKey(store)
+            const isBusy = busyKey === key
+            const isGrouped = (uCount[store.username ?? ''] ?? 0) > 1
+            const showGroupHeader = isGrouped && store.username && store.username !== lastUsername
+            if (showGroupHeader) lastUsername = store.username!
+            const isSelected = selected.has(key)
+            const rowBg = !store.loggedIn
+              ? 'bg-red-50'
+              : store.paused
+                ? (isGrouped ? (idx % 2 === 0 ? 'bg-amber-50' : 'bg-amber-50/70') : 'bg-amber-50')
+                : (isGrouped ? (idx % 2 === 0 ? 'bg-green-50/60' : 'bg-green-50/40') : (idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'))
+            const dotColor = !store.loggedIn ? 'text-red-500' : store.paused ? 'text-amber-500' : 'text-green-500'
+            const pausedUntilStr = store.pausedUntil
+              ? new Date(store.pausedUntil).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+              : null
+            return (
+              <div key={key}>
+                {showGroupHeader && (
+                  <div className="px-4 py-1.5 bg-green-50 border-y border-green-100 flex items-center gap-1.5 text-xs font-bold text-green-800">
+                    <span>👤</span>
+                    <span>{store.username}</span>
+                    <span className="text-green-600 font-normal">· {uCount[store.username!]} cửa hàng chung 1 tài khoản</span>
                   </div>
-
-                  {isGrab && !store.paused && (
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs text-gray-500">Dừng:</span>
-                      {(['30m', '1h', '24h'] as const).map(d => (
-                        <button
-                          key={d}
-                          onClick={() => setSelectedDur(p => ({ ...p, [key]: d }))}
-                          className={cn(
-                            'rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors',
-                            dur === d
-                              ? 'bg-red-500 text-white border-red-500'
-                              : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                          )}
-                        >
-                          {d === '30m' ? '30 phút' : d === '1h' ? '1 giờ' : '24 giờ'}
-                        </button>
-                      ))}
-                    </div>
+                )}
+                <div className={cn('flex items-center gap-2.5 px-4 py-2.5', rowBg, isGrouped && 'pl-8')}>
+                  <input
+                    type="checkbox"
+                    className="w-3.5 h-3.5 flex-shrink-0 cursor-pointer"
+                    checked={isSelected}
+                    onChange={() => toggleSelect(key)}
+                  />
+                  <span className={cn('text-[10px] flex-shrink-0', dotColor)}>●</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="text-sm font-semibold text-gray-900">{store.label}</span>
+                    {!isGrouped && store.username && (
+                      <span className="ml-1.5 text-xs font-bold text-gray-500">({store.username})</span>
+                    )}
+                    {!store.loggedIn && (
+                      <span className="ml-1.5 text-[11px] font-bold text-red-600">Offline</span>
+                    )}
+                    {store.paused && (
+                      <span className="ml-1.5 text-[11px] font-bold text-amber-600">
+                        ⏸ Tạm dừng{pausedUntilStr ? ` đến ${pausedUntilStr}` : ''}
+                      </span>
+                    )}
+                    {!store.paused && store.loggedIn && (
+                      <span className="ml-1.5 text-[11px] font-bold text-green-600">Active</span>
+                    )}
+                  </span>
+                  {/* Duration select (Grab only, not paused) */}
+                  {store.source === 'grab' && !store.paused && store.loggedIn && (
+                    <select
+                      value={selectedDur}
+                      onChange={e => setSelectedDur(e.target.value)}
+                      className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-700 flex-shrink-0"
+                    >
+                      <option value="30m">30 phút</option>
+                      <option value="1h">1 giờ</option>
+                      <option value="24h">24 giờ</option>
+                    </select>
                   )}
-
+                  {/* Action button */}
                   <button
                     onClick={() => store.paused ? void doResume(store) : void doPause(store)}
                     disabled={isBusy || !store.loggedIn}
                     className={cn(
-                      'w-full rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50',
+                      'flex-shrink-0 flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50',
                       store.paused
                         ? 'bg-green-500 hover:bg-green-600 text-white'
                         : 'bg-red-500 hover:bg-red-600 text-white'
                     )}
                   >
                     {isBusy
-                      ? <Loader2 className="w-4 h-4 animate-spin" />
-                      : store.paused ? '▶ Mở lại' : '⏸ Tạm dừng'}
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : store.paused ? '▶ Mở lại' : '⏸ Dừng'}
                   </button>
                 </div>
-              )
-            })}
-          </div>
-        )}
+              </div>
+            )
+          })
+        })()}
       </div>
     </div>
   )
@@ -505,7 +613,6 @@ function PauseStoreSection() {
 
 // ─── PrinterSection: kiểm tra + in thử máy in nhiệt LAN ────────────────────
 const SCRAPER_CONTROL = 'http://127.0.0.1:3846'
-const SCRAPER_PANEL   = 'http://127.0.0.1:3845'
 
 function PrinterSection() {
   const [refreshingConfig, setRefreshingConfig] = useState(false)
@@ -687,7 +794,7 @@ function PrinterSection() {
             </span>
           )}
           <a
-            href={SCRAPER_PANEL}
+            href={SCRAPER_DIRECT}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
@@ -785,7 +892,7 @@ function PrinterSection() {
       <p className="text-xs text-gray-400">
         Chức năng này gọi printer bridge tại <code className="font-mono">127.0.0.1:3846</code> — scraper phải đang chạy trên cùng máy tính.
         In qua scraper dùng ESC/POS trực tiếp (không dùng mẫu HTML). Để in theo mẫu template → dùng nút &quot;In đơn&quot; trên trang đơn hàng.
-        Xem log và control scraper tại <a href={SCRAPER_PANEL} target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">127.0.0.1:3845</a>.
+        Xem log và control scraper tại <a href={SCRAPER_DIRECT} target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">127.0.0.1:3845</a>.
       </p>
     </div>
   )
