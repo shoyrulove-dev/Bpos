@@ -272,15 +272,16 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      const result = await OrderModel.findOneAndUpdate(
+      const result = await OrderModel.updateOne(
         { source: merged.source, externalOrderId: merged.externalOrderId },
         buildOrderUpsert(intg, merged),
-        { upsert: true, new: true, includeResultMetadata: true },
+        { upsert: true },
       )
 
-      const isNew = result?.lastErrorObject?.updatedExisting === false
+      const isNew = result.upsertedCount > 0
+      const wasModified = result.modifiedCount > 0
       if (isNew) upserted++
-      else updated++
+      else if (wasModified) updated++
 
       const savedProfiles = getOrderContactProfileCandidates(merged, {
         brandId: String(intg.brandId),
