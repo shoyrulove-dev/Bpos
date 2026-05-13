@@ -1,12 +1,5 @@
 /**
  * POST /api/cron/fix-channels
- *
- * One-time maintenance endpoint:
- * 1. Delete duplicate channels for storeIds that have >1 channel doc
- * 2. Create integrations + auto-create channels for 2 new 1ketoan Grab stores
- *
- * Auth: Bearer <CRON_SECRET>
- * Run once then this endpoint can be removed.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'

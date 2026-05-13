@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const channels = await ChannelModel.find(filter)
     .populate('brandId', 'name')
     .populate('hubId', 'name')
-    .sort({ createdAt: -1 }).lean()
+    .sort({ hubId: 1, name: 1, createdAt: -1 }).lean()
   return ok(channels)
 }
 
