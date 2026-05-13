@@ -6,7 +6,7 @@ import { useSession } from 'next-auth/react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   ShoppingBag, Plus, Trash2, Settings, PlayCircle, Loader2, Lock,
-  CheckCircle, XCircle, Zap, Info, RefreshCw, KeyRound, Wifi, WifiOff, Clock,
+  CheckCircle, XCircle, Zap, Info, RefreshCw, KeyRound, Wifi, WifiOff, Clock, Pencil,
 } from 'lucide-react'
 import { useIntegrations, useCreateIntegration, useDeleteIntegration, useUpdateIntegration } from '@/hooks/use-data'
 import { useBrands } from '@/hooks/use-brands'
@@ -839,6 +839,28 @@ export default function IntegrationsPage() {
   const [qtResult, setQtResult]     = useState<QtResult | null>(null)
   const [actionStatus, setActionStatus] = useState<ActionStatus>(null)
   const [activeProviderTab, setActiveProviderTab] = useState(PROVIDERS[0].value)
+
+  // Inline name edit
+  const [editingNameId, setEditingNameId]   = useState<string | null>(null)
+  const [editingNameVal, setEditingNameVal] = useState('')
+  const [savingNameId, setSavingNameId]     = useState<string | null>(null)
+
+  const startEditName = (integ: Integ) => {
+    setEditingNameId(integ._id)
+    setEditingNameVal(integ.externalStoreName ?? '')
+  }
+
+  const saveEditName = async (id: string) => {
+    setSavingNameId(id)
+    try {
+      await updateMutation.mutateAsync({ id, externalStoreName: editingNameVal.trim() } as Record<string, unknown>)
+      setEditingNameId(null)
+    } catch (err) {
+      setActionStatus({ tone: 'error', message: err instanceof Error ? err.message : 'Lưu tên thất bại.' })
+    } finally {
+      setSavingNameId(null)
+    }
+  }
   const autoLoginInteg = autoLoginId ? integrations.find(i => i._id === autoLoginId) ?? null : null
   const autoLoginUsesSmsOtp = providerUsesSmsOtp(autoLoginInteg?.provider)
 
@@ -951,16 +973,49 @@ export default function IntegrationsPage() {
     const hubName = getHubName(integ)
     const meta = [brandName !== '—' ? brandName : '', hubName !== '—' ? hubName : '', integ.loginUsername ?? ''].filter(Boolean).join(' · ')
 
+    const isEditingName = editingNameId === integ._id
+    const isSavingName  = savingNameId === integ._id
+
     return (
       <div key={integ._id} className={cn('rounded-2xl border border-gray-200 bg-white p-3 flex flex-col gap-2 shadow-sm', isPendingSetup && 'opacity-60')}>
         {/* Row 1: icon + name + meta + delete */}
         <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <PlatformIcon source={integ.provider} size="sm" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-900 truncate leading-tight">
-                {integ.externalStoreName || integ.externalStoreId || 'Chưa cấu hình'}
-              </p>
+            <div className="min-w-0 flex-1">
+              {isEditingName ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    autoFocus
+                    className="input text-sm h-7 flex-1 min-w-0"
+                    value={editingNameVal}
+                    onChange={e => setEditingNameVal(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') void saveEditName(integ._id); if (e.key === 'Escape') setEditingNameId(null) }}
+                    placeholder="Tên cửa hàng..."
+                  />
+                  <button onClick={() => void saveEditName(integ._id)} disabled={isSavingName}
+                    className="shrink-0 px-2 py-1 rounded-lg bg-green-500 hover:bg-green-600 text-white text-[11px] font-semibold disabled:opacity-50">
+                    {isSavingName ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Lưu'}
+                  </button>
+                  <button onClick={() => setEditingNameId(null)}
+                    className="shrink-0 px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-[11px]">
+                    Huỷ
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 group">
+                  <p className="text-sm font-semibold text-gray-900 truncate leading-tight">
+                    {integ.externalStoreName || integ.externalStoreId || 'Chưa cấu hình'}
+                  </p>
+                  <button
+                    onClick={() => startEditName(integ)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 shrink-0"
+                    title="Đổi tên cửa hàng"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
               {meta && <p className="text-[11px] text-gray-400 truncate">{meta}</p>}
             </div>
           </div>
