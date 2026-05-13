@@ -221,6 +221,9 @@ export async function POST(req: NextRequest) {
   const rawOrderIds = rawOrders.map(getRawOrderId)
   const normalizedIds = normalized.map((order) => order.externalOrderId)
 
+  const ACTIVE_ORDER_STATUSES = new Set(['waiting_confirm', 'waiting_pickup', 'delivering', 'draft', 'pre_order'])
+  const AGE_LIMIT_MS = 24 * 60 * 60 * 1000 // 24 hours
+
   for (const norm of normalized) {
     if (!norm.externalOrderId) continue
     try {
@@ -229,6 +232,15 @@ export async function POST(req: NextRequest) {
         existing as Partial<NormalizedOrder> | undefined,
         norm,
       )
+
+      // Skip auto-sync for existing orders older than 24h — preserve any manual status changes
+      if (existing) {
+        const placedAt = new Date(String((existing as Record<string, unknown>).placedAt ?? norm.placedAt ?? '')).getTime()
+        if (Number.isFinite(placedAt) && Date.now() - placedAt > AGE_LIMIT_MS && ACTIVE_ORDER_STATUSES.has(merged.orderStatus)) {
+          skipped++
+          continue
+        }
+      }
 
       // Don't downgrade: once cancelled keep cancelled; once completed don't revert to active status
       const existingStatus = (existing as { status?: string } | undefined)?.status

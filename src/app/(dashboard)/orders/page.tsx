@@ -111,6 +111,8 @@ function SourceIcon({ source }: { source: Order['source'] }) {
   return <PlatformIcon source={source} size="lg" />
 }
 
+type StatusChangeTarget = { orderId: string; currentStatus: string }
+
 export default function OrdersPage() {
   const today = formatDateInput(new Date())
   const [search, setSearch] = useState('')
@@ -121,6 +123,8 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [statusTarget, setStatusTarget] = useState<StatusChangeTarget | null>(null)
+  const [statusSaving, setStatusSaving] = useState(false)
   const dq = useDebounce(search)
   const pollingEnabled = page === 1 && !dq && !statusFilter && !sourceFilter
   const { data, isLoading, refetch, isRefetching } = useOrders({
@@ -145,6 +149,21 @@ export default function OrdersPage() {
     const nextTotalPages = Math.max(1, ordersData?.totalPages ?? 1)
     if (page > nextTotalPages) setPage(nextTotalPages)
   }, [ordersData?.totalPages, page])
+
+  const handleChangeStatus = async (orderId: string, newStatus: string) => {
+    setStatusSaving(true)
+    try {
+      await fetch(`/api/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      setStatusTarget(null)
+      await refetch()
+    } finally {
+      setStatusSaving(false)
+    }
+  }
 
   const todayCountByStatus = useMemo(() => {
     const counts = { ...(ordersData?.todayStatusCounts ?? {}) }
@@ -274,7 +293,7 @@ export default function OrdersPage() {
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={() => void printOrderWithFallback(order._id, 'receipt', { autoprint: true })} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In Đơn</button>
                       <button type="button" onClick={() => void printOrderWithFallback(order._id, 'label')} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In phiếu tem</button>
-
+                      <button type="button" onClick={() => setStatusTarget({ orderId: order._id, currentStatus: order.status })} className="btn-outline rounded-full text-sm">Đổi trạng thái</button>
                     </div>
                   </div>
                 </article>
@@ -289,6 +308,15 @@ export default function OrdersPage() {
         </div>
 
       <OrderCreateModal open={showCreateModal} onClose={() => setShowCreateModal(false)} />
+      {statusTarget && (
+        <StatusChangeModal
+          orderId={statusTarget.orderId}
+          currentStatus={statusTarget.currentStatus}
+          saving={statusSaving}
+          onClose={() => setStatusTarget(null)}
+          onSave={handleChangeStatus}
+        />
+      )}
     </div>
   )
 }
@@ -353,6 +381,62 @@ function PaginationControls({ page, pageSize, total, totalPages, currentFrom, cu
         >
           ›
         </button>
+      </div>
+    </div>
+  )
+}
+
+const CHANGEABLE_STATUSES = [
+  { value: 'waiting_confirm', label: 'Chờ xác nhận', color: 'bg-yellow-400' },
+  { value: 'waiting_pickup', label: 'Chờ lấy hàng', color: 'bg-orange-400' },
+  { value: 'delivering', label: 'Đang giao', color: 'bg-indigo-400' },
+  { value: 'completed', label: 'Hoàn thành', color: 'bg-emerald-500' },
+  { value: 'cancelled', label: 'Đã hủy', color: 'bg-rose-400' },
+]
+
+function StatusChangeModal({ orderId, currentStatus, saving, onClose, onSave }: {
+  orderId: string
+  currentStatus: string
+  saving: boolean
+  onClose: () => void
+  onSave: (orderId: string, status: string) => void
+}) {
+  const [selected, setSelected] = useState(currentStatus)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="mb-4 text-base font-bold text-gray-900">Đổi trạng thái đơn hàng</h2>
+        <div className="space-y-2">
+          {CHANGEABLE_STATUSES.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => setSelected(s.value)}
+              className={cn(
+                'flex w-full items-center gap-3 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all',
+                selected === s.value
+                  ? 'border-gray-900 bg-gray-900 text-white'
+                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50',
+              )}
+            >
+              <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', selected === s.value ? 'bg-white' : s.color)} />
+              {s.label}
+              {s.value === currentStatus && <span className="ml-auto text-xs opacity-60">hiện tại</span>}
+            </button>
+          ))}
+        </div>
+        <div className="mt-5 flex gap-2">
+          <button type="button" onClick={onClose} className="btn-outline flex-1 rounded-full text-sm">Hủy</button>
+          <button
+            type="button"
+            disabled={saving || selected === currentStatus}
+            onClick={() => onSave(orderId, selected)}
+            className="flex-1 rounded-full bg-[#20232A] py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-40"
+          >
+            {saving ? 'Đang lưu...' : 'Lưu'}
+          </button>
+        </div>
       </div>
     </div>
   )
