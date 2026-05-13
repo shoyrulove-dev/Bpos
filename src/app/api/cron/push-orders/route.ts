@@ -235,7 +235,7 @@ export async function POST(req: NextRequest) {
       if (existingStatus === 'cancelled' && merged.orderStatus === 'completed') {
         merged.orderStatus = 'cancelled'
       }
-      if (existingStatus === 'completed' && (merged.orderStatus === 'waiting_pickup' || merged.orderStatus === 'waiting_confirm' || merged.orderStatus === 'delivering' || merged.orderStatus === 'preparing')) {
+      if (existingStatus === 'completed' && (merged.orderStatus === 'waiting_pickup' || merged.orderStatus === 'waiting_confirm' || merged.orderStatus === 'delivering')) {
         merged.orderStatus = 'completed'
       }
 
