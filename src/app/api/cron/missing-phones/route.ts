@@ -139,8 +139,8 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl
   const integrationId = searchParams.get('integrationId')
-  const days  = Math.min(parseInt(searchParams.get('days')  ?? '14', 10), 30)
-  const limit = Math.min(parseInt(searchParams.get('limit') ?? '30',  10), 100)
+  const days  = Math.min(parseInt(searchParams.get('days')  ?? '14', 10), 365)
+  const limit = Math.min(parseInt(searchParams.get('limit') ?? '30',  10), 200)
 
   if (!integrationId) {
     return NextResponse.json({ error: 'Missing integrationId' }, { status: 400 })
