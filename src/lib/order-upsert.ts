@@ -349,10 +349,10 @@ export function mergeNormalizedOrderPreservingDetail(existing: OrderSnapshot | n
     // This prevents DOM-extracted flat items (no addons) from overwriting XHR-captured detailed items
     items: (() => {
       if (hasAddons(incoming.items)) return incoming.items
-      if (hasAddons(existing?.items)) return existing.items
+      if (existing && hasAddons(existing.items)) return existing.items
       if (hasDetailedItems(incoming.items)) return incoming.items
-      if (hasDetailedItems(existing?.items)) return existing.items
-      return hasItems(incoming.items) ? incoming.items : existing?.items ?? incoming.items
+      if (existing && hasDetailedItems(existing.items)) return existing.items
+      return hasItems(incoming.items) ? incoming.items : (existing?.items ?? incoming.items)
     })(),
     subtotal: pickNumber(incoming.subtotal, existing?.subtotal),
     discount: pickNumber(incoming.discount, existing?.discount),
