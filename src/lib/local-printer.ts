@@ -240,6 +240,35 @@ body{width:${paperWidth};font-family:'Courier New',Consolas,'Lucida Console',mon
 </body></html>`
 }
 
+// Fetch order + active template and return the full thermal HTML (same as what bridge prints).
+// Used for the inline preview panel in OrderDetailView.
+export async function buildOrderPrintHtml(orderId: string, type: LocalPrinterType): Promise<{ html: string; paperSize: '80mm' | '58mm'; order: Order }> {
+  const orderRes = await fetch(`/api/orders/${orderId}`, { signal: AbortSignal.timeout(10000) })
+  if (!orderRes.ok) throw new Error('Không tải được đơn hàng')
+  const order = await orderRes.json() as Order
+
+  const paperSize: '80mm' | '58mm' = type === 'label' ? '58mm' : '80mm'
+  const templateType = getTemplateTypeForPaperSize(paperSize)
+  let templateContent = ''
+  try {
+    const tplRes = await fetch('/api/bill-templates', { signal: AbortSignal.timeout(8000) })
+    if (tplRes.ok) {
+      const templates = await tplRes.json() as BillTemplate[]
+      const active = templates.find((t) => t.isActive && t.type === templateType && t.size === paperSize)
+        ?? templates.find((t) => t.isActive && t.type === templateType)
+      templateContent = active?.templateContent?.trim() ?? ''
+    }
+  } catch { /* fall through to default template */ }
+  if (!templateContent) templateContent = getDefaultTemplateContent(templateType)
+
+  const context = buildPrintTemplateContext(order, {
+    BillName: type === 'label' ? 'TEM IN BẾP' : 'PHIẾU LÀM MÓN',
+  })
+  const renderedContent = renderPrintTemplateHtml(templateContent, context, order.items ?? [])
+  const html = buildThermalHtmlPage(renderedContent, paperSize)
+  return { html, paperSize, order }
+}
+
 // Print an order using the active HTML bill template via the bridge's Playwright renderer.
 // This produces output that EXACTLY matches the template preview in the browser.
 export async function printOrderWithHtmlTemplate(orderId: string, type: LocalPrinterType): Promise<boolean> {

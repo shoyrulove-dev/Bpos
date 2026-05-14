@@ -6,13 +6,119 @@ import { ArrowLeft, Loader2, MapPin, Phone, Printer, RefreshCw, TicketPercent, T
 import { useOrder } from '@/hooks/use-orders-channels'
 import { getActualReceived as getSettlementActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown, getGrabMoneyBreakdown as getSettlementGrabMoneyBreakdown } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
-import { printOrderWithHtmlTemplate, tryBridgePrintOrder } from '@/lib/local-printer'
+import { buildOrderPrintHtml, printOrderWithHtmlTemplate, tryBridgePrintOrder } from '@/lib/local-printer'
 import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, PAYMENT_METHOD_LABEL } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import type { Order } from '@/types'
 
 function openPrintWindow(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer,width=430,height=900')
+}
+
+// Inline receipt preview panel — shows exactly what the bridge will print
+function PrintPreviewPanel({ orderId }: { orderId: string }) {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [html, setHtml] = useState('')
+  const [paperSize, setPaperSize] = useState<'80mm' | '58mm'>('80mm')
+  const [printStatus, setPrintStatus] = useState<'idle' | 'printing' | 'ok' | 'error'>('idle')
+  const [printError, setPrintError] = useState('')
+
+  const openPreview = async () => {
+    if (open) { setOpen(false); return }
+    setLoading(true)
+    setOpen(true)
+    setHtml('')
+    try {
+      const result = await buildOrderPrintHtml(orderId, 'receipt')
+      setHtml(result.html)
+      setPaperSize(result.paperSize)
+    } catch (err) {
+      setHtml(`<div style="color:red;padding:12px">Lỗi tải mẫu: ${err instanceof Error ? err.message : String(err)}</div>`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handlePrint = async () => {
+    if (printStatus === 'printing') return
+    setPrintStatus('printing')
+    setPrintError('')
+    try {
+      const ok = await printOrderWithHtmlTemplate(orderId, 'receipt')
+      setPrintStatus(ok ? 'ok' : 'error')
+      if (!ok) setPrintError('Máy in không phản hồi')
+      else window.setTimeout(() => setPrintStatus('idle'), 4000)
+    } catch (err) {
+      setPrintStatus('error')
+      setPrintError(err instanceof Error ? err.message : 'Lỗi không xác định')
+    }
+  }
+
+  const paperWidthPx = paperSize === '58mm' ? '219px' : '302px'
+
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={() => void openPreview()}
+        className={cn('btn-outline h-9 text-sm', open && 'border-orange-400 text-orange-600')}
+      >
+        <Printer className="h-4 w-4" />{open ? 'Đóng preview' : 'Xem mẫu in'}
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/55 p-4 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false) }}>
+          <div className="my-auto bg-white rounded-[24px] shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-gray-900">Preview mẫu in ({paperSize})</p>
+                <p className="text-xs text-gray-500 mt-0.5">Đây là HTML sẽ được gửi tới máy in bridge. Điều chỉnh tại <a href="/bill-templates" className="underline text-orange-600" target="_blank">Hóa đơn mẫu</a>.</p>
+              </div>
+              <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            <div className="bg-[#f0ece4] p-5 flex flex-col items-center min-h-[300px]">
+              {loading
+                ? <div className="flex items-center gap-2 text-gray-500 py-16"><Loader2 className="h-5 w-5 animate-spin" /> Đang tải mẫu...</div>
+                : <div
+                    className="bg-white shadow-lg rounded-[12px] p-3 font-mono text-[12px] leading-[1.38]"
+                    style={{ width: paperWidthPx, maxWidth: '100%' }}
+                    dangerouslySetInnerHTML={{ __html: html }}
+                  />}
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => void handlePrint()}
+                  disabled={printStatus === 'printing'}
+                  className={cn(
+                    'btn-primary h-9 text-sm disabled:opacity-60',
+                    printStatus === 'ok' && 'bg-green-600 hover:bg-green-700',
+                    printStatus === 'error' && 'bg-red-600 hover:bg-red-700',
+                  )}
+                >
+                  {printStatus === 'printing' ? <><Loader2 className="h-4 w-4 animate-spin" /> Đang in...</>
+                    : printStatus === 'ok' ? '✓ Đã gửi in'
+                    : printStatus === 'error' ? '✗ Lỗi in'
+                    : <><Printer className="h-4 w-4" /> In ngay</>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openPrintWindow(buildReceiptPrintUrl(orderId, { autoprint: false, paperSize }))}
+                  className="btn-outline h-9 text-sm"
+                >
+                  Mở popup
+                </button>
+              </div>
+              {printStatus === 'error' && printError && (
+                <p className="text-xs text-red-500 max-w-[200px] text-right">{printError}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 type PrintStatus = 'idle' | 'printing' | 'ok' | 'error'
@@ -652,7 +758,7 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={onRefresh} className="btn-outline h-9 text-sm" disabled={isRefreshing}><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /> Làm mới</button>
           <PrintButton orderId={order._id} />
-          <button type="button" onClick={() => openPrintWindow(buildReceiptPrintUrl(order._id, { autoprint: false, paperSize: '80mm' }))} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> Xem mẫu in</button>
+          <PrintPreviewPanel orderId={order._id} />
         </div>
       </div>
 
@@ -847,7 +953,7 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={onRefresh} className="btn-outline h-9 text-sm" disabled={isRefreshing}><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /> Làm mới</button>
           <PrintButton orderId={order._id} />
-          <button type="button" onClick={() => openPrintWindow(buildReceiptPrintUrl(order._id, { autoprint: false, paperSize: '80mm' }))} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> Xem mẫu in</button>
+          <PrintPreviewPanel orderId={order._id} />
         </div>
       </div>
 
@@ -995,7 +1101,7 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
           <button type="button" onClick={() => refetch()} className="btn-outline h-9 text-sm" disabled={isRefetching}><RefreshCw className={cn('h-4 w-4', isRefetching && 'animate-spin')} /> Làm mới</button>
           <PrintButton orderId={order._id} />
           <PrintButton orderId={order._id} type="label" />
-          <button type="button" onClick={() => openPrintWindow(buildReceiptPrintUrl(order._id, { autoprint: false, paperSize: '80mm' }))} className="btn-outline h-9 text-sm"><Printer className="h-4 w-4" /> Xem mẫu in</button>
+          <PrintPreviewPanel orderId={order._id} />
         </div>
       </div>
 
