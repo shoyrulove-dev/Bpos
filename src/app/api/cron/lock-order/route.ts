@@ -1,12 +1,11 @@
 /**
  * POST /api/cron/lock-order
  *
- * Locks a specific Grab order so it is never re-queued for backfill.
- * Sets rawPayload.needCutlery = null (sentinel that hasGrabUtensilInfo() reads).
+ * Locks a specific order to prevent auto-updates from the scraper.
+ * - Always sets `locked: true` on the order document (new field)
+ * - For Grab orders: also sets rawPayload.needCutlery = null (backfill sentinel)
  *
- * Body: { grabDisplayId: "GF-719" }   — Grab short display ID (e.g. GF-xxx)
- *   OR: { externalOrderId: "..." }    — Grab internal order ID
- *
+ * Body: { grabDisplayId?: string, externalOrderId?: string, source?: string, locked?: boolean }
  * Auth: Bearer <CRON_SECRET>
  */
 import { NextRequest, NextResponse } from 'next/server'
@@ -24,6 +23,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>
   const grabDisplayId   = String(body?.grabDisplayId   ?? '').trim()
   const externalOrderId = String(body?.externalOrderId ?? '').trim()
+  const source          = String(body?.source ?? '').trim()
+  const locked          = body?.locked !== false
 
   if (!grabDisplayId && !externalOrderId) {
     return NextResponse.json({ error: 'Provide grabDisplayId or externalOrderId' }, { status: 400 })
@@ -31,9 +32,9 @@ export async function POST(req: NextRequest) {
 
   await connectDB()
 
-  // Build query: search by Grab display ID in rawPayload, or by externalOrderId
+  // Build query: support source filter for disambiguation
   const query = externalOrderId
-    ? { externalOrderId }
+    ? (source ? { externalOrderId, source } : { externalOrderId })
     : {
         source: 'grab',
         $or: [
@@ -44,32 +45,30 @@ export async function POST(req: NextRequest) {
         ],
       }
 
-  // Find the order first to verify it exists
   const order = await OrderModel.findOne(query)
-    .select('_id externalOrderId shortId source status rawPayload')
-    .lean() as { _id: unknown; externalOrderId?: string; shortId?: string; source: string; status: string; rawPayload?: Record<string, unknown> } | null
+    .select('_id externalOrderId shortId source status rawPayload locked')
+    .lean() as { _id: unknown; externalOrderId?: string; shortId?: string; source: string; status: string; rawPayload?: Record<string, unknown>; locked?: boolean } | null
 
   if (!order) {
     return NextResponse.json({ error: 'Order not found', query: grabDisplayId || externalOrderId }, { status: 404 })
   }
 
-  // Check if already locked
-  const rawPayload = order.rawPayload ?? {}
-  const alreadyLocked = 'needCutlery' in rawPayload || (rawPayload.itemInfo && 'needCutlery' in (rawPayload.itemInfo as Record<string, unknown>))
+  const setFields: Record<string, unknown> = { locked }
 
-  // Set needCutlery: null sentinel on rawPayload — hasGrabUtensilInfo() checks for key existence
-  // Also set on itemInfo if present
-  const setFields: Record<string, null> = { 'rawPayload.needCutlery': null }
-  if (rawPayload.itemInfo && typeof rawPayload.itemInfo === 'object' && !Array.isArray(rawPayload.itemInfo)) {
-    setFields['rawPayload.itemInfo.needCutlery'] = null
+  // For Grab orders: also apply backfill lock sentinel
+  if (order.source === 'grab') {
+    const rawPayload = order.rawPayload ?? {}
+    setFields['rawPayload.needCutlery'] = null
+    if (rawPayload.itemInfo && typeof rawPayload.itemInfo === 'object' && !Array.isArray(rawPayload.itemInfo)) {
+      setFields['rawPayload.itemInfo.needCutlery'] = null
+    }
   }
 
   await OrderModel.updateOne({ _id: order._id }, { $set: setFields })
 
   return NextResponse.json({
     ok: true,
-    locked: true,
-    wasAlreadyLocked: alreadyLocked,
+    locked,
     order: {
       internalShortId: order.shortId,
       externalOrderId: order.externalOrderId,
