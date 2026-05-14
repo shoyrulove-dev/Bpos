@@ -51,6 +51,7 @@ export interface IOrder extends Document {
   cancelledAt?: Date
   cancelReason?: string
   rawPayload?: Record<string, unknown>
+  locked?: boolean
 }
 
 const OrderSchema = new Schema<IOrder>({
@@ -80,6 +81,7 @@ const OrderSchema = new Schema<IOrder>({
   cancelledAt:    { type: Date },
   cancelReason:   { type: String },
   rawPayload:     { type: Schema.Types.Mixed },
+  locked:         { type: Boolean, default: false },
 }, { timestamps: true })
 
 OrderSchema.index({ brandId: 1, status: 1 })

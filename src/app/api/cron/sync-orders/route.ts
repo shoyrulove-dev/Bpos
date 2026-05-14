@@ -255,7 +255,7 @@ export async function GET(req: NextRequest) {
 
       const existingOrders = externalOrderIds.length
         ? await OrderModel.find({ source: intg.provider, externalOrderId: { $in: externalOrderIds } })
-            .select('externalOrderId status customerName customerPhone items subtotal discount total platformFee paymentMethod deliveryInfo driverInfo rawPayload')
+            .select('externalOrderId status customerName customerPhone items subtotal discount total platformFee paymentMethod deliveryInfo driverInfo rawPayload locked')
             .lean()
         : []
 
@@ -271,6 +271,13 @@ export async function GET(req: NextRequest) {
         if (!normalized.externalOrderId) continue
         try {
           const existingDoc = existingOrdersByExternalId.get(normalized.externalOrderId)
+
+          // Skip locked orders — user manually locked this order to prevent auto-updates
+          if ((existingDoc as { locked?: boolean } | undefined)?.locked) {
+            skipped += 1
+            continue
+          }
+
           const mergedNormalized = mergeNormalizedOrderPreservingDetail(
             existingDoc as Partial<NormalizedOrder> | undefined,
             normalized

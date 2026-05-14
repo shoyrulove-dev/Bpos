@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
   const externalIds = normalized.map((o) => o.externalOrderId).filter(Boolean)
   const existingOrders = externalIds.length
     ? await OrderModel.find({ source: intg.provider, externalOrderId: { $in: externalIds } })
-        .select('externalOrderId status customerName customerPhone driverInfo deliveryInfo items subtotal discount total rawPayload')
+        .select('externalOrderId status customerName customerPhone driverInfo deliveryInfo items subtotal discount total rawPayload locked')
         .lean()
     : []
 
@@ -228,6 +228,13 @@ export async function POST(req: NextRequest) {
     if (!norm.externalOrderId) continue
     try {
       const existing = existingMap.get(norm.externalOrderId)
+
+      // Skip locked orders — user manually locked this order to prevent auto-updates
+      if ((existing as { locked?: boolean } | undefined)?.locked) {
+        skipped++
+        continue
+      }
+
       const merged = mergeNormalizedOrderPreservingDetail(
         existing as Partial<NormalizedOrder> | undefined,
         norm,

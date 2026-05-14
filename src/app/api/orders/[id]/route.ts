@@ -54,3 +54,19 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (!order) return err('Không tìm thấy', 404)
   return ok(order)
 }
+
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const { res } = await requireAuth(req)
+  if (res) return res
+  await connectDB()
+  const body = await req.json() as { locked?: boolean }
+  if (typeof body.locked !== 'boolean') return err('locked phải là true hoặc false', 400)
+  const order = await OrderModel.findByIdAndUpdate(
+    params.id,
+    { $set: { locked: body.locked } },
+    { new: true }
+  ).lean()
+  if (!order) return err('Không tìm thấy', 404)
+  return ok({ locked: (order as Record<string, unknown>).locked })
+}
+
