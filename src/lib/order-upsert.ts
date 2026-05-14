@@ -589,6 +589,11 @@ function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
         || nestedTimes.completedAt
       )
       if (hasCompletionTimestamp) return 'completed'
+      // Nếu page rõ ràng là history/completed bucket của Grab → hoàn thành dù không có timestamp
+      // (Grab history tab = đơn đã giao xong; active signal chỉ là stale state từ API)
+      const isHistoryBucket = pageStage === 'history' || pageStage === 'completed' || pageStage === 'cancelled'
+        || pageType.includes('history') || pageType.includes('complet') || pageType.includes('past') || pageType.includes('deliver')
+      if (isHistoryBucket) return 'completed'
     }
     return 'waiting_pickup'
   }
@@ -660,12 +665,9 @@ export function buildOrderUpsert(integration: IntegrationRef, normalized: Normal
   }
 
   if (resolvedOrderStatus === 'completed') {
-    const deliveredAt = extractDeliveredDate(normalized)
-    if (deliveredAt) {
-      baseSet.deliveredAt = deliveredAt
-    } else {
-      unsetFields.deliveredAt = ''
-    }
+    // Ưu tiên timestamp thực từ payload; fallback về thời điểm hiện tại nếu Grab không trả về
+    // (Grab history orders đôi khi không có deliveredAt nhưng cần có thời gian nhận hàng)
+    baseSet.deliveredAt = extractDeliveredDate(normalized) ?? new Date()
     unsetFields.cancelledAt = ''
     unsetFields.cancelReason = ''
   } else if (resolvedOrderStatus === 'cancelled') {
