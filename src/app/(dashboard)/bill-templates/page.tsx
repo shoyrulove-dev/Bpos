@@ -77,9 +77,14 @@ function openTemplatePrintWindow(content: string, type: BillType, size: BillSize
 }
 
 async function printTemplateWithBridgeFallback(content: string, type: BillType, size: BillSize) {
-  // Always use the HTML preview window — ESC/POS bridge output looks completely different
-  // from the HTML template and confuses users who compare preview vs. actual printout.
   openTemplatePrintWindow(content, type, size)
+  const printerType = type === 'label' ? 'label' : 'receipt'
+  const paperSize = type === 'label' ? '58mm' : '80mm'
+  try {
+    await printDemoTemplateWithBridge(content, printerType, paperSize)
+  } catch {
+    alert('Đã mở preview nhưng không in được qua LAN. Kiểm tra bridge 127.0.0.1:3846 và máy in.')
+  }
 }
 
 export default function BillTemplatesPage() {
