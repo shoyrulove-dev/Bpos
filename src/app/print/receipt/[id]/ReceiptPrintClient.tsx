@@ -32,6 +32,7 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
   const [bridgeStatus, setBridgeStatus] = useState<'idle' | 'ok' | 'error'>('idle')
   const [previewPng, setPreviewPng] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewPrinting, setPreviewPrinting] = useState(false)
   const templateType = getTemplateTypeForPaperSize(paperSize)
 
   // Build the same full HTML page that the bridge uses for Playwright rendering.
@@ -245,9 +246,33 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
           <img
             src={previewPng}
             alt="Xem trước bản in"
-            style={{ maxHeight: '85vh', maxWidth: '95vw', border: '1px solid #555', background: '#fff' }}
+            style={{ maxHeight: '75vh', maxWidth: '95vw', border: '1px solid #555', background: '#fff' }}
             onClick={(e) => e.stopPropagation()}
           />
+          <button
+            type="button"
+            disabled={previewPrinting}
+            style={{ padding: '10px 24px', fontSize: '15px', fontWeight: 700, background: previewPrinting ? '#555' : '#1a7f37', color: '#fff', border: 'none', borderRadius: '8px', cursor: previewPrinting ? 'default' : 'pointer' }}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (!renderedTemplate) return
+              setPreviewPrinting(true)
+              fetch('http://127.0.0.1:3846/print-template-html', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ html: buildBridgeHtml(renderedTemplate), paperWidth: paperSize, type: templateType }),
+              })
+                .then((r) => r.json())
+                .then((d: { ok?: boolean }) => {
+                  if (d.ok) { URL.revokeObjectURL(previewPng); setPreviewPng(null); setBridgeStatus('ok') }
+                  else setBridgeStatus('error')
+                })
+                .catch(() => setBridgeStatus('error'))
+                .finally(() => setPreviewPrinting(false))
+            }}
+          >
+            {previewPrinting ? 'Đang in...' : '🖨 In qua máy in LAN'}
+          </button>
         </div>
       )}
       <div className="receipt-template-badge">
