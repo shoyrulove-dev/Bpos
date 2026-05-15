@@ -30,12 +30,15 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
   const [loading, setLoading] = useState(true)
   const [bridgePrinting, setBridgePrinting] = useState(false)
   const [bridgeStatus, setBridgeStatus] = useState<'idle' | 'ok' | 'error'>('idle')
+  const [previewPng, setPreviewPng] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
   const templateType = getTemplateTypeForPaperSize(paperSize)
 
-  // Build the same full HTML page that the bridge uses for Playwright rendering
+  // Build the same full HTML page that the bridge uses for Playwright rendering.
+  // IMPORTANT: No external font links — bridge Playwright renders offline; use system fonts only.
   const buildBridgeHtml = (content: string) => {
     const wrapWidth = paperSize === '58mm' ? '50mm' : '72mm'
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap" rel="stylesheet"><style>@page{size:${paperSize} auto;margin:4mm}html,body{margin:0;padding:0;background:#fff;color:#000}body{width:${paperSize};font-family:Arial,Helvetica,sans-serif}.receipt-wrap{box-sizing:border-box;width:${wrapWidth};margin:0 auto;padding:2mm 0 4mm}.receipt-template{font-family:'Noto Sans Mono','Consolas','Courier New',monospace;font-size:4.1mm;line-height:1.32;white-space:normal}.tpl-line{white-space:pre-wrap;word-break:break-word}.tpl-empty{min-height:1.32em}.tpl-center{text-align:center}.tpl-strong{font-weight:800;letter-spacing:.04em}.tpl-divider{border-top:.35mm dashed #000;margin:1.5mm 0}.tpl-indent{padding-left:3mm}</style></head><body><div class="receipt-wrap receipt-template">${content}</div></body></html>`
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print</title><style>*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff!important;color:#000;height:fit-content;min-height:0}body{width:${paperSize};font-family:'Courier New',Consolas,'Lucida Console',monospace}.receipt-wrap{width:${wrapWidth};margin:0 auto;padding:2mm 2mm 6mm}.receipt-template{font-family:'Courier New',Consolas,'Lucida Console',monospace;font-size:4.2mm;line-height:1.35;white-space:normal}.tpl-line{white-space:pre-wrap;word-break:break-word;margin:0}.tpl-empty{height:1.35em;margin:0}.tpl-center{text-align:center}.tpl-strong{font-weight:800;letter-spacing:.04em}.tpl-divider{border:none;border-top:.35mm dashed #000;margin:1.5mm 0}.tpl-indent{padding-left:3mm}</style></head><body><div class="receipt-wrap receipt-template">${content}</div></body></html>`
   }
 
   useEffect(() => {
@@ -202,10 +205,51 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
         >
           {bridgePrinting ? 'Đang in...' : bridgeStatus === 'ok' ? '✓ Đã in LAN' : bridgeStatus === 'error' ? '✗ Lỗi máy in' : '🖨 In qua máy in LAN'}
         </button>
+        <button
+          type="button"
+          className="receipt-action-btn"
+          disabled={previewLoading || !renderedTemplate}
+          onClick={() => {
+            if (!renderedTemplate) return
+            setPreviewLoading(true)
+            setPreviewPng(null)
+            fetch('http://127.0.0.1:3846/preview-template-html', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ html: buildBridgeHtml(renderedTemplate), paperWidth: paperSize }),
+            })
+              .then((r) => {
+                if (!r.ok) throw new Error('Lỗi preview')
+                return r.blob()
+              })
+              .then((blob) => {
+                const url = URL.createObjectURL(blob)
+                setPreviewPng(url)
+              })
+              .catch(() => alert('Không thể preview — kiểm tra scraper đang chạy'))
+              .finally(() => setPreviewLoading(false))
+          }}
+        >
+          {previewLoading ? 'Đang render...' : '👁 Xem trước bản in'}
+        </button>
         <button type="button" className="receipt-action-btn" onClick={() => window.print()}>
           🖨 In ra giấy
         </button>
       </div>
+      {previewPng && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px' }}
+          onClick={() => { URL.revokeObjectURL(previewPng); setPreviewPng(null) }}
+        >
+          <div style={{ color: '#fff', fontSize: '13px', opacity: 0.8 }}>Nhấn bất kỳ đâu để đóng</div>
+          <img
+            src={previewPng}
+            alt="Xem trước bản in"
+            style={{ maxHeight: '85vh', maxWidth: '95vw', border: '1px solid #555', background: '#fff' }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
       <div className="receipt-template-badge">
         {templateName ? `Mẫu: ${templateName}` : 'Mẫu mặc định (chưa có mẫu active)'}
       </div>
