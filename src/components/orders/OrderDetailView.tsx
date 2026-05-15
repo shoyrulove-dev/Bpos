@@ -891,17 +891,6 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
             </div>
           </div>
 
-          {/* Thông tin khách thanh toán — chỉ hiển thị khi đã backfill (stored fields) */}
-          {order.status === 'completed' && (order.customerPaid || order.customerDeliveryFee) && (
-            <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
-              <p className="font-medium text-gray-900">Thông tin khách thanh toán</p>
-              <div className="mt-2 space-y-1.5">
-                {order.customerPaid ? <div className="flex items-center justify-between gap-3"><span>Khách thanh toán</span><span className="font-medium text-gray-900">{formatCurrency(order.customerPaid)}</span></div> : null}
-                {order.customerDeliveryFee ? <div className="flex items-center justify-between gap-3"><span>Phí giao hàng</span><span className="font-medium text-gray-900">{formatCurrency(order.customerDeliveryFee)}</span></div> : null}
-              </div>
-            </div>
-          )}
-
           <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
             <p className="font-medium text-gray-900">Phương thức thanh toán</p>
             <p className="mt-1">{paymentMethodLabel}</p>
