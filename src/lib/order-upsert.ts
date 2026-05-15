@@ -222,6 +222,62 @@ function hasGrabUtensilInfo(rawPayload: unknown) {
   return Boolean(itemInfo && 'needCutlery' in itemInfo)
 }
 
+function hasGrabRawPayloadDetailedItems(rawPayload: unknown) {
+  const raw = getRecord(rawPayload)
+  if (!raw) return false
+
+  const itemInfo = getRecord(raw.itemInfo)
+  const rawItems = Array.isArray(raw.items)
+    ? raw.items
+    : Array.isArray(raw.orderItems)
+    ? raw.orderItems
+    : Array.isArray(raw.lineItems)
+    ? raw.lineItems
+    : Array.isArray(itemInfo?.items)
+    ? itemInfo.items
+    : []
+
+  return rawItems.some((item) => {
+    const record = getRecord(item)
+    const fare = getRecord(record?.fare)
+    if (!record) return false
+
+    return Boolean(
+      (Array.isArray(record.modifiers) && record.modifiers.length)
+      || (Array.isArray(record.modifierGroups) && record.modifierGroups.length)
+      || (Array.isArray(record.addons) && record.addons.length)
+      || (Array.isArray(record.options) && record.options.length)
+      || (Array.isArray(record.discountInfo) && record.discountInfo.length)
+      || Number(record.price ?? record.itemPrice ?? record.totalPrice ?? record.subtotal ?? record.total ?? 0) > 0
+      || Number(fare?.priceFloat ?? fare?.priceInMin ?? fare?.amount ?? fare?.price ?? 0) > 0
+    )
+  })
+}
+
+function hasGrabRawPayloadPromotionDetail(rawPayload: unknown) {
+  const raw = getRecord(rawPayload)
+  if (!raw) return false
+
+  const itemInfo = getRecord(raw.itemInfo)
+  const voucherInfo = getRecord(raw.voucherInfo)
+  const rawItems = Array.isArray(raw.items)
+    ? raw.items
+    : Array.isArray(raw.orderItems)
+    ? raw.orderItems
+    : Array.isArray(raw.lineItems)
+    ? raw.lineItems
+    : Array.isArray(itemInfo?.items)
+    ? itemInfo.items
+    : []
+
+  return Boolean(
+    (Array.isArray(raw.orderLevelDiscounts) && raw.orderLevelDiscounts.length)
+    || (Array.isArray(voucherInfo?.vouchers) && voucherInfo.vouchers.length)
+    || (Array.isArray(voucherInfo?.discounts) && voucherInfo.discounts.length)
+    || rawItems.some((item) => Array.isArray(getRecord(item)?.discountInfo) && (getRecord(item)?.discountInfo as unknown[]).length > 0)
+  )
+}
+
 function pickNumber(incoming: unknown, existing: unknown, fallback = 0) {
   const incomingNumber = Number(incoming)
   if (Number.isFinite(incomingNumber) && incomingNumber > 0) return incomingNumber
@@ -497,6 +553,13 @@ export function hasMeaningfulFinalizedOrderChange(existing: Partial<NormalizedOr
 
   if (!hasDetailedItems(existing.items) && hasDetailedItems(incoming.items)) return true
   if (hasItems(incoming.items) && getComparableItemsSignature(existing.items) !== getComparableItemsSignature(incoming.items)) return true
+
+  // Grab browser backfill can enrich the stored raw payload without changing the already-normalized
+  // item list. Treat new raw detail as meaningful so finalized orders still get updated and do not
+  // remain stuck in /cron/missing-phones forever.
+  if (!hasGrabUtensilInfo(existingRawPayload) && hasGrabUtensilInfo(incomingRawPayload)) return true
+  if (!hasGrabRawPayloadDetailedItems(existingRawPayload) && hasGrabRawPayloadDetailedItems(incomingRawPayload)) return true
+  if (!hasGrabRawPayloadPromotionDetail(existingRawPayload) && hasGrabRawPayloadPromotionDetail(incomingRawPayload)) return true
 
   if (numbersDiffer(existing.subtotal, incoming.subtotal)) return true
   if (numbersDiffer(existing.discount, incoming.discount)) return true

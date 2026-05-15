@@ -389,6 +389,10 @@ function PauseStoreSection() {
   }
 
   const doBulk = async (action: 'pause' | 'resume') => {
+    if (activeTab !== 'grab') {
+      setStatusMsg('Bulk action hiện chỉ áp dụng cho Grab. Be dùng thao tác từng cửa hàng.')
+      return
+    }
     const tabStores = stores.filter(s => s.source === activeTab)
     const targets = selected.size > 0
       ? tabStores.filter(s => selected.has(getKey(s)))
@@ -474,42 +478,51 @@ function PauseStoreSection() {
 
       {/* Toolbar: select all + bulk actions */}
       <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2 flex-wrap bg-gray-50">
-        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            className="w-3.5 h-3.5"
-            checked={tabStores.length > 0 && selected.size === tabStores.length}
-            onChange={e => toggleAll(e.target.checked)}
-          />
-          Chọn tất cả
-        </label>
-        <div className="flex-1" />
-        {/* Duration for bulk pause */}
-        {(['30m', '1h', '24h'] as const).map(d => (
-          <button key={d}
-            onClick={() => setBulkDur(d)}
-            className={cn(
-              'rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors',
-              bulkDur === d ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-            )}
-          >{d === '30m' ? '30 phút' : d === '1h' ? '1 giờ' : '24 giờ'}</button>
-        ))}
-        <button
-          onClick={() => void doBulk('pause')}
-          disabled={bulkBusy || tabStores.length === 0}
-          className="flex items-center gap-1 rounded-lg bg-red-500 text-white px-3 py-1.5 text-xs font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors"
-        >
-          {bulkBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : '⏸'}
-          Dừng {selected.size > 0 ? `(${selected.size})` : 'tất cả'}
-        </button>
-        <button
-          onClick={() => void doBulk('resume')}
-          disabled={bulkBusy || tabStores.length === 0}
-          className="flex items-center gap-1 rounded-lg bg-green-500 text-white px-3 py-1.5 text-xs font-semibold hover:bg-green-600 disabled:opacity-50 transition-colors"
-        >
-          {bulkBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : '▶'}
-          Mở lại {selected.size > 0 ? `(${selected.size})` : 'tất cả'}
-        </button>
+        {activeTab === 'grab' ? (
+          <>
+            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="w-3.5 h-3.5"
+                checked={tabStores.length > 0 && selected.size === tabStores.length}
+                onChange={e => toggleAll(e.target.checked)}
+              />
+              Chọn tất cả
+            </label>
+            <span className="text-xs text-gray-500">Chỉ áp dụng cho Grab</span>
+            <div className="flex-1" />
+            {(['30m', '1h', '24h'] as const).map(d => (
+              <button key={d}
+                onClick={() => setBulkDur(d)}
+                className={cn(
+                  'rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors',
+                  bulkDur === d ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                )}
+              >{d === '30m' ? '30 phút' : d === '1h' ? '1 giờ' : '24 giờ'}</button>
+            ))}
+            <button
+              onClick={() => void doBulk('pause')}
+              disabled={bulkBusy || tabStores.length === 0}
+              className="flex items-center gap-1 rounded-lg bg-red-500 text-white px-3 py-1.5 text-xs font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors"
+            >
+              {bulkBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : '⏸'}
+              Dừng {selected.size > 0 ? `(${selected.size})` : 'tất cả'}
+            </button>
+            <button
+              onClick={() => void doBulk('resume')}
+              disabled={bulkBusy || tabStores.length === 0}
+              className="flex items-center gap-1 rounded-lg bg-green-500 text-white px-3 py-1.5 text-xs font-semibold hover:bg-green-600 disabled:opacity-50 transition-colors"
+            >
+              {bulkBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : '▶'}
+              Mở lại {selected.size > 0 ? `(${selected.size})` : 'tất cả'}
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="text-xs font-medium text-amber-700">Be dùng cơ chế pause/resume riêng theo từng cửa hàng.</span>
+            <div className="flex-1" />
+          </>
+        )}
       </div>
 
       {/* Store list */}
@@ -550,12 +563,16 @@ function PauseStoreSection() {
                   </div>
                 )}
                 <div className={cn('flex items-center gap-2.5 px-4 py-2.5', rowBg, isGrouped && 'pl-8')}>
-                  <input
-                    type="checkbox"
-                    className="w-3.5 h-3.5 flex-shrink-0 cursor-pointer"
-                    checked={isSelected}
-                    onChange={() => toggleSelect(key)}
-                  />
+                  {activeTab === 'grab' ? (
+                    <input
+                      type="checkbox"
+                      className="w-3.5 h-3.5 flex-shrink-0 cursor-pointer"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(key)}
+                    />
+                  ) : (
+                    <span className="w-3.5 h-3.5 flex-shrink-0" />
+                  )}
                   <span className={cn('text-[10px] flex-shrink-0', dotColor)}>●</span>
                   <span className="flex-1 min-w-0">
                     <span className="text-sm font-semibold text-gray-900">{store.label}</span>

@@ -93,6 +93,27 @@ function hasDeliveredAtSignal(rawPayload?: Record<string, unknown>) {
   )
 }
 
+function hasPickupAtSignal(rawPayload?: Record<string, unknown>) {
+  const raw = getRecord(rawPayload)
+  const times = getRecord(raw?.times)
+
+  return Boolean(
+    parseDateValue(raw?.schedulePickupTime)
+    || parseDateValue(raw?.scheduledOrderPickUpTime)
+    || parseDateValue(raw?.scheduledAt)
+    || parseDateValue(raw?.estimatedPickupTime)
+    || parseDateValue(raw?.promisedPickupTime)
+    || parseDateValue(raw?.estimatedDeliveryTime)
+    || parseDateValue(raw?.promisedDeliveryTime)
+    || parseDateValue(times?.pickUpTime)
+    || parseDateValue(times?.pickupTime)
+    || parseDateValue(times?.estimatedPickupTime)
+    || parseDateValue(times?.deliveryTime)
+    || parseDateValue(times?.dropOffTime)
+    || parseDateValue(times?.dropoffTime)
+  )
+}
+
 function hasGrabUtensilInfo(rawPayload?: Record<string, unknown>) {
   if (!rawPayload) return false
   // Nếu key needCutlery tồn tại (dù false) → đã fetch detail
@@ -169,6 +190,7 @@ export async function GET(req: NextRequest) {
     status?: string
     placedAt?: string | Date
     deliveredAt?: string | Date
+    pickupAt?: string | Date
     discount?: number
   }
 
@@ -182,7 +204,7 @@ export async function GET(req: NextRequest) {
 
   if (storeId) {
     orders = await OrderModel.find({ ...baseQuery, externalStoreId: storeId })
-      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status placedAt deliveredAt discount')
+      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status placedAt deliveredAt pickupAt discount')
       .sort({ placedAt: -1 })
       .limit(limit * 8)
       .lean() as GrabBackfillCandidate[]
@@ -190,7 +212,7 @@ export async function GET(req: NextRequest) {
 
   if (orders.length === 0 && storeId) {
     orders = await OrderModel.find({ ...baseQuery, 'rawPayload.merchantID': storeId })
-      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status placedAt deliveredAt discount')
+      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status placedAt deliveredAt pickupAt discount')
       .sort({ placedAt: -1 })
       .limit(limit * 8)
       .lean() as GrabBackfillCandidate[]
@@ -201,7 +223,7 @@ export async function GET(req: NextRequest) {
       ...baseQuery,
       brandId: intg.brandId,
     })
-      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status placedAt deliveredAt discount')
+      .select('externalOrderId externalStoreId rawPayload customerPhone driverInfo status placedAt deliveredAt pickupAt discount')
       .sort({ placedAt: -1 })
       .limit(limit * 8)
       .lean() as GrabBackfillCandidate[]
@@ -213,41 +235,48 @@ export async function GET(req: NextRequest) {
       const storedStage = getGrabStoredPageStage(rawPayload)
       const isFinalizedStage = ['history', 'completed', 'cancelled'].includes(storedStage)
       const isFinalizedStatus = ['completed', 'cancelled'].includes(String(order.status ?? '').trim().toLowerCase())
+      const normalizedStatus = String(order.status ?? '').trim().toLowerCase()
       // Grab không còn dùng 'delivering' — tất cả đang giao vẫn là waiting_pickup
       const isActivelyDelivering = storedStage === 'history' && !isFinalizedStatus
       const skipFinalizedRetry = (isFinalizedStage || isFinalizedStatus) && !isActivelyDelivering
+      const placedAtMs = order.placedAt ? new Date(String(order.placedAt)).getTime() : 0
+      const isOlderThan24h = placedAtMs > 0 && Date.now() - placedAtMs > AGE_24H_MS
+      const isActiveStatus = ACTIVE_STATUSES.has(normalizedStatus)
+
+      // Very old active Grab orders still need pickupAt/status refresh so they can move to
+      // completed, but we avoid re-queuing phone/item detail churn for those stale rows.
+      const allowOnlyStatusRepair = isOlderThan24h && isActiveStatus
 
       // Customer phone: available while preparing/ready/upcoming or actively delivering
-      const canGetCustomerPhone = !skipFinalizedRetry && (
+      const canGetCustomerPhone = !allowOnlyStatusRepair && !skipFinalizedRetry && (
         ['preparing', 'ready', 'upcoming'].includes(storedStage) || isActivelyDelivering
       )
       const missingCustomerPhone = canGetCustomerPhone
         && !hasMeaningfulPhone(getDisplayCustomerPhone(order as unknown as Order))
-      const missingDriverPhone = !skipFinalizedRetry
+      const missingDriverPhone = !allowOnlyStatusRepair && !skipFinalizedRetry
         && !hasMeaningfulPhone(getDisplayDriverPhone(order as unknown as Order))
       // Item/promo detail: always try even for history/completed orders — Grab portal
       // still shows items/vouchers/addons on the history detail page.
       // BUT: if needCutlery is present in rawPayload it means the detail page was already fetched
       // for this order (needCutlery is only set from the Grab detail page XHR). Skip re-fetching
       // to avoid hammering the same order repeatedly when items genuinely have no addons/prices.
-      // Skip active orders older than 24h — they are stale and push-orders would reject them anyway
-      const placedAtMs = order.placedAt ? new Date(String(order.placedAt)).getTime() : 0
-      const isOlderThan24h = placedAtMs > 0 && Date.now() - placedAtMs > AGE_24H_MS
-      const isActiveStatus = ACTIVE_STATUSES.has(String(order.status ?? '').toLowerCase())
-      if (isOlderThan24h && isActiveStatus) {
-        return { externalOrderId: String(order.externalOrderId ?? ''), externalStoreId: '', pageStage: '', shortOrderId: undefined, reasons: [] }
-      }
-
       const alreadyFetchedDetail = hasGrabUtensilInfo(rawPayload)
-      const missingItemDetail = !hasGrabDetailedItems(rawPayload) && !alreadyFetchedDetail
-      const missingPromotionDetail = Number(order.discount ?? 0) > 0 && !hasGrabPromotionDetail(rawPayload) && !alreadyFetchedDetail
+      const missingItemDetail = !allowOnlyStatusRepair && !hasGrabDetailedItems(rawPayload) && !alreadyFetchedDetail
+      const missingPromotionDetail = !allowOnlyStatusRepair && Number(order.discount ?? 0) > 0 && !hasGrabPromotionDetail(rawPayload) && !alreadyFetchedDetail
       const missingDeliveredAt = order.status === 'completed' && !order.deliveredAt && !hasDeliveredAtSignal(rawPayload)
+      const missingPickupAt = isActiveStatus && !order.pickupAt && !hasPickupAtSignal(rawPayload)
+      const needsStatusRefresh = normalizedStatus === 'waiting_pickup'
+        && placedAtMs > 0
+        && (Date.now() - placedAtMs) > 2 * 60 * 60 * 1000
+        && !isFinalizedStatus
       const reasons = [
         missingCustomerPhone ? 'customer-phone' : null,
         missingDriverPhone ? 'driver-phone' : null,
         missingItemDetail ? 'item-detail' : null,
         missingPromotionDetail ? 'promotion-detail' : null,
         missingDeliveredAt ? 'delivered-at' : null,
+        missingPickupAt ? 'pickup-at' : null,
+        needsStatusRefresh ? 'status-refresh' : null,
       ].filter((value): value is string => Boolean(value))
 
       // Short order ID (GF-xxx style) from raw Grab payload
