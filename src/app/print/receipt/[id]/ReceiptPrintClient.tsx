@@ -214,6 +214,19 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
             if (!renderedTemplate) return
             setPreviewLoading(true)
             setPreviewPng(null)
+            // In qua LAN ngay lập tức (song song với preview)
+            setBridgePrinting(true)
+            setBridgeStatus('idle')
+            fetch('http://127.0.0.1:3846/print-template-html', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ html: buildBridgeHtml(renderedTemplate), paperWidth: paperSize, type: templateType }),
+            })
+              .then((r) => r.json())
+              .then((d: { ok?: boolean }) => setBridgeStatus(d.ok ? 'ok' : 'error'))
+              .catch(() => setBridgeStatus('error'))
+              .finally(() => setBridgePrinting(false))
+            // Lấy preview PNG để xem bản in
             fetch('http://127.0.0.1:3846/preview-template-html', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -231,7 +244,7 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
               .finally(() => setPreviewLoading(false))
           }}
         >
-          {previewLoading ? 'Đang render...' : '👁 Xem trước bản in'}
+          {previewLoading ? 'Đang render...' : '👁 Xem trước + In LAN'}
         </button>
         <button type="button" className="receipt-action-btn" onClick={() => window.print()}>
           🖨 In ra giấy
@@ -271,7 +284,7 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
                 .finally(() => setPreviewPrinting(false))
             }}
           >
-            {previewPrinting ? 'Đang in...' : '🖨 In qua máy in LAN'}
+            {previewPrinting ? 'Đang in...' : '� In lại qua LAN'}
           </button>
         </div>
       )}

@@ -279,9 +279,10 @@ export async function POST(req: NextRequest) {
         merged.orderStatus = 'completed'
       }
       // Backfill source: never UPGRADE an active order to completed
-      // Backfill only enriches items/phones/vouchers — it should not change status
+      // Exception: if coming from a confirmed History/Completed bucket, it IS done
       const isBackfillSource = source === 'browser-grab-backfill'
-      if (isBackfillSource && ACTIVE_ORDER_STATUSES.has(existingStatus ?? '') && merged.orderStatus === 'completed') {
+      const incomingIsHistoryBucket = ['History', 'Completed', 'CompletedV2', 'PastOrders'].includes(incomingPageType)
+      if (isBackfillSource && !incomingIsHistoryBucket && ACTIVE_ORDER_STATUSES.has(existingStatus ?? '') && merged.orderStatus === 'completed') {
         merged.orderStatus = (existingStatus as NormalizedOrder['orderStatus']) ?? 'waiting_pickup'
       }
 
