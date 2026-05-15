@@ -3,6 +3,20 @@ import { requireAdmin } from '@/lib/api-helpers'
 
 const SCRAPER_URL = process.env.SCRAPER_CONTROL_URL ?? 'http://127.0.0.1:3845'
 
+function normalizePauseDuration(source: unknown, duration: unknown) {
+  if (source === 'be') {
+    const value = String(duration ?? '').trim()
+    if (!value) return 'until-reopen'
+    if (value === 'tomorrow' || value === 'pause-tomorrow') return 'tomorrow'
+    if (value === 'until-reopen' || value === 'pause-until-reopen') return 'until-reopen'
+    return null
+  }
+
+  const value = String(duration ?? '').trim()
+  if (!value) return '24h'
+  return ['30m', '1h', '24h'].includes(value) ? value : null
+}
+
 async function proxyToScraper(path: string, body: unknown) {
   try {
     const res = await fetch(`${SCRAPER_URL}${path}`, {
@@ -21,7 +35,7 @@ async function proxyToScraper(path: string, body: unknown) {
 
 /**
  * POST /api/integrations/pause-store
- * Body: { integrationId, source: 'grab'|'be', duration?: '30m'|'1h'|'24h', action: 'pause'|'resume' }
+ * Body: { integrationId, source: 'grab'|'be', duration?: '30m'|'1h'|'24h'|'tomorrow'|'until-reopen', action: 'pause'|'resume' }
  */
 export async function POST(req: NextRequest) {
   const { res: authRes } = await requireAdmin(req)
@@ -33,10 +47,15 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action === 'pause') {
+    const normalizedDuration = normalizePauseDuration(body.source, body.duration)
+    if (!normalizedDuration) {
+      return NextResponse.json({ error: 'Invalid pause duration' }, { status: 400 })
+    }
+
     return proxyToScraper('/pause-store', {
       integrationId: body.integrationId,
       source: body.source,
-      duration: body.duration || '24h',
+      duration: normalizedDuration,
     })
   }
 

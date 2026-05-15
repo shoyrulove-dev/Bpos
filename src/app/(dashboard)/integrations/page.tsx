@@ -1,12 +1,11 @@
 'use client'
 
-import Link from 'next/link'
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   ShoppingBag, Plus, Trash2, Settings, PlayCircle, Loader2, Lock,
-  CheckCircle, XCircle, Zap, Info, RefreshCw, KeyRound, Wifi, WifiOff, Clock, Pencil,
+  CheckCircle, XCircle, Zap, Info, RefreshCw, KeyRound, Wifi, Pencil,
 } from 'lucide-react'
 import { useIntegrations, useCreateIntegration, useDeleteIntegration, useUpdateIntegration } from '@/hooks/use-data'
 import { useBrands } from '@/hooks/use-brands'
@@ -281,7 +280,7 @@ function PlatformAccountsSection() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-            {filtered.map((acc, rawIdx) => {
+            {filtered.map((acc) => {
               const idx = PLATFORM_ACCOUNTS.indexOf(acc)
               const show = revealed.has(idx)
               return (
@@ -327,9 +326,17 @@ type StoreStatus = {
   loggedIn: boolean
   paused: boolean
   pausedUntil?: string | null
+  pauseMode?: 'tomorrow' | 'until-reopen' | null
+  pauseLabel?: string | null
 }
 
 const SCRAPER_DIRECT = 'http://127.0.0.1:3845'
+const GRAB_PAUSE_DURATIONS = ['30m', '1h', '24h'] as const
+const BE_BULK_ACTIONS = [
+  { value: 'pause-tomorrow', label: '⏸ Pause đến Ngày mai' },
+  { value: 'pause-until-reopen', label: '⏸ Pause đến khi mở lại' },
+  { value: 'resume', label: '▶ Mở lại' },
+] as const
 
 function PauseStoreSection() {
   const [stores, setStores]         = useState<StoreStatus[]>([])
@@ -337,10 +344,11 @@ function PauseStoreSection() {
   const [statusMsg, setStatusMsg]   = useState<string>('')
   const [activeTab, setActiveTab]   = useState<'grab' | 'be'>('grab')
   const [selectedDur, setSelectedDur] = useState<string>('24h')
+  const [selectedBeAction, setSelectedBeAction] = useState<string>('')
   const [busyKey, setBusyKey]       = useState<string | null>(null)
   const [bulkDur, setBulkDur]       = useState<string>('24h')
   const [selected, setSelected]     = useState<Set<string>>(new Set())
-  const [bulkBusy, setBulkBusy]    = useState(false)
+  const [bulkBusy, setBulkBusy]     = useState(false)
 
   const getKey = (s: StoreStatus) => s.integrationId ?? String(s.storeId ?? '') ?? s.label
 
@@ -371,7 +379,7 @@ function PauseStoreSection() {
         signal: AbortSignal.timeout(35_000),
       }).then(r => r.json())
     ))
-    const ok = results.filter(r => r.status === 'fulfilled').length
+    const ok = results.filter((result) => result.status === 'fulfilled' && result.value?.ok !== false).length
     setStatusMsg(`${action === 'pause' ? 'Đã dừng' : 'Đã mở lại'} ${ok}/${storeList.length} cửa hàng`)
     setTimeout(() => void load(), 3000)
   }
@@ -379,7 +387,12 @@ function PauseStoreSection() {
   const doPause = async (store: StoreStatus) => {
     const key = getKey(store)
     setBusyKey(key)
-    try { await doAction('pause', [store], selectedDur) } finally { setBusyKey(null) }
+    try {
+      const duration = store.source === 'be' ? 'until-reopen' : selectedDur
+      await doAction('pause', [store], duration)
+    } finally {
+      setBusyKey(null)
+    }
   }
 
   const doResume = async (store: StoreStatus) => {
@@ -390,7 +403,7 @@ function PauseStoreSection() {
 
   const doBulk = async (action: 'pause' | 'resume') => {
     if (activeTab !== 'grab') {
-      setStatusMsg('Bulk action hiện chỉ áp dụng cho Grab. Be dùng thao tác từng cửa hàng.')
+      setStatusMsg('Bulk Grab chỉ áp dụng cho tab Grab.')
       return
     }
     const tabStores = stores.filter(s => s.source === activeTab)
@@ -402,9 +415,43 @@ function PauseStoreSection() {
     finally { setBulkBusy(false) }
   }
 
+  const doBulkBeAction = async () => {
+    if (activeTab !== 'be') {
+      setStatusMsg('Hành động Be chỉ áp dụng cho tab Be.')
+      return
+    }
+    if (!selectedBeAction) {
+      setStatusMsg('Chọn hành động Be trước khi thực hiện.')
+      return
+    }
+
+    const targets = selected.size > 0
+      ? tabStores.filter(s => selected.has(getKey(s)))
+      : tabStores
+
+    if (targets.length === 0) {
+      setStatusMsg('Chưa có cửa hàng Be nào để thao tác.')
+      return
+    }
+
+    setBulkBusy(true)
+    try {
+      if (selectedBeAction === 'resume') {
+        await doAction('resume', targets)
+      } else {
+        await doAction('pause', targets, selectedBeAction.replace('pause-', ''))
+      }
+      setSelectedBeAction('')
+      setSelected(new Set())
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
   const toggleSelect = (key: string) => setSelected(prev => {
     const next = new Set(prev)
-    next.has(key) ? next.delete(key) : next.add(key)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
     return next
   })
 
@@ -491,7 +538,7 @@ function PauseStoreSection() {
             </label>
             <span className="text-xs text-gray-500">Chỉ áp dụng cho Grab</span>
             <div className="flex-1" />
-            {(['30m', '1h', '24h'] as const).map(d => (
+            {GRAB_PAUSE_DURATIONS.map(d => (
               <button key={d}
                 onClick={() => setBulkDur(d)}
                 className={cn(
@@ -519,7 +566,34 @@ function PauseStoreSection() {
           </>
         ) : (
           <>
-            <span className="text-xs font-medium text-amber-700">Be dùng cơ chế pause/resume riêng theo từng cửa hàng.</span>
+            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="w-3.5 h-3.5"
+                checked={tabStores.length > 0 && selected.size === tabStores.length}
+                onChange={e => toggleAll(e.target.checked)}
+              />
+              Chọn tất cả
+            </label>
+            <span className="text-xs text-amber-700">Chỉ áp dụng cho Be</span>
+            <select
+              value={selectedBeAction}
+              onChange={e => setSelectedBeAction(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700"
+            >
+              <option value="">-- Hành động --</option>
+              {BE_BULK_ACTIONS.map(action => (
+                <option key={action.value} value={action.value}>{action.label}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => void doBulkBeAction()}
+              disabled={bulkBusy || tabStores.length === 0}
+              className="flex items-center gap-1 rounded-lg bg-amber-500 text-white px-3 py-1.5 text-xs font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors"
+            >
+              {bulkBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : '⚙'}
+              Thực hiện {selected.size > 0 ? `(${selected.size})` : ''}
+            </button>
             <div className="flex-1" />
           </>
         )}
@@ -563,7 +637,7 @@ function PauseStoreSection() {
                   </div>
                 )}
                 <div className={cn('flex items-center gap-2.5 px-4 py-2.5', rowBg, isGrouped && 'pl-8')}>
-                  {activeTab === 'grab' ? (
+                  {activeTab === 'grab' || activeTab === 'be' ? (
                     <input
                       type="checkbox"
                       className="w-3.5 h-3.5 flex-shrink-0 cursor-pointer"
@@ -584,7 +658,7 @@ function PauseStoreSection() {
                     )}
                     {store.paused && (
                       <span className="ml-1.5 text-[11px] font-bold text-amber-600">
-                        ⏸ Tạm dừng{pausedUntilStr ? ` đến ${pausedUntilStr}` : ''}
+                        ⏸ {store.pauseLabel ? `Tạm dừng: ${store.pauseLabel}` : 'Tạm dừng'}{pausedUntilStr ? ` đến ${pausedUntilStr}` : ''}
                       </span>
                     )}
                     {!store.paused && store.loggedIn && (

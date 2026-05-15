@@ -417,6 +417,44 @@ function getGrabStoredPageStage(rawPayload?: Record<string, unknown>) {
   return 'preparing'
 }
 
+const GRAB_COMPLETED_REPAIR_STATUSES = new Set(['DELIVERED', 'COMPLETED', 'BILL_PAID'])
+const GRAB_CANCELLED_REPAIR_STATUSES = new Set(['CANCELLED', 'CANCELLED_MAX', 'CANCELLED_BY_MERCHANT', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_DRIVER', 'FAILED', 'REFUNDED'])
+
+function getGrabRepairTargetStatus(order: Pick<StoredOrder, 'rawPayload'>) {
+  const rawPayload = getRecord(order.rawPayload)
+  if (!rawPayload) return null
+
+  const grabPageStage = getGrabStoredPageStage(rawPayload)
+  const rawGrabStatus = String(
+    rawPayload.deliveryStatus
+    ?? rawPayload.orderState
+    ?? rawPayload.status
+    ?? rawPayload.orderStatus
+    ?? rawPayload.state
+    ?? ''
+  ).toUpperCase()
+
+  if (grabPageStage === 'cancelled' || GRAB_CANCELLED_REPAIR_STATUSES.has(rawGrabStatus)) {
+    return 'cancelled' as const
+  }
+
+  if (
+    grabPageStage === 'completed'
+    || (grabPageStage === 'history' && (GRAB_COMPLETED_REPAIR_STATUSES.has(rawGrabStatus) || hasDeliveredAtSignal(rawPayload)))
+    || GRAB_COMPLETED_REPAIR_STATUSES.has(rawGrabStatus)
+  ) {
+    return 'completed' as const
+  }
+
+  return null
+}
+
+function shouldRepairGrabStatus(order: Pick<StoredOrder, 'status'>, targetStatus: 'completed' | 'cancelled' | null) {
+  if (!targetStatus) return false
+  if (targetStatus === 'cancelled') return order.status !== 'cancelled'
+  return order.status !== 'completed' && order.status !== 'cancelled'
+}
+
 function needsOrderDetailBackfill(order: StoredOrder) {
   if (!['grab', 'be'].includes(String(order.source ?? ''))) return false
   if (!order.externalOrderId) return false
@@ -691,34 +729,24 @@ async function repairStoredOrders(
         unset.deliveredAt = ''
       }
 
-      if (order.source === 'grab' && order.rawPayload && ['waiting_confirm', 'waiting_pickup'].includes(order.status)) {
-        const grabPageStage = getGrabStoredPageStage(order.rawPayload)
-        const rawGrabStatus = String(
-          order.rawPayload.deliveryStatus
-          ?? order.rawPayload.orderState
-          ?? order.rawPayload.status
-          ?? order.rawPayload.orderStatus
-          ?? order.rawPayload.state
-          ?? ''
-        ).toUpperCase()
-        const GRAB_COMPLETED = new Set(['DELIVERED', 'COMPLETED', 'BILL_PAID'])
-        const GRAB_CANCELLED = new Set(['CANCELLED', 'CANCELLED_MAX', 'CANCELLED_BY_MERCHANT', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_DRIVER', 'FAILED', 'REFUNDED'])
-        if (grabPageStage === 'cancelled' || GRAB_CANCELLED.has(rawGrabStatus)) {
+      const grabRepairStatus = order.source === 'grab' ? getGrabRepairTargetStatus(order) : null
+      if (shouldRepairGrabStatus(order, grabRepairStatus)) {
+        if (grabRepairStatus === 'cancelled') {
           set.status = 'cancelled'
-          set.cancelReason = String(order.rawPayload.cancelReason ?? order.rawPayload.cancel_reason ?? order.cancelReason ?? 'Đơn đã hủy')
+          set.cancelReason = String(order.rawPayload?.cancelReason ?? order.rawPayload?.cancel_reason ?? order.cancelReason ?? 'Đơn đã hủy')
           set.cancelledAt = parseDateValue(
-            order.rawPayload.cancelledAt
-            ?? order.rawPayload.cancel_time
-            ?? order.rawPayload.updatedAt
+            order.rawPayload?.cancelledAt
+            ?? order.rawPayload?.cancel_time
+            ?? order.rawPayload?.updatedAt
             ?? order.cancelledAt
           ) ?? new Date()
           unset.deliveredAt = ''
-        } else if (grabPageStage === 'completed' || (grabPageStage === 'history' && (GRAB_COMPLETED.has(rawGrabStatus) || hasDeliveredAtSignal(order.rawPayload))) || GRAB_COMPLETED.has(rawGrabStatus)) {
+        } else if (grabRepairStatus === 'completed') {
           set.status = 'completed'
           set.deliveredAt = parseDateValue(
-            order.rawPayload.deliveredAt
-            ?? order.rawPayload.completedAt
-            ?? order.rawPayload.updatedAt
+            order.rawPayload?.deliveredAt
+            ?? order.rawPayload?.completedAt
+            ?? order.rawPayload?.updatedAt
             ?? order.deliveredAt
           ) ?? new Date()
           unset.cancelledAt = ''
@@ -1281,7 +1309,10 @@ export async function getOrderRepairReport(options?: { providers?: string[]; lim
     if (typeof nextDiscount === 'number' && !sameNumber(order.discount, nextDiscount)) issues.push('discount')
     if (financialBreakdown && !sameNumber(order.total, financialBreakdown.revenueAfterPromotion)) issues.push('total')
     if (financialBreakdown && !sameNumber(order.platformFee, financialBreakdown.platformFee)) issues.push('platformFee')
+    const grabRepairStatus = order.source === 'grab' ? getGrabRepairTargetStatus(order) : null
+    const grabNeedsStatusRepair = order.source === 'grab' && shouldRepairGrabStatus(order, grabRepairStatus)
     if (order.source === 'be' && order.rawPayload && hasBeCancelSignal(order.rawPayload) && order.status !== 'cancelled') issues.push('status')
+    if (grabNeedsStatusRepair) issues.push('status')
 
     if (!issues.length) continue
     changed += 1
@@ -1301,7 +1332,11 @@ export async function getOrderRepairReport(options?: { providers?: string[]; lim
           platformFee: order.platformFee,
         },
         next: {
-          status: order.source === 'be' && order.rawPayload && hasBeCancelSignal(order.rawPayload) ? 'cancelled' : order.status,
+          status: order.source === 'be' && order.rawPayload && hasBeCancelSignal(order.rawPayload)
+            ? 'cancelled'
+            : grabNeedsStatusRepair && grabRepairStatus
+            ? grabRepairStatus
+            : order.status,
           customerPhone: nextCustomerPhone,
           driverPhone: nextDriverPhone,
           subtotal: financialBreakdown?.subtotal,

@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "autofix:fix": "next lint --fix",
+    "autofix:report": "tsx src/scripts/autofix-report.ts",
     "seed": "tsx src/scripts/seed.ts",
     "repair-orders": "tsx src/scripts/repair-orders.ts"
   },
