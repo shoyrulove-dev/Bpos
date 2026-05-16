@@ -1,8 +1,7 @@
 'use client'
 
-import { buildDemoPrintTemplateContext, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, renderPrintTemplateHtml, renderPrintTemplateText, renderTemplateTextAsHtml } from '@/lib/print-template'
+import { buildDemoPrintTemplateContext, buildLabelUnitTemplateData, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, renderPrintTemplateHtml, renderPrintTemplateText, renderTemplateTextAsHtml } from '@/lib/print-template'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
-import { CHANNEL_SOURCE_LABEL } from '@/lib/utils'
 import type { BillTemplate, Order } from '@/types'
 
 export type LocalPrinterType = 'receipt' | 'label'
@@ -219,23 +218,29 @@ export async function tryBridgePrintOrder(orderId: string, type: LocalPrinterTyp
 // Build a complete self-contained HTML page for thermal printing
 // NOTE: No external font links — bridge Playwright renders offline; use system fonts
 // On Windows, Consolas/Arial/Tahoma all support Vietnamese Unicode properly
-function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58mm' | 'A4'): string {
-  const wrapWidth = paperWidth === '58mm' ? '50mm' : paperWidth === 'A4' ? '190mm' : '72mm'
+function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58mm' | 'A4', type: LocalPrinterType = 'receipt'): string {
+  const isLabel = type === 'label'
+  const wrapWidth = paperWidth === '58mm' ? '54mm' : paperWidth === 'A4' ? '190mm' : '72mm'
+  const fontFamily = isLabel
+    ? "Arial,'Segoe UI',Tahoma,sans-serif"
+    : "'Courier New',Consolas,'Lucida Console',monospace"
   // NOTE: No @page rule here — Playwright uses screenshot (not print), so @page is irrelevant.
   // html/body height must be fit-content so scrollHeight = actual content height (not viewport 4000px).
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print</title>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff!important;color:#000;height:fit-content;min-height:0}
-body{width:${paperWidth};font-family:'Courier New',Consolas,'Lucida Console',monospace}
-.receipt-wrap{width:${wrapWidth};margin:0 auto;padding:2mm 2mm 6mm}
-.receipt-template{font-family:'Courier New',Consolas,'Lucida Console',monospace;font-size:4.2mm;line-height:1.35;white-space:normal}
+body{width:${paperWidth};font-family:${fontFamily}}
+.receipt-wrap{width:${wrapWidth};margin:0 auto;padding:${isLabel ? '1.5mm 1mm 2.5mm' : '2mm 2mm 6mm'}}
+.receipt-template{font-family:${fontFamily};font-size:${isLabel ? '5.2mm' : '4.2mm'};line-height:${isLabel ? '1.22' : '1.35'};white-space:normal}
 .tpl-line{white-space:pre-wrap;word-break:break-word;margin:0}
 .tpl-empty{height:1.35em;margin:0}
 .tpl-center{text-align:center}
 .tpl-strong{font-weight:800;letter-spacing:.04em}
+.tpl-slot{text-align:center;font-size:${isLabel ? '5.9mm' : '4.6mm'};font-weight:800;line-height:1.12}
 .tpl-divider{border:none;border-top:.35mm dashed #000;margin:1.5mm 0}
 .tpl-indent{padding-left:3mm}
+${isLabel ? '.receipt-template .tpl-line:first-child{text-align:center;font-size:6.8mm;font-weight:800;line-height:1.08}.receipt-template .tpl-line:nth-child(3){font-size:3.6mm;line-height:1.25}' : ''}
 </style></head><body>
 <div class="receipt-wrap receipt-template">${renderedContent}</div>
 </body></html>`
@@ -273,7 +278,7 @@ export async function buildOrderPrintHtml(orderId: string, type: LocalPrinterTyp
     textContent = renderPrintTemplateText(templateContent, context, items)
   }
   const renderedContent = renderTemplateTextAsHtml(textContent)
-  const html = buildThermalHtmlPage(renderedContent, paperSize)
+  const html = buildThermalHtmlPage(renderedContent, paperSize, type)
   return { html, paperSize, order }
 }
 
@@ -305,7 +310,7 @@ export async function printOrderWithHtmlTemplate(orderId: string, type: LocalPri
     BillName: type === 'label' ? 'TEM IN BẾP' : 'PHIẾU LÀM MÓN',
   })
   const renderedContent = renderPrintTemplateHtml(templateContent, context, order.items ?? [])
-  const fullHtml = buildThermalHtmlPage(renderedContent, paperSize)
+  const fullHtml = buildThermalHtmlPage(renderedContent, paperSize, type)
 
   // 4. POST to bridge — bridge uses Playwright to screenshot → ESC/POS raster → LAN/USB
   const res = await fetch(`${LOCAL_PRINTER_BRIDGE_ORIGIN}/print-template-html`, {
@@ -332,8 +337,31 @@ export async function printDemoTemplateWithBridge(templateContent: string, type:
     { name: 'Bánh mì gà xé', quantity: 1, price: 45_000, total: 45_000 },
     { name: 'Cơm sườn trứng', quantity: 1, price: 70_000, total: 70_000, note: 'Thêm nước mắm' },
   ]
-  const renderedContent = renderPrintTemplateHtml(content, context, demoItems)
-  const fullHtml = buildThermalHtmlPage(renderedContent, paperSize)
+  const renderedContent = type === 'label'
+    ? (() => {
+        const { context: labelContext, items: labelItems } = buildLabelUnitTemplateData({
+          source: 'grab',
+          externalOrderId: '00123456789-C76DEMO',
+          shortId: 'ORD-DEMO',
+          brandName: 'BPOS Demo Hub',
+          hubName: 'Chi nhánh Q1',
+          customerName: 'Nguyễn Văn A',
+          customerPhone: '+84901234567',
+          driverInfo: { name: 'Tài xế Demo', phone: '+84987654321' },
+          deliveryInfo: { address: '123 Lê Lợi, Q1, TP.HCM', note: 'Không hành', estimatedTime: new Date(Date.now() + 30 * 60_000).toISOString() },
+          note: 'Dán lên ly',
+          subtotal: 185_000,
+          discount: 15_000,
+          total: 170_000,
+          platformFee: 28_000,
+          placedAt: new Date().toISOString(),
+          deliveredAt: new Date(Date.now() + 25 * 60_000).toISOString(),
+          items: demoItems,
+        }, demoItems[0], 1, 3)
+        return renderPrintTemplateHtml(content, labelContext, labelItems)
+      })()
+    : renderPrintTemplateHtml(content, context, demoItems)
+  const fullHtml = buildThermalHtmlPage(renderedContent, paperSize, type)
   const res = await fetch(`${LOCAL_PRINTER_BRIDGE_ORIGIN}/print-template-html`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -353,41 +381,6 @@ function isTemplateBroken(content: string): boolean {
   return hasItemVars && !hasRange
 }
 
-// Build compact 58mm label HTML for a single item unit.
-// Item name is large/bold; slot counter shows position (e.g. 2/3); note below.
-function buildItemLabelHtml(params: {
-  shortId: string
-  channel: string
-  dateStr: string
-  itemName: string
-  slot: number
-  total: number
-  note?: string
-}): string {
-  const { shortId, channel, dateStr, itemName, slot, total, note } = params
-  const noteHtml = note
-    ? `<div style="font-size:3.5mm;margin-top:1.5mm;border-top:.35mm dashed #000;padding-top:1mm;text-align:left;word-break:break-word">* ${note}</div>`
-    : ''
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Tem</title>
-<style>*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:#fff;color:#000;height:fit-content;min-height:0}
-body{width:58mm;font-family:'Courier New',Consolas,'Lucida Console',monospace}
-.wrap{width:50mm;margin:0 auto;padding:2mm 1mm 3mm;text-align:center}
-.meta{font-size:3mm;color:#444}
-.div{border:none;border-top:.35mm dashed #000;margin:1.5mm 0}
-.name{font-size:6.5mm;font-weight:900;line-height:1.2;word-break:break-word;margin:2mm 0 1.5mm}
-.slot{font-size:5mm;font-weight:700;letter-spacing:.5px}
-</style></head><body>
-<div class="wrap">
-  <div class="meta">${shortId} · ${channel} · ${dateStr}</div>
-  <div class="div"></div>
-  <div class="name">${itemName}</div>
-  <div class="slot">${slot}/${total}</div>
-  ${noteHtml}
-</div>
-</body></html>`
-}
-
 // Print one 58mm USB label per item×quantity unit.
 // qty=2 → 2 labels: 1/2, 2/2. qty=3 → 3 labels: 1/3, 2/3, 3/3.
 export async function printItemLabels(orderId: string): Promise<boolean> {
@@ -398,25 +391,26 @@ export async function printItemLabels(orderId: string): Promise<boolean> {
   const items = order.items ?? []
   if (items.length === 0) return false
 
-  const rawDisplayId = (order.rawPayload as Record<string, unknown> | undefined)?.displayID
-  const shortId = (typeof rawDisplayId === 'string' ? rawDisplayId.trim() : '') || order.shortId || ''
-  const channel = CHANNEL_SOURCE_LABEL[order.source ?? ''] ?? order.source ?? ''
-  const dateStr = order.placedAt ? new Date(order.placedAt).toLocaleDateString('vi-VN') : ''
+  let templateContent = ''
+  try {
+    const tplRes = await fetch('/api/bill-templates', { signal: AbortSignal.timeout(8000) })
+    if (tplRes.ok) {
+      const templates = await tplRes.json() as BillTemplate[]
+      const active = templates.find((t) => t.isActive && t.type === 'label' && t.size === '58mm')
+        ?? templates.find((t) => t.isActive && t.type === 'label')
+      templateContent = active?.templateContent?.trim() ?? ''
+    }
+  } catch { /* fall through to default template */ }
+  if (!templateContent || isTemplateBroken(templateContent)) templateContent = getDefaultTemplateContent('label')
 
   let allOk = true
   for (const item of items) {
     const total = Math.max(1, item.quantity || 1)
     const printCount = Math.min(total, 20) // safety cap
     for (let slot = 1; slot <= printCount; slot++) {
-      const html = buildItemLabelHtml({
-        shortId,
-        channel,
-        dateStr,
-        itemName: item.name,
-        slot,
-        total,
-        note: item.note,
-      })
+      const { context, items: labelItems } = buildLabelUnitTemplateData(order, item, slot, total)
+      const renderedContent = renderPrintTemplateHtml(templateContent, context, labelItems)
+      const html = buildThermalHtmlPage(renderedContent, '58mm', 'label')
       try {
         const res = await fetch(`${LOCAL_PRINTER_BRIDGE_ORIGIN}/print-template-html`, {
           method: 'POST',

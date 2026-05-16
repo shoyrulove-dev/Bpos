@@ -4,9 +4,9 @@ import { useMemo, useState } from 'react'
 import { Edit, Eye, Loader2, Plus, Printer, Sparkles } from 'lucide-react'
 import { useBillTemplates, useCreateBillTemplate, useUpdateBillTemplate } from '@/hooks/use-data'
 import { printDemoTemplateWithBridge } from '@/lib/local-printer'
-import { buildDemoPrintTemplateContext, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, PRINT_TEMPLATE_VARIABLES, renderPrintTemplateHtml } from '@/lib/print-template'
+import { buildDemoPrintTemplateContext, buildLabelUnitTemplateData, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, PRINT_TEMPLATE_VARIABLES, renderPrintTemplateHtml } from '@/lib/print-template'
 import { cn } from '@/lib/utils'
-import type { BillSize, BillTemplate, BillType } from '@/types'
+import type { BillSize, BillTemplate, BillType, Order } from '@/types'
 
 type TemplateFormState = {
   name: string
@@ -59,13 +59,63 @@ function getTemplateGuide(type: BillType, size: BillSize) {
 
 const NOTO_MONO_FONT_LINK = '<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap" rel="stylesheet">'
 
-function openTemplatePrintWindow(content: string, type: BillType, size: BillSize) {
+const DEMO_TEMPLATE_ITEMS = [
+  { name: 'Trà sữa trân châu', quantity: 2, price: 35000, total: 70000, note: 'Ít đá' },
+  { name: 'Cơm sườn trứng', quantity: 1, price: 70000, total: 70000, note: 'Thêm nước mắm' },
+]
+
+const DEMO_LABEL_ORDER: Order = {
+  _id: 'demo-label-order',
+  source: 'grab',
+  externalOrderId: '00123456789-C76DEMO',
+  shortId: 'ORD-DEMO',
+  brandId: 'demo-brand',
+  brandName: 'BPOS Demo Hub',
+  hubName: 'Chi nhánh Q1',
+  customerName: 'Nguyễn Văn A',
+  customerPhone: '+84901234567',
+  driverInfo: { name: 'Tài xế Demo', phone: '+84987654321' },
+  deliveryInfo: { address: '123 Lê Lợi, Q1, TP.HCM', note: 'Không hành', estimatedTime: new Date(Date.now() + 30 * 60_000).toISOString() },
+  note: 'Dán lên ly',
+  subtotal: 140000,
+  discount: 0,
+  total: 140000,
+  platformFee: 0,
+  status: 'waiting_confirm',
+  placedAt: new Date().toISOString(),
+  deliveredAt: new Date(Date.now() + 25 * 60_000).toISOString(),
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  items: DEMO_TEMPLATE_ITEMS,
+}
+
+function renderTemplatePreviewHtml(content: string, type: BillType, size: BillSize, order?: Order) {
   const templateType = type === 'label' ? 'label' : getTemplateTypeForPaperSize(size)
-  const context = buildDemoPrintTemplateContext(templateType)
-  const html = renderPrintTemplateHtml(content, context, [
-    { name: 'Trà sữa trân châu', quantity: 2, price: 35000, total: 70000, note: 'Ít đá' },
-    { name: 'Cơm sườn trứng', quantity: 1, price: 70000, total: 70000, note: 'Thêm nước mắm' },
-  ])
+  if (type === 'label' || size === '58mm') {
+    const previewOrder = order ?? DEMO_LABEL_ORDER
+    const labelUnits: string[] = []
+
+    for (const item of previewOrder.items ?? []) {
+      const total = Math.max(1, item.quantity || 1)
+      const printCount = Math.min(total, 6)
+      for (let slot = 1; slot <= printCount; slot++) {
+        const { context, items } = buildLabelUnitTemplateData(previewOrder, item, slot, total)
+        labelUnits.push(renderPrintTemplateHtml(content, context, items))
+      }
+    }
+
+    return labelUnits.join('<div style="border-top:1px dashed rgba(17,24,39,.25);margin:10px 0"></div>')
+  }
+
+  const context = order
+    ? buildPrintTemplateContext(order, { BillName: templateType === 'label' ? 'TEM IN BẾP' : 'PHIẾU LÀM MÓN' })
+    : buildDemoPrintTemplateContext(templateType)
+  const items = order?.items ?? DEMO_TEMPLATE_ITEMS
+  return renderPrintTemplateHtml(content, context, items)
+}
+
+function openTemplatePrintWindow(content: string, type: BillType, size: BillSize) {
+  const html = renderTemplatePreviewHtml(content, type, size)
   const paperWidth = size === '58mm' ? '58mm' : size === 'A4' ? '210mm' : size === 'A5' ? '148mm' : '80mm'
   const printWindow = window.open('', '_blank', 'width=520,height=760')
   if (!printWindow) return
@@ -73,8 +123,8 @@ function openTemplatePrintWindow(content: string, type: BillType, size: BillSize
   printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview</title>${NOTO_MONO_FONT_LINK}<style>
     *{box-sizing:border-box}body{margin:0;background:#ebe7df;padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px;font-family:Arial,sans-serif}
     .toolbar{display:flex;gap:10px}.toolbar button{border:0;border-radius:999px;padding:10px 18px;font-weight:700;cursor:pointer}.print{background:#111827;color:#fff}.close{background:#fff;color:#111827;border:1px solid #d1d5db}
-    .paper{width:${paperWidth};max-width:100%;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.16);padding:12px;font-family:'Noto Sans Mono','Consolas','Courier New',monospace;font-size:14px;line-height:1.38;border-radius:10px}
-    .tpl-line{white-space:pre-wrap;word-break:break-word}.tpl-center{text-align:center}.tpl-strong{font-weight:900;font-size:15px;letter-spacing:.04em}.tpl-divider{border-top:1px dashed #111;margin:6px 0}.tpl-indent{padding-left:12px}
+    .paper{width:${paperWidth};max-width:100%;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.16);padding:12px;font-family:${type === 'label' ? "Arial,'Segoe UI',Tahoma,sans-serif" : "'Noto Sans Mono','Consolas','Courier New',monospace"};font-size:${type === 'label' ? '18px' : '14px'};line-height:${type === 'label' ? '1.22' : '1.38'};border-radius:10px}
+    .tpl-line{white-space:pre-wrap;word-break:break-word}.tpl-center{text-align:center}.tpl-strong{font-weight:900;font-size:15px;letter-spacing:.04em}.tpl-slot{text-align:center;font-size:${type === 'label' ? '22px' : '16px'};font-weight:900;line-height:1.1}.tpl-divider{border-top:1px dashed #111;margin:6px 0}.tpl-indent{padding-left:12px}
     @media print{body{background:#fff;padding:0}.toolbar{display:none}.paper{box-shadow:none;border-radius:0;padding:4mm}@page{size:${paperWidth};margin:4mm}}
   </style></head><body><div class="toolbar"><button class="print" onclick="window.print()">In thử</button><button class="close" onclick="window.close()">Đóng</button></div><div class="paper">${html}</div></body></html>`)
   printWindow.document.close()
@@ -103,11 +153,7 @@ export default function BillTemplatesPage() {
   const saving = createMutation.isPending || updateMutation.isPending
 
   const livePreviewHtml = useMemo(() => {
-    const previewType = form.type === 'label' ? 'label' : getTemplateTypeForPaperSize(form.size)
-    return renderPrintTemplateHtml(form.templateContent, buildDemoPrintTemplateContext(previewType), [
-      { name: 'Trà sữa trân châu', quantity: 2, price: 35000, total: 70000, note: 'Ít đá' },
-      { name: 'Cơm sườn trứng', quantity: 1, price: 70000, total: 70000, note: 'Thêm nước mắm' },
-    ])
+    return renderTemplatePreviewHtml(form.templateContent, form.type, form.size)
   }, [form])
 
   const openCreate = (type: BillType = 'receipt', size?: BillSize) => {
@@ -158,19 +204,15 @@ export default function BillTemplatesPage() {
       const res = await fetch(`/api/orders/${encodeURIComponent(id)}`)
       if (!res.ok) { alert('Không tìm thấy đơn. Kiểm tra lại ID đơn.'); return }
       const order = await res.json() as import('@/types').Order
-      const templateType = type === 'label' ? 'label' : getTemplateTypeForPaperSize(size)
-      const context = buildPrintTemplateContext(order, {
-        BillName: templateType === 'label' ? 'TEM IN BẾP' : 'PHIẾU LÀM MÓN',
-      })
-      const html = renderPrintTemplateHtml(content, context, order.items ?? [])
+      const html = renderTemplatePreviewHtml(content, type, size, order)
       const paperWidth = size === '58mm' ? '58mm' : size === 'A4' ? '210mm' : size === 'A5' ? '148mm' : '80mm'
       const printWindow = window.open('', '_blank', 'width=520,height=760')
       if (!printWindow) return
       printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>In thử (đơn thật)</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap" rel="stylesheet"><style>
     *{box-sizing:border-box}body{margin:0;background:#ebe7df;padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px;font-family:Arial,sans-serif}
     .toolbar{display:flex;gap:10px}.toolbar button{border:0;border-radius:999px;padding:10px 18px;font-weight:700;cursor:pointer}.print{background:#111827;color:#fff}.close{background:#fff;color:#111827;border:1px solid #d1d5db}
-    .paper{width:${paperWidth};max-width:100%;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.16);padding:12px;font-family:'Noto Sans Mono','Consolas','Courier New',monospace;font-size:14px;line-height:1.38;border-radius:10px}
-    .tpl-line{white-space:pre-wrap;word-break:break-word}.tpl-center{text-align:center}.tpl-strong{font-weight:900;font-size:15px;letter-spacing:.04em}.tpl-divider{border-top:1px dashed #111;margin:6px 0}.tpl-indent{padding-left:12px}
+    .paper{width:${paperWidth};max-width:100%;background:#fff;box-shadow:0 18px 50px rgba(15,23,42,.16);padding:12px;font-family:${type === 'label' ? "Arial,'Segoe UI',Tahoma,sans-serif" : "'Noto Sans Mono','Consolas','Courier New',monospace"};font-size:${type === 'label' ? '18px' : '14px'};line-height:${type === 'label' ? '1.22' : '1.38'};border-radius:10px}
+    .tpl-line{white-space:pre-wrap;word-break:break-word}.tpl-center{text-align:center}.tpl-strong{font-weight:900;font-size:15px;letter-spacing:.04em}.tpl-slot{text-align:center;font-size:${type === 'label' ? '22px' : '16px'};font-weight:900;line-height:1.1}.tpl-divider{border-top:1px dashed #111;margin:6px 0}.tpl-indent{padding-left:12px}
     @media print{body{background:#fff;padding:0}.toolbar{display:none}.paper{box-shadow:none;border-radius:0;padding:4mm}@page{size:${paperWidth};margin:4mm}}
   </style></head><body><div class="toolbar"><button class="print" onclick="window.print()">In thử</button><button class="close" onclick="window.close()">Đóng</button></div><div class="paper">${html}</div></body></html>`)
       printWindow.document.close()
@@ -400,10 +442,7 @@ export default function BillTemplatesPage() {
             </div>
             <div className="p-6 bg-[#f6f1e8] overflow-y-auto max-h-[65vh]">
               <div className="bg-white rounded-2xl shadow-sm p-4">
-                <div className="mx-auto font-mono text-xs leading-5" style={{ width: previewTemplate.size === '58mm' ? '58mm' : previewTemplate.size === 'A4' ? '210mm' : previewTemplate.size === 'A5' ? '148mm' : '80mm', maxWidth: '100%' }} dangerouslySetInnerHTML={{ __html: renderPrintTemplateHtml(previewTemplate.templateContent, buildDemoPrintTemplateContext(previewTemplate.type === 'label' ? 'label' : previewTemplate.type === 'delivery' ? 'delivery' : 'receipt'), [
-                  { name: 'Trà sữa trân châu', quantity: 2, price: 35000, total: 70000, note: 'Ít đá' },
-                  { name: 'Cơm sườn trứng', quantity: 1, price: 70000, total: 70000 },
-                ]) }} />
+                <div className="mx-auto font-mono text-xs leading-5" style={{ width: previewTemplate.size === '58mm' ? '58mm' : previewTemplate.size === 'A4' ? '210mm' : previewTemplate.size === 'A5' ? '148mm' : '80mm', maxWidth: '100%' }} dangerouslySetInnerHTML={{ __html: renderTemplatePreviewHtml(previewTemplate.templateContent, previewTemplate.type, previewTemplate.size) }} />
               </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2 sticky bottom-0 bg-white rounded-b-2xl">

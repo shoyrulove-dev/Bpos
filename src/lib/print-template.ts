@@ -41,6 +41,9 @@ export const PRINT_TEMPLATE_VARIABLES: Array<{ token: string; label: string; exa
   // ---- Món ăn (tóm tắt) ----
   { token: '{{.ItemLines}}',       label: 'Tất cả món dạng text 1 dòng',      example: 'Trà sữa x2 70.000 đ' },
   { token: '{{.ItemCount}}',       label: 'Số loại món',                      example: '3' },
+  { token: '{{.Slot}}',            label: 'Vị trí tem hiện tại',              example: '2' },
+  { token: '{{.SlotTotal}}',       label: 'Tổng số tem của món',              example: '3' },
+  { token: '{{.SlotLabel}}',       label: 'Nhãn vị trí tem',                  example: '2/3' },
   // ---- Trong {{range .Items}} ----
   { token: '{{.Name}}',         label: 'Tên món',                             example: 'Trà sữa trân châu' },
   { token: '{{.Qty}}',          label: 'Số lượng (rút gọn)',                  example: '2' },
@@ -106,17 +109,11 @@ const DEFAULT_TEMPLATES: Record<EditablePrintTemplateType, string> = {
 
   // --- 58mm kitchen label: mẫu tem bếp (máy USB) ---
   label: [
-    '===== TEM BẾP =====',
-    'Mã: {{.DisplayID}}',
-    'Kênh: {{.OrderSource}}',
-    'In lúc: {{.CurrentTime}}',
-    '--------------------',
     '{{range .Items}}',
-    '{{.Name}}  x{{.Qty}}',
+    '{{.Name}}',
+    '{{.SlotLabel}}',
     '{{if .Note}}* {{.Note}}{{end}}',
     '{{end}}',
-    '--------------------',
-    '{{if .OrderNote}}GC: {{.OrderNote}}{{end}}',
   ].join('\n'),
 }
 
@@ -310,11 +307,42 @@ export function buildPrintTemplateContext(order: PrintableTemplateOrder, overrid
     // Items summary
     ItemLines: itemLines,
     ItemCount: String(safeItems.length),
+    Slot: '',
+    SlotTotal: '',
+    SlotLabel: '',
     // Aliases used in custom templates
     OrderSubTotal: formatCurrency(order.subtotal),
     OrderTotalDiscount: formatCurrency(order.discount),
     OrderTotalPaid: formatCurrency(order.total),
     ...(overrides ?? {}),
+  }
+}
+
+export function buildLabelUnitTemplateData(order: PrintableTemplateOrder, item: OrderItem, slot: number, slotTotal: number, overrides?: Partial<TemplateContext>) {
+  const safeSlotTotal = Math.max(1, slotTotal)
+  const safeSlot = Math.min(safeSlotTotal, Math.max(1, slot))
+  const unitTotal = item.quantity > 0 && item.total > 0
+    ? Math.round(item.total / item.quantity)
+    : item.price
+
+  const labelItem: OrderItem = {
+    ...item,
+    quantity: 1,
+    total: unitTotal,
+  }
+
+  return {
+    context: buildPrintTemplateContext({
+      ...order,
+      items: [labelItem],
+    }, {
+      BillName: 'TEM NHAN 58MM',
+      Slot: String(safeSlot),
+      SlotTotal: String(safeSlotTotal),
+      SlotLabel: `${safeSlot}/${safeSlotTotal}`,
+      ...(overrides ?? {}),
+    }),
+    items: [labelItem],
   }
 }
 
@@ -436,6 +464,7 @@ export function renderTemplateTextAsHtml(content: string) {
   return lines.map((line) => {
     const trimmed = line.trim()
     if (!trimmed) return '<div class="tpl-line tpl-empty">&nbsp;</div>'
+    if (/^\d+\/\d+$/.test(trimmed)) return `<div class="tpl-line tpl-slot">${escapeHtml(trimmed)}</div>`
     if (/^={3,}/.test(trimmed)) return `<div class="tpl-line tpl-center tpl-strong">${escapeHtml(trimmed)}</div>`
     if (/^-{3,}/.test(trimmed)) return '<div class="tpl-line tpl-divider"></div>'
     if (/^\s{2,}/.test(line)) return `<div class="tpl-line tpl-indent">${escapeHtml(trimmed)}</div>`
