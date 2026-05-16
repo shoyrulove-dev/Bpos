@@ -256,8 +256,6 @@ export async function buildOrderPrintHtml(orderId: string, type: LocalPrinterTyp
       const templates = await tplRes.json() as BillTemplate[]
       const active = templates.find((t) => t.isActive && t.type === templateType && t.size === paperSize)
         ?? templates.find((t) => t.isActive && t.type === templateType)
-        ?? (templateType === 'receipt' ? templates.find((t) => t.isActive && t.type === 'order' && t.size === paperSize) : undefined)
-        ?? (templateType === 'receipt' ? templates.find((t) => t.isActive && t.type === 'order') : undefined)
       templateContent = active?.templateContent?.trim() ?? ''
     }
   } catch { /* fall through to default template */ }
@@ -289,8 +287,6 @@ export async function printOrderWithHtmlTemplate(orderId: string, type: LocalPri
       const templates = await tplRes.json() as BillTemplate[]
       const active = templates.find((t) => t.isActive && t.type === templateType && t.size === paperSize)
         ?? templates.find((t) => t.isActive && t.type === templateType)
-        ?? (templateType === 'receipt' ? templates.find((t) => t.isActive && t.type === 'order' && t.size === paperSize) : undefined)
-        ?? (templateType === 'receipt' ? templates.find((t) => t.isActive && t.type === 'order') : undefined)
       templateContent = active?.templateContent?.trim() ?? ''
     }
   } catch { /* fall through to default template */ }
@@ -341,14 +337,72 @@ export async function printDemoTemplateWithBridge(templateContent: string, type:
   return true
 }
 
+// Per-item label template: one 58mm ticket per item×unit.
+// {{.SlotLabel}} injected via order-level context overrides and spread into item context.
+const PER_ITEM_LABEL_TEMPLATE = [
+  '{{range .Items}}',
+  '===== TEM BẾP =====',
+  'Mã: {{.DisplayID}}',
+  'Kênh: {{.OrderSource}}',
+  'In: {{.CurrentTime}}',
+  '--------------------',
+  '{{.Name}}',
+  '[{{.SlotLabel}}]',
+  '{{if .Note}}* {{.Note}}{{end}}',
+  '{{if .OrderNote}}GC: {{.OrderNote}}{{end}}',
+  '{{end}}',
+].join('\n')
+
+// Print one 58mm label ticket per item×quantity unit.
+// Each ticket shows the item name, slot indicator (1/N), and any notes.
+async function printLabelPerItem(orderId: string): Promise<boolean> {
+  const orderRes = await fetch(`/api/orders/${orderId}`, { signal: AbortSignal.timeout(10000) })
+  if (!orderRes.ok) throw new Error('Không tải được đơn hàng')
+  const order = await orderRes.json() as Order
+
+  const items = order.items ?? []
+  if (items.length === 0) return false
+
+  let allOk = true
+  for (const item of items) {
+    const slotTotal = Math.max(1, item.quantity || 1)
+    const printCount = Math.min(slotTotal, 20) // safety cap at 20 per item
+    for (let slotIndex = 1; slotIndex <= printCount; slotIndex++) {
+      const ctx = buildPrintTemplateContext(order, {
+        BillName: 'TEM IN BẾP',
+        SlotLabel: `${slotIndex}/${slotTotal}`,
+      })
+      // Pass [item] so {{range .Items}} renders only this item.
+      // buildItemContext spreads orderCtx, so SlotLabel is available inside the range block.
+      const rendered = renderPrintTemplateHtml(PER_ITEM_LABEL_TEMPLATE, ctx, [item])
+      const html = buildThermalHtmlPage(rendered, '58mm')
+      try {
+        const res = await fetch(`${LOCAL_PRINTER_BRIDGE_ORIGIN}/print-template-html`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ html, paperWidth: '58mm', type: 'label' }),
+          signal: AbortSignal.timeout(35000),
+        })
+        const data = await res.json() as { ok?: boolean; message?: string }
+        if (!data.ok) allOk = false
+      } catch {
+        allOk = false
+      }
+    }
+  }
+  return allOk
+}
+
 export async function printOrderWithFallback(orderId: string, type: LocalPrinterType, options?: { autoprint?: boolean; allowBrowserFallback?: boolean }) {
   if (isBridgePrintingEnabled(type)) {
     try {
-      // Receipt: use HTML template → Playwright screenshot → ESC/POS raster (matches preview exactly)
-      // Label:   use ESC/POS direct (faster for kitchen tickets)
+      // Receipt: HTML template → Playwright screenshot → ESC/POS raster (matches preview exactly)
+      // Label:   per-item 58mm tickets via HTML template → bridge (one ticket per item×unit)
       const printed = type === 'receipt'
         ? await printOrderWithHtmlTemplate(orderId, type)
-        : await tryBridgePrintOrder(orderId, type)
+        : type === 'label'
+          ? await printLabelPerItem(orderId)
+          : await tryBridgePrintOrder(orderId, type)
       if (printed) return true
     } catch {
       // Bridge unavailable or failed → fall back to browser print dialog below

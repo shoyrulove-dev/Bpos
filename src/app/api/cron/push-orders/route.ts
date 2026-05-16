@@ -357,9 +357,10 @@ export async function POST(req: NextRequest) {
 
   // Ghost-order detection: orders that were at waiting_pickup/delivering but
   // disappeared from the active push batch → they completed on the platform.
-  // Only run when the scraper pushes a non-empty active snapshot (healthy signal).
+  // Run on every push (including empty batches) — this is exactly when ghost detection is needed:
+  // the scraper only sees Active tab; completed orders move to History and disappear from the push.
   let ghostCompleted = 0
-  if (rawOrders.length > 0 && activeCount > 0 && intg.provider === 'grab' && intg.externalStoreId) {
+  if (intg.provider === 'grab' && intg.externalStoreId) {
     const pushedExternalIds = new Set(normalized.map((n) => n.externalOrderId).filter(Boolean))
     const ghostWindow = new Date(Date.now() - 4 * 60 * 60 * 1000)   // placed within last 4h
     const staleThreshold = new Date(Date.now() - 40 * 60 * 1000)    // not updated for 40+ min
