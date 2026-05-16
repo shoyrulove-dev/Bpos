@@ -410,9 +410,15 @@ export function renderPrintTemplateText(content: string, context: TemplateContex
   const withConditionals = processConditionals(stripped, context)
 
   // Use function replacer to safely handle $ in context values
-  return Object.entries(context).reduce((output, [key, value]) => {
+  const substituted = Object.entries(context).reduce((output, [key, value]) => {
     return output.replace(new RegExp(`\\{\\{\\s*\\.${key}\\s*\\}\\}`, 'g'), () => value)
   }, withConditionals)
+
+  // Strip any remaining unresolved template directives so raw {{...}} never appears in output
+  return substituted
+    .replace(/\{\{-?\s*end\s*-?\}\}/g, '')           // orphaned {{end}}
+    .replace(/\{\{-?\s*\.\w[\w]*\s*-?\}\}/g, '')    // unresolved {{.Var}}
+    .replace(/\{\{-?\s*range\s[^}]+\}\}/g, '')        // orphaned {{range ...}}
 }
 
 export function renderPrintTemplateHtml(content: string, context: TemplateContext, items: OrderItem[]) {

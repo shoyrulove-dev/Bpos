@@ -259,7 +259,7 @@ export async function buildOrderPrintHtml(orderId: string, type: LocalPrinterTyp
       templateContent = active?.templateContent?.trim() ?? ''
     }
   } catch { /* fall through to default template */ }
-  if (!templateContent) templateContent = getDefaultTemplateContent(templateType)
+  if (!templateContent || isTemplateBroken(templateContent)) templateContent = getDefaultTemplateContent(templateType)
 
   const context = buildPrintTemplateContext(order, {
     BillName: type === 'label' ? 'TEM IN BẾP' : 'PHIẾU LÀM MÓN',
@@ -290,7 +290,7 @@ export async function printOrderWithHtmlTemplate(orderId: string, type: LocalPri
       templateContent = active?.templateContent?.trim() ?? ''
     }
   } catch { /* fall through to default template */ }
-  if (!templateContent) templateContent = getDefaultTemplateContent(templateType)
+  if (!templateContent || isTemplateBroken(templateContent)) templateContent = getDefaultTemplateContent(templateType)
 
   // 3. Render HTML
   const context = buildPrintTemplateContext(order, {
@@ -337,19 +337,21 @@ export async function printDemoTemplateWithBridge(templateContent: string, type:
   return true
 }
 
-// Per-item label template: one 58mm ticket per item×unit.
-// {{.SlotLabel}} injected via order-level context overrides and spread into item context.
+// Detect broken templates: item-level vars present but no {{range .Items}} block.
+// These templates cannot render items correctly and should fall back to the default.
+function isTemplateBroken(content: string): boolean {
+  const hasItemVars = /\{\{\s*\.(?:Name|Qty|Quantity|Price|FinalPrice|Note|NoteLine|OptionsText)\s*\}\}/.test(content)
+  const hasRange = /\{\{\s*range\s+\.Items\s*\}\}/.test(content)
+  return hasItemVars && !hasRange
+}
+
+// Per-item label template: one minimal 58mm ticket per item×unit.
+// Shows only item name, slot indicator (1/N), and note — small enough to stick on a cup or box.
 const PER_ITEM_LABEL_TEMPLATE = [
   '{{range .Items}}',
-  '===== TEM BẾP =====',
-  'Mã: {{.DisplayID}}',
-  'Kênh: {{.OrderSource}}',
-  'In: {{.CurrentTime}}',
-  '--------------------',
   '{{.Name}}',
   '[{{.SlotLabel}}]',
   '{{if .Note}}* {{.Note}}{{end}}',
-  '{{if .OrderNote}}GC: {{.OrderNote}}{{end}}',
   '{{end}}',
 ].join('\n')
 
