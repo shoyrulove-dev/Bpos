@@ -8,7 +8,7 @@ import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/aut
 import { requestAutomationLogin } from '@/lib/automation-login'
 import { upsertCustomerProfile } from '@/lib/customer-upsert'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, getComparableDriverName, hasMeaningfulDriverName, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
+import { buildOrderUpsert, getComparableDriverName, hasMeaningfulDriverName, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, resolveNormalizedOrderStatus, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
 import { getOrderContactProfileCandidates } from '@/lib/order-contact-profiles'
 import DriverModel from '@/models/Driver'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeOrdersByExternalOrderId, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
@@ -310,13 +310,16 @@ export async function GET(req: NextRequest) {
           if (isNewOrder) upserted++
           else updated++
 
-          const savedProfiles = getOrderContactProfileCandidates(mergedNormalized, {
-            brandId: String(intg.brandId),
-            platform: intg.provider,
-            isNew: isNewOrder,
-          })
-          if (savedProfiles.customer) customersToSave.push(savedProfiles.customer)
-          if (savedProfiles.driver) driversToSave.push(savedProfiles.driver)
+          // Only collect customer/driver profiles when order is completed
+          if (resolveNormalizedOrderStatus(mergedNormalized) === 'completed') {
+            const savedProfiles = getOrderContactProfileCandidates(mergedNormalized, {
+              brandId: String(intg.brandId),
+              platform: intg.provider,
+              isNew: isNewOrder,
+            })
+            if (savedProfiles.customer) customersToSave.push(savedProfiles.customer)
+            if (savedProfiles.driver) driversToSave.push(savedProfiles.driver)
+          }
         } catch { /* skip individual order errors */ }
       }
 

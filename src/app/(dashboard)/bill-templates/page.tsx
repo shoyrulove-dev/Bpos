@@ -27,36 +27,42 @@ const sizeColor: Record<BillSize, string> = {
 }
 
 const typeLabel: Record<BillType, string> = {
-  order: 'In đơn theo mẫu',
+  receipt: 'Hóa đơn 80mm (LAN)',
+  label: 'Tem 58mm (USB)',
+  order: 'In A4 / Phiếu bếp',
   delivery: 'Phiếu giao hàng',
-  receipt: 'Mẫu tự động in',
-  label: 'Mẫu tem 58mm',
 }
 
 function createFormState(type: BillType = 'receipt', size?: BillSize): TemplateFormState {
-  const resolvedSize = size ?? (type === 'label' ? '58mm' : '80mm')
-  const demoType = type === 'label' ? 'label' : type === 'delivery' ? 'delivery' : 'receipt'
+  const resolvedSize = size ?? (type === 'label' ? '58mm' : type === 'order' ? 'A4' : '80mm')
+  const isKitchen = type === 'order' && resolvedSize === '80mm'
+  const name = type === 'label' ? 'Tem bếp 58mm'
+    : isKitchen ? 'Phiếu bếp 80mm'
+    : type === 'order' ? 'In A4'
+    : 'Hóa đơn 80mm'
 
   return {
-    name: type === 'label' ? 'Tem bếp 58mm' : type === 'delivery' ? 'Phiếu giao hàng' : 'Phiếu tự động in 80mm',
+    name,
     type,
     size: resolvedSize,
     isActive: true,
-    templateContent: getDefaultTemplateContent(demoType),
+    templateContent: getDefaultTemplateContent(type === 'label' ? 'label' : 'receipt'),
     brandId: '',
   }
 }
 
 function getTemplateGuide(type: BillType, size: BillSize) {
-  if (type === 'label' || size === '58mm') return 'Nút In phiếu tem sẽ dùng mẫu này khi in 58mm.'
-  if (type === 'delivery') return 'Dùng cho phiếu giao hàng hoặc phiếu tài xế.'
-  return 'Auto print và In đơn 80mm sẽ ưu tiên mẫu receipt đang bật.'
+  if (type === 'label' || size === '58mm') return 'Nút "In phiếu tem" trong đơn hàng sẽ in mẫu này qua máy in USB 58mm.'
+  if (type === 'receipt') return 'Tự động in và nút "In Đơn" luôn ưu tiên mẫu receipt 80mm đang bật.'
+  if (size === 'A4') return 'In đơn trang đầy đủ khi cần kết nối máy in khổ giấy lớn — in qua popup trình duyệt.'
+  if (size === '80mm') return 'Mẫu phụ cho bếp — in thủ công qua nút "In máy in" trong editor hoặc preview đơn hàng.'
+  return 'Có thể dùng làm mẫu phụ tùy theo nhu cầu.'
 }
 
 const NOTO_MONO_FONT_LINK = '<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap" rel="stylesheet">'
 
 function openTemplatePrintWindow(content: string, type: BillType, size: BillSize) {
-  const templateType = type === 'label' ? 'label' : type === 'delivery' ? 'delivery' : getTemplateTypeForPaperSize(size)
+  const templateType = type === 'label' ? 'label' : getTemplateTypeForPaperSize(size)
   const context = buildDemoPrintTemplateContext(templateType)
   const html = renderPrintTemplateHtml(content, context, [
     { name: 'Trà sữa trân châu', quantity: 2, price: 35000, total: 70000, note: 'Ít đá' },
@@ -107,7 +113,7 @@ export default function BillTemplatesPage() {
   }, [])
 
   const livePreviewHtml = useMemo(() => {
-    const previewType = form.type === 'label' ? 'label' : form.type === 'delivery' ? 'delivery' : getTemplateTypeForPaperSize(form.size)
+    const previewType = form.type === 'label' ? 'label' : getTemplateTypeForPaperSize(form.size)
     return renderPrintTemplateHtml(form.templateContent, buildDemoPrintTemplateContext(previewType), [
       { name: 'Trà sữa trân châu', quantity: 2, price: 35000, total: 70000, note: 'Ít đá' },
       { name: 'Cơm sườn trứng', quantity: 1, price: 70000, total: 70000, note: 'Thêm nước mắm' },
@@ -163,9 +169,9 @@ export default function BillTemplatesPage() {
       const res = await fetch(`/api/orders/${encodeURIComponent(id)}`)
       if (!res.ok) { alert('Không tìm thấy đơn. Kiểm tra lại ID đơn.'); return }
       const order = await res.json() as import('@/types').Order
-      const templateType = type === 'label' ? 'label' : type === 'delivery' ? 'delivery' : getTemplateTypeForPaperSize(size)
+      const templateType = type === 'label' ? 'label' : getTemplateTypeForPaperSize(size)
       const context = buildPrintTemplateContext(order, {
-        BillName: templateType === 'label' ? 'TEM IN BẾP' : templateType === 'delivery' ? 'PHIẾU GIAO HÀNG' : 'PHIẾU LÀM MÓN',
+        BillName: templateType === 'label' ? 'TEM IN BẾP' : 'PHIẾU LÀM MÓN',
       })
       const html = renderPrintTemplateHtml(content, context, order.items ?? [])
       const paperWidth = size === '58mm' ? '58mm' : size === 'A4' ? '210mm' : size === 'A5' ? '148mm' : '80mm'
@@ -183,7 +189,10 @@ export default function BillTemplatesPage() {
   }
 
   const handleTypeChange = (nextType: BillType) => {
-    const nextSize: BillSize = nextType === 'label' ? '58mm' : form.size === '58mm' ? '80mm' : form.size
+    const nextSize: BillSize = nextType === 'label' ? '58mm'
+      : nextType === 'order' && form.size === '58mm' ? 'A4'
+      : form.size === '58mm' ? '80mm'
+      : form.size
     setForm((current) => ({
       ...current,
       type: nextType,
@@ -208,16 +217,18 @@ export default function BillTemplatesPage() {
   }
 
   const recommendedTemplates = [
-    { title: 'Mẫu tự động in', subtitle: 'Dùng cho auto print và In đơn 80mm', type: 'receipt' as BillType, size: '80mm' as BillSize },
-    { title: 'Mẫu tem bếp', subtitle: 'Dùng cho nút In phiếu tem 58mm', type: 'label' as BillType, size: '58mm' as BillSize },
+    { title: 'Hóa đơn giao khách', subtitle: 'Máy in LAN · 80mm · Auto print & nút In Đơn', type: 'receipt' as BillType, size: '80mm' as BillSize },
+    { title: 'Phiếu bếp (tuỳ chọn)', subtitle: 'Máy in LAN · 80mm · In nội bộ cho bếp', type: 'order' as BillType, size: '80mm' as BillSize },
+    { title: 'Tem nhãn 58mm', subtitle: 'Máy in USB · 58mm · Nút In phiếu tem', type: 'label' as BillType, size: '58mm' as BillSize },
+    { title: 'In A4', subtitle: 'Máy in thường · A4 · In đơn trang đầy đủ', type: 'order' as BillType, size: 'A4' as BillSize },
   ]
 
   return (
     <div className="space-y-5">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Hóa đơn mẫu và tem in</h1>
-          <p className="page-subtitle">{isLoading ? 'Đang tải...' : `${templates.length} mẫu đang có`} · Preview trong trang này và auto print dùng cùng renderer.</p>
+          <h1 className="page-title">Mẫu in</h1>
+          <p className="page-subtitle">{isLoading ? 'Đang tải...' : `${templates.length} mẫu`} · 3 loại máy in: <strong>LAN 80mm</strong> (In Đơn) · <strong>USB 58mm</strong> (Tem) · <strong>A4</strong> (Khi cần)</p>
         </div>
         <button onClick={() => openCreate('receipt', '80mm')} className="btn-primary">
           <Plus className="w-4 h-4" /> Tạo mẫu mới
@@ -225,7 +236,9 @@ export default function BillTemplatesPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {recommendedTemplates.map((item) => (
+        {recommendedTemplates.map((item) => {
+          const existingForCard = templates.find((t) => t.type === item.type && t.size === item.size)
+          return (
           <div key={item.title} className="card p-5 flex items-start gap-4">
             <div className="w-11 h-11 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center flex-shrink-0">
               <Sparkles className="w-5 h-5" />
@@ -235,13 +248,20 @@ export default function BillTemplatesPage() {
                 <h2 className="text-base font-semibold text-gray-900">{item.title}</h2>
                 <span className={cn('badge', sizeColor[item.size])}>{item.size}</span>
                 <span className="badge badge-gray">{typeLabel[item.type]}</span>
+                {existingForCard && <span className={cn('badge', existingForCard.isActive ? 'badge-green' : 'badge-red')}>{existingForCard.isActive ? 'Kích hoạt' : 'Tắt'}</span>}
               </div>
               <p className="text-sm text-gray-500 mt-1">{item.subtitle}</p>
               <p className="text-xs text-gray-400 mt-2">{getTemplateGuide(item.type, item.size)}</p>
             </div>
-            <button onClick={() => openCreate(item.type, item.size)} className="btn-outline btn-sm whitespace-nowrap">Mở editor</button>
+            <button
+              onClick={() => existingForCard ? openEdit(existingForCard) : openCreate(item.type, item.size)}
+              className="btn-outline btn-sm whitespace-nowrap"
+            >
+              {existingForCard ? 'Sửa mẫu' : 'Tạo mẫu'}
+            </button>
           </div>
-        ))}
+          )
+        })}
       </div>
 
       <div className="card px-4 py-3 flex items-center gap-3 flex-wrap">
@@ -303,19 +323,17 @@ export default function BillTemplatesPage() {
                   <div className="form-group md:col-span-2">
                     <label className="label">Loại mẫu</label>
                     <select className="input" value={form.type} onChange={(event) => handleTypeChange(event.target.value as BillType)}>
-                      <option value="receipt">Mẫu tự động in</option>
-                      <option value="label">Mẫu tem 58mm</option>
-                      <option value="delivery">Phiếu giao hàng</option>
-                      <option value="order">In đơn theo mẫu</option>
+                      <option value="receipt">Hóa đơn 80mm (auto print)</option>
+                      <option value="label">Tem 58mm (USB)</option>
+                      <option value="order">In A4 / Phiếu bếp</option>
                     </select>
                   </div>
                   <div className="form-group">
                     <label className="label">Khổ giấy</label>
                     <select className="input" value={form.size} onChange={(event) => setForm({ ...form, size: event.target.value as BillSize })}>
+                      <option value="80mm">80mm (LAN)</option>
+                      <option value="58mm">58mm (USB)</option>
                       <option value="A4">A4</option>
-                      <option value="A5">A5</option>
-                      <option value="80mm">80mm</option>
-                      <option value="58mm">58mm</option>
                     </select>
                   </div>
                   <div className="form-group flex items-end">
@@ -332,7 +350,7 @@ export default function BillTemplatesPage() {
                       <p className="text-sm font-semibold text-gray-900">Biến template</p>
                       <p className="text-xs text-gray-500 mt-1">Click để chèn vào editor text. Hỗ trợ {'{{range .Items}} ... {{end}}'} cho danh sách món.</p>
                     </div>
-                    <button onClick={() => setForm((current) => ({ ...current, templateContent: getDefaultTemplateContent(form.type === 'label' ? 'label' : form.type === 'delivery' ? 'delivery' : 'receipt') }))} className="btn-outline btn-sm whitespace-nowrap">Nạp mẫu gợi ý</button>
+                    <button onClick={() => setForm((current) => ({ ...current, templateContent: getDefaultTemplateContent(form.type === 'label' ? 'label' : 'receipt') }))} className="btn-outline btn-sm whitespace-nowrap">Nạp mẫu gợi ý</button>
                   </div>
                   <div className="flex flex-wrap gap-1.5 mt-3">
                     {PRINT_TEMPLATE_VARIABLES.map((item) => (

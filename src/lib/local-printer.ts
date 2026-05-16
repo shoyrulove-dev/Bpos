@@ -405,13 +405,9 @@ async function printLabelPerItem(orderId: string): Promise<boolean> {
 export async function printOrderWithFallback(orderId: string, type: LocalPrinterType, options?: { autoprint?: boolean; allowBrowserFallback?: boolean }) {
   if (isBridgePrintingEnabled(type)) {
     try {
-      // Receipt: HTML template → Playwright screenshot → ESC/POS raster (matches preview exactly)
-      // Label:   per-item 58mm tickets via HTML template → bridge (one ticket per item×unit)
-      const printed = type === 'receipt'
-        ? await printOrderWithHtmlTemplate(orderId, type)
-        : type === 'label'
-          ? await printLabelPerItem(orderId)
-          : await tryBridgePrintOrder(orderId, type)
+      // Both receipt and label use the active DB template (printOrderWithHtmlTemplate).
+      // This ensures the user's saved "Mẫu tem bếp" template is used for label printing.
+      const printed = await printOrderWithHtmlTemplate(orderId, type)
       if (printed) return true
     } catch {
       // Bridge unavailable or failed → fall back to browser print dialog below

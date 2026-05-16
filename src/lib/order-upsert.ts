@@ -627,7 +627,7 @@ function extractDeliveredDate(normalized: NormalizedOrder) {
   )
 }
 
-function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
+export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
   const rawPayload = normalized.rawPayload ?? {}
   const nestedTimes = extractNestedTimes(rawPayload)
   const pageStage = String(rawPayload._pageStage ?? '').trim().toLowerCase()
