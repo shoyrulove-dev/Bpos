@@ -1,10 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
-import { Edit, Eye, FileText, Loader2, Plus, Printer, Sparkles, ToggleLeft, ToggleRight } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Edit, Eye, Loader2, Plus, Printer, Sparkles } from 'lucide-react'
 import { useBillTemplates, useCreateBillTemplate, useUpdateBillTemplate } from '@/hooks/use-data'
-import { loadOrderAlertSettings } from '@/lib/order-alerts'
 import { printDemoTemplateWithBridge } from '@/lib/local-printer'
 import { buildDemoPrintTemplateContext, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, PRINT_TEMPLATE_VARIABLES, renderPrintTemplateHtml } from '@/lib/print-template'
 import { cn } from '@/lib/utils'
@@ -102,15 +100,7 @@ export default function BillTemplatesPage() {
   const [saveError, setSaveError] = useState('')
   const [bridgePrintStatus, setBridgePrintStatus] = useState<'idle' | 'printing' | 'ok' | 'error'>('idle')
   const [bridgePrintError, setBridgePrintError] = useState('')
-  const [printerName, setPrinterName] = useState('')
-  const [printerSize, setPrinterSize] = useState<BillSize>('80mm')
   const saving = createMutation.isPending || updateMutation.isPending
-
-  useEffect(() => {
-    const settings = loadOrderAlertSettings()
-    setPrinterName(settings.printerName)
-    setPrinterSize(settings.printerPaperSize)
-  }, [])
 
   const livePreviewHtml = useMemo(() => {
     const previewType = form.type === 'label' ? 'label' : getTemplateTypeForPaperSize(form.size)
@@ -157,7 +147,6 @@ export default function BillTemplatesPage() {
     }
   }
 
-  const toggleActive = (template: BillTemplate) => updateMutation.mutate({ id: template._id, isActive: !template.isActive })
 
   const insertVariable = (token: string) => setForm((current) => ({ ...current, templateContent: `${current.templateContent}${current.templateContent.endsWith('\n') || !current.templateContent ? '' : '\n'}${token}` }))
 
@@ -262,44 +251,6 @@ export default function BillTemplatesPage() {
           </div>
           )
         })}
-      </div>
-
-      <div className="card px-4 py-3 flex items-center gap-3 flex-wrap">
-        <Printer className="h-4 w-4 text-gray-400 flex-shrink-0" />
-        <span className="text-sm text-gray-700 font-medium">{printerName || 'Chưa cấu hình máy in'}</span>
-        <span className="badge badge-gray">Auto print hiện tại: {printerSize}</span>
-        <div className="flex-1" />
-        <button onClick={() => void printTemplateWithBridgeFallback(getDefaultTemplateContent(getTemplateTypeForPaperSize(printerSize)), getTemplateTypeForPaperSize(printerSize), printerSize)} className="btn-outline btn-sm gap-1.5">
-          <Printer className="h-3.5 w-3.5" /> In thử renderer chung
-        </button>
-        <Link href="/settings" className="btn-ghost btn-sm text-gray-500 text-xs">Cài đặt máy in →</Link>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        {templates.map((template) => (
-          <div key={template._id} className="card p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between mb-3">
-              <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
-                <FileText className="w-5 h-5 text-gray-500" />
-              </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => openEdit(template)} className="btn-ghost btn-sm p-1.5"><Edit className="w-3.5 h-3.5" /></button>
-                <button onClick={() => setPreviewTemplate(template)} className="btn-ghost btn-sm p-1.5"><Eye className="w-3.5 h-3.5" /></button>
-                <button onClick={() => void printTemplateWithBridgeFallback(template.templateContent, template.type, template.size)} className="btn-ghost btn-sm p-1.5" title="In thử"><Printer className="w-3.5 h-3.5" /></button>
-                <button onClick={() => toggleActive(template)} className={cn('btn-ghost btn-sm p-1.5', template.isActive ? 'text-green-500' : 'text-gray-400')}>
-                  {template.isActive ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-            <h3 className="font-semibold text-gray-900">{template.name}</h3>
-            <div className="flex gap-2 mt-2 flex-wrap">
-              <span className="badge badge-gray">{typeLabel[template.type]}</span>
-              <span className={cn('badge', sizeColor[template.size])}>{template.size}</span>
-              <span className={cn('badge', template.isActive ? 'badge-green' : 'badge-red')}>{template.isActive ? 'Kích hoạt' : 'Tắt'}</span>
-            </div>
-            <p className="mt-3 text-xs text-gray-500 line-clamp-3">{getTemplateGuide(template.type, template.size)}</p>
-          </div>
-        ))}
       </div>
 
       {showForm && (
