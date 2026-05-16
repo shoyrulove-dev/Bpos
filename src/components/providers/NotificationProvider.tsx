@@ -44,6 +44,7 @@ type AlertOrder = {
   _id: string
   shortId?: string
   externalOrderId?: string
+  rawPayload?: { displayID?: string }
   customerName?: string
   placedAt?: string
   status?: string
@@ -57,17 +58,31 @@ function getLatestOrder(orderList: AlertOrder[]) {
   })[0] ?? null
 }
 
+/** Ưu tiên displayID của nền tảng (GF-723), fallback về shortId BPOS, rồi 6 ký tự cuối _id */
+function getDisplayId(order: AlertOrder | null) {
+  if (!order) return ''
+  return String(order.rawPayload?.displayID ?? '').trim() || ''
+}
+
 function getOrderLabel(order: AlertOrder | null) {
   if (!order) return 'đơn mới nhất'
-  return order.shortId?.trim() || order._id.slice(-6)
+  const displayId = getDisplayId(order)
+  const shortId = order.shortId?.trim() || order._id.slice(-6)
+  // Show both: "GF-723 (LWB4AX06)" so staff can look up by either ID
+  return displayId ? `${displayId} (${shortId})` : shortId
 }
 
 function showSystemOrderNotification(order: AlertOrder | null, href: string) {
   if (typeof window === 'undefined' || typeof Notification === 'undefined') return
   if (Notification.permission !== 'granted') return
 
+  const displayId = getDisplayId(order)
+  const shortId = order?.shortId?.trim() || order?._id?.slice(-6) || ''
+  const idLine = displayId ? `${displayId} · ${shortId}` : shortId
+  const exId = order?.externalOrderId ? `\nRef: ${order.externalOrderId}` : ''
+
   const notification = new Notification('BPOS có đơn hàng mới', {
-    body: `Đơn mới nhất: ${getOrderLabel(order)}${order?.customerName ? ` • ${order.customerName}` : ''}`,
+    body: `Đơn: ${idLine}${order?.customerName ? ` • ${order.customerName}` : ''}${exId}`,
     tag: 'bpos-new-order',
   })
 

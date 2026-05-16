@@ -3,7 +3,7 @@ import type { BillSize, BillType, Order, OrderItem } from '@/types'
 
 type TemplateContext = Record<string, string>
 type NamedRef = string | { _id?: string; name?: string } | null | undefined
-type PrintableTemplateOrder = Pick<Order, 'source' | 'externalOrderId' | 'shortId' | 'brandName' | 'hubName' | 'customerName' | 'customerPhone' | 'driverInfo' | 'deliveryInfo' | 'note' | 'subtotal' | 'discount' | 'total' | 'platformFee' | 'placedAt' | 'deliveredAt' | 'items'> & {
+type PrintableTemplateOrder = Pick<Order, 'source' | 'externalOrderId' | 'shortId' | 'rawPayload' | 'brandName' | 'hubName' | 'customerName' | 'customerPhone' | 'driverInfo' | 'deliveryInfo' | 'note' | 'subtotal' | 'discount' | 'total' | 'platformFee' | 'placedAt' | 'deliveredAt' | 'items'> & {
   brandId?: NamedRef
   hubId?: NamedRef
 }
@@ -11,85 +11,108 @@ type PrintableTemplateOrder = Pick<Order, 'source' | 'externalOrderId' | 'shortI
 export type EditablePrintTemplateType = Extract<BillType, 'receipt' | 'delivery' | 'label'>
 
 export const PRINT_TEMPLATE_VARIABLES: Array<{ token: string; label: string; example: string }> = [
-  { token: '{{.BillName}}', label: 'Tên phiếu', example: 'PHIẾU LÀM MÓN' },
-  { token: '{{.SiteName}}', label: 'Tên cửa hàng', example: 'BPOS Demo Hub' },
-  { token: '{{.OrderSource}}', label: 'Nguồn đơn', example: 'GrabFood' },
-  { token: '{{.ShortOrderID}}', label: 'Mã đơn rút gọn', example: 'GF-001' },
-  { token: '{{.CurrentTime}}', label: 'Thời gian hiện tại', example: '09/05/2026 18:30' },
-  { token: '{{.OrderCreatedAt}}', label: 'Thời gian đặt đơn', example: '09/05/2026 18:05' },
-  { token: '{{.OrderDeliveryAt}}', label: 'Thời gian giao dự kiến', example: '09/05/2026 18:45' },
-  { token: '{{.CustomerName}}', label: 'Tên khách', example: 'Nguyễn Văn A' },
-  { token: '{{.CustomerPhone}}', label: 'SĐT khách', example: '+84901234567' },
-  { token: '{{.DriverName}}', label: 'Tên tài xế', example: 'Tài xế BE' },
-  { token: '{{.DriverPhone}}', label: 'SĐT tài xế', example: '+84987654321' },
-  { token: '{{.DeliveryAddress}}', label: 'Địa chỉ giao', example: '123 Lê Lợi, Q1, TP.HCM' },
-  { token: '{{.OrderNote}}', label: 'Ghi chú đơn', example: 'Không hành' },
-  { token: '{{.Subtotal}}', label: 'Tạm tính', example: '185.000 đ' },
-  { token: '{{.Discount}}', label: 'Giảm giá', example: '15.000 đ' },
-  { token: '{{.Total}}', label: 'Tổng tiền', example: '170.000 đ' },
-  { token: '{{.PlatformFee}}', label: 'Phí sàn', example: '28.000 đ' },
-  { token: '{{.ItemLines}}', label: 'Danh sách món dạng text', example: 'Trà sữa x2 70.000 đ' },
-  { token: '{{.OrderSubTotal}}', label: 'Tạm tính (alias)', example: '185.000 đ' },
-  { token: '{{.OrderTotalDiscount}}', label: 'Giảm giá (alias)', example: '15.000 đ' },
-  { token: '{{.OrderTotalPaid}}', label: 'Thành tiền (alias)', example: '170.000 đ' },
-  { token: '{{.Name}}', label: 'Tên món (trong {{range .Items}})', example: 'Trà sữa trân châu' },
-  { token: '{{.Quantity}}', label: 'Số lượng món (trong {{range .Items}})', example: '2' },
-  { token: '{{.FinalPrice}}', label: 'Thành tiền món (trong {{range .Items}})', example: '70.000 đ' },
-  { token: '{{.DiscountPrice}}', label: 'Giá sau giảm món (trong {{range .Items}})', example: '35.000 đ' },
-  { token: '{{.Description}}', label: 'Mô tả món (trong {{range .Items}})', example: '' },
-  { token: '{{.OptionsText}}', label: 'Tuỳ chọn món dạng text (trong {{range .Items}})', example: '' },
+  // ---- Thông tin phiếu / đơn ----
+  { token: '{{.BillName}}',        label: 'Tên phiếu',                        example: 'PHIẾU LÀM MÓN' },
+  { token: '{{.SiteName}}',        label: 'Tên cửa hàng / thương hiệu',       example: 'BPOS Demo' },
+  { token: '{{.HubName}}',         label: 'Tên chi nhánh',                    example: 'Chi nhánh Q1' },
+  { token: '{{.OrderSource}}',     label: 'Kênh đặt đơn',                     example: 'GrabFood' },
+  { token: '{{.DisplayID}}',       label: 'Mã đơn của nền tảng',              example: 'GF-723' },
+  { token: '{{.ShortOrderID}}',    label: 'Mã đơn rút gọn (DisplayID hoặc shortId)', example: 'GF-723' },
+  { token: '{{.BposOrderID}}',     label: 'Mã BPOS nội bộ',                   example: 'LWB4AX06' },
+  { token: '{{.ExternalOrderID}}', label: 'Mã đơn đầy đủ từ nền tảng',        example: '00123456789-C76DEMO' },
+  { token: '{{.CurrentTime}}',     label: 'Thời gian in',                     example: '16/05/2026 18:30' },
+  { token: '{{.OrderCreatedAt}}',  label: 'Thời gian đặt đơn',               example: '16/05/2026 18:05' },
+  { token: '{{.OrderDeliveryAt}}', label: 'Dự kiến giao / giao xong',         example: '16/05/2026 18:45' },
+  // ---- Khách & tài xế ----
+  { token: '{{.CustomerName}}',    label: 'Tên khách',                        example: 'Nguyễn Văn A' },
+  { token: '{{.CustomerPhone}}',   label: 'SĐT khách',                        example: '+84901234567' },
+  { token: '{{.DriverName}}',      label: 'Tên tài xế',                       example: 'Tài xế BE' },
+  { token: '{{.DriverPhone}}',     label: 'SĐT tài xế',                       example: '+84987654321' },
+  { token: '{{.DeliveryAddress}}', label: 'Địa chỉ giao',                     example: '123 Lê Lợi, Q1' },
+  { token: '{{.OrderNote}}',       label: 'Ghi chú đơn',                      example: 'Không hành' },
+  // ---- Tính tiền ----
+  { token: '{{.Subtotal}}',            label: 'Tạm tính',                   example: '185.000 đ' },
+  { token: '{{.Discount}}',            label: 'Giảm giá',                   example: '15.000 đ' },
+  { token: '{{.Total}}',               label: 'Tổng tiền',                  example: '170.000 đ' },
+  { token: '{{.PlatformFee}}',         label: 'Phí sàn',                    example: '28.000 đ' },
+  { token: '{{.OrderSubTotal}}',       label: 'Tạm tính (alias)',            example: '185.000 đ' },
+  { token: '{{.OrderTotalDiscount}}',  label: 'Giảm giá (alias)',            example: '15.000 đ' },
+  { token: '{{.OrderTotalPaid}}',      label: 'Thành tiền (alias)',          example: '170.000 đ' },
+  // ---- Món ăn (tóm tắt) ----
+  { token: '{{.ItemLines}}',       label: 'Tất cả món dạng text 1 dòng',      example: 'Trà sữa x2 70.000 đ' },
+  { token: '{{.ItemCount}}',       label: 'Số loại món',                      example: '3' },
+  // ---- Trong {{range .Items}} ----
+  { token: '{{.Name}}',         label: 'Tên món',                             example: 'Trà sữa trân châu' },
+  { token: '{{.Qty}}',          label: 'Số lượng (rút gọn)',                  example: '2' },
+  { token: '{{.Quantity}}',     label: 'Số lượng',                            example: '2' },
+  { token: '{{.Price}}',        label: 'Đơn giá món',                         example: '35.000 đ' },
+  { token: '{{.FinalPrice}}',   label: 'Thành tiền món (sốlượng × giá)',      example: '70.000 đ' },
+  { token: '{{.Total}}',        label: 'Thành tiền món (alias FinalPrice)',    example: '70.000 đ' },
+  { token: '{{.DiscountPrice}}', label: 'Giá sau giảm món',                   example: '35.000 đ' },
+  { token: '{{.Note}}',         label: 'Ghi chú món (thuần)',                 example: 'ít đường' },
+  { token: '{{.NoteLine}}',     label: 'Ghi chú món (kèm prefix)',            example: '  Ghi chú: ít đường' },
+  { token: '{{.Description}}',  label: 'Mô tả món (nếu có)',                  example: '' },
+  { token: '{{.OptionsText}}',  label: 'Tuỳ chọn món (nếu có)',               example: '' },
 ]
 
 const DEFAULT_TEMPLATES: Record<EditablePrintTemplateType, string> = {
+  // --- 80mm receipt: mẫu in đơn tự động (máy LAN) ---
   receipt: [
     '===== {{.BillName}} =====',
     '{{.SiteName}}',
-    'Kênh: {{.OrderSource}}',
-    'Mã đơn: {{.ShortOrderID}}',
+    '{{if .HubName}}{{.HubName}}{{end}}',
+    'Kênh: {{.OrderSource}}   Mã: {{.DisplayID}}',
+    'In lúc: {{.CurrentTime}}',
     'Đặt lúc: {{.OrderCreatedAt}}',
     '----------------------------',
     'Khách: {{.CustomerName}}',
-    'SĐT: {{.CustomerPhone}}',
-    'Địa chỉ: {{.DeliveryAddress}}',
+    '{{if .CustomerPhone}}SĐT: {{.CustomerPhone}}{{end}}',
+    '{{if .DriverName}}Tài xế: {{.DriverName}}{{end}}',
+    '{{if .DeliveryAddress}}Địa chỉ: {{.DeliveryAddress}}{{end}}',
     '----------------------------',
     '{{range .Items}}',
-    '{{.Name}} x{{.Qty}}',
-    '  {{.Total}}',
-    '{{.NoteLine}}',
+    '{{.Name}}',
+    '  x{{.Qty}}  {{.FinalPrice}}',
+    '{{if .Note}}  * {{.Note}}{{end}}',
     '{{end}}',
     '----------------------------',
     'Tạm tính: {{.Subtotal}}',
     'Giảm giá: {{.Discount}}',
     'Tổng tiền: {{.Total}}',
-    'Phí sàn: {{.PlatformFee}}',
+    '{{if .OrderNote}}-----------------------------',
+    'Ghi chú: {{.OrderNote}}{{end}}',
     '============================',
   ].join('\n'),
+
+  // --- delivery slip ---
   delivery: [
     '===== PHIẾU GIAO HÀNG =====',
     '{{.SiteName}}',
-    'Mã đơn: {{.ShortOrderID}}',
-    'Kênh: {{.OrderSource}}',
+    'Mã: {{.DisplayID}}   Kênh: {{.OrderSource}}',
     'Giao dự kiến: {{.OrderDeliveryAt}}',
     'Khách: {{.CustomerName}}',
-    'SĐT: {{.CustomerPhone}}',
-    'Địa chỉ: {{.DeliveryAddress}}',
-    'Tài xế: {{.DriverName}}',
-    'SĐT tài xế: {{.DriverPhone}}',
+    '{{if .CustomerPhone}}SĐT: {{.CustomerPhone}}{{end}}',
+    '{{if .DeliveryAddress}}Địa chỉ: {{.DeliveryAddress}}{{end}}',
+    '{{if .DriverName}}Tài xế: {{.DriverName}}{{end}}',
     '----------------------------',
     '{{.ItemLines}}',
+    '----------------------------',
+    'Tổng tiền: {{.Total}}',
   ].join('\n'),
+
+  // --- 58mm kitchen label: mẫu tem bếp (máy USB) ---
   label: [
-    '===== TEM ĐƠN HÀNG =====',
-    '{{.ShortOrderID}}',
-    '{{.CustomerName}}',
-    '{{.OrderSource}}',
-    '----------------------------',
+    '===== TEM BẾP =====',
+    'Mã: {{.DisplayID}}',
+    'Kênh: {{.OrderSource}}',
+    'In lúc: {{.CurrentTime}}',
+    '--------------------',
     '{{range .Items}}',
-    '{{.Name}} x{{.Qty}}',
-    '{{.NoteLine}}',
+    '{{.Name}}  x{{.Qty}}',
+    '{{if .Note}}* {{.Note}}{{end}}',
     '{{end}}',
-    '----------------------------',
-    '{{.OrderNote}}',
+    '--------------------',
+    '{{if .OrderNote}}GC: {{.OrderNote}}{{end}}',
   ].join('\n'),
 }
 
@@ -109,19 +132,21 @@ function formatDateTime(value?: string) {
   }
 }
 
-function getReceiptCode(order: Pick<Order, 'source' | 'externalOrderId' | 'shortId'>) {
-  const prefixMap: Record<string, string> = {
-    grab: 'GF',
-    be: 'BE',
-    shopee: 'SP',
-    xanh_sm: 'XS',
-    internal: 'NB',
-    other: 'OD',
-  }
+function getReceiptCode(order: PrintableTemplateOrder) {
+  // Prefer the platform's own display ID (e.g. GF-723 from Grab rawPayload.displayID)
+  const displayID = String(order.rawPayload?.displayID ?? '').trim()
+  if (displayID) return displayID
 
+  // Fallback: BPOS shortId
+  if (order.shortId) return order.shortId
+
+  // Last resort: generate a short prefix+suffix from externalOrderId
+  const prefixMap: Record<string, string> = {
+    grab: 'GF', be: 'BE', shopee: 'SP', xanh_sm: 'XS', internal: 'NB', other: 'OD',
+  }
   const prefix = prefixMap[order.source] ?? 'OD'
-  const digits = String(order.externalOrderId ?? order.shortId ?? '').replace(/\D/g, '')
-  const suffix = digits.slice(-3) || order.shortId.replace(/[^A-Z0-9]/gi, '').slice(-3) || '001'
+  const digits = String(order.externalOrderId ?? '').replace(/\D/g, '')
+  const suffix = digits.slice(-4) || '0001'
   return `${prefix}-${suffix}`
 }
 
@@ -248,26 +273,39 @@ export function buildPrintTemplateContext(order: PrintableTemplateOrder, overrid
     ? safeItems.map((item) => `${item.name} x${item.quantity} ${formatCurrency(getItemTotal(item))}${item.note ? ` (${item.note})` : ''}`).join('\n')
     : 'Chưa có món nào'
 
+  // Platform display ID (e.g. GF-723 from Grab), BPOS shortId, and full external ID
+  const platformDisplayID = String(order.rawPayload?.displayID ?? '').trim()
+  const shortOrderID = getReceiptCode(order)  // prefers platformDisplayID
+
   return {
     BillName: 'PHIẾU LÀM MÓN',
     SiteName: order.brandName || getNamedValue(order.brandId, 'BPOS Portal'),
     HubName: order.hubName || getNamedValue(order.hubId),
     OrderSource: CHANNEL_SOURCE_LABEL[order.source] || order.source,
-    ShortOrderID: getReceiptCode(order),
+    // Order ID variants
+    ShortOrderID: shortOrderID,            // nền tảng displayID hoặc shortId (GF-723, LWB4AX06)
+    DisplayID: platformDisplayID || shortOrderID,  // mã đơn của nền tảng (GF-723)
+    ExternalOrderID: order.externalOrderId ?? '',  // mã đầy đủ (00160658852-C76KECNGKAU1A2)
+    BposOrderID: order.shortId ?? '',              // mã BPOS nội bộ (LWB4AX06)
+    // Time
     CurrentTime: formatDateTime(new Date().toISOString()),
     OrderCreatedAt: formatDateTime(order.placedAt),
     OrderDeliveryAt: formatDateTime(order.deliveredAt || order.deliveryInfo?.estimatedTime),
+    // Customer / delivery
     CustomerName: order.customerName || 'Khách hàng',
     CustomerPhone: order.customerPhone || '',
     DriverName: order.driverInfo?.name || '',
     DriverPhone: order.driverInfo?.phone || '',
     DeliveryAddress: order.deliveryInfo?.address || '',
     OrderNote: order.note || order.deliveryInfo?.note || '',
+    // Totals
     Subtotal: formatCurrency(order.subtotal),
     Discount: formatCurrency(order.discount),
     Total: formatCurrency(order.total),
     PlatformFee: formatCurrency(order.platformFee ?? 0),
+    // Items summary
     ItemLines: itemLines,
+    ItemCount: String(safeItems.length),
     // Aliases used in custom templates
     OrderSubTotal: formatCurrency(order.subtotal),
     OrderTotalDiscount: formatCurrency(order.discount),
