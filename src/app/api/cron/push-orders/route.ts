@@ -262,8 +262,10 @@ export async function POST(req: NextRequest) {
       // allow overriding a wrongly-set 'completed' so operators can see the real live status.
       const rawPayloadIncoming = norm.rawPayload as Record<string, unknown> | undefined
       const incomingPageType = String(rawPayloadIncoming?._pageType ?? '').trim()
+      const incomingPageStage = String(rawPayloadIncoming?._pageStage ?? '').trim()
       const incomingFetchType = String(rawPayloadIncoming?._fetchType ?? '').trim()
       const isFromActiveBucket = ['PreparingV2', 'Ready', 'Upcoming'].includes(incomingPageType)
+        || ['preparing', 'ready', 'upcoming'].includes(incomingPageStage.toLowerCase())
         || ['in_progress', 'on_delivery', 'pending'].includes(incomingFetchType)
       // Cancelled orders never change status via auto-sync (any source)
       if (existingStatus === 'cancelled') {
@@ -282,6 +284,7 @@ export async function POST(req: NextRequest) {
       // Exception: if coming from a confirmed History/Completed bucket, it IS done
       const isBackfillSource = source === 'browser-grab-backfill'
       const incomingIsHistoryBucket = ['History', 'Completed', 'CompletedV2', 'PastOrders'].includes(incomingPageType)
+        || ['history', 'completed'].includes(incomingPageStage.toLowerCase())
       if (isBackfillSource && !incomingIsHistoryBucket && ACTIVE_ORDER_STATUSES.has(existingStatus ?? '') && merged.orderStatus === 'completed') {
         merged.orderStatus = (existingStatus as NormalizedOrder['orderStatus']) ?? 'waiting_pickup'
       }

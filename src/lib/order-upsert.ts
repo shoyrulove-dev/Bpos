@@ -616,6 +616,16 @@ function extractDeliveredDate(normalized: NormalizedOrder) {
 function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
   const rawPayload = normalized.rawPayload ?? {}
   const nestedTimes = extractNestedTimes(rawPayload)
+  const pageStage = String(rawPayload._pageStage ?? '').trim().toLowerCase()
+  const pageType = String(rawPayload._pageType ?? rawPayload.pageType ?? '').trim().toLowerCase()
+  const isGrabHistoryBucket = normalized.source === 'grab' && (
+    pageStage === 'history'
+    || pageStage === 'completed'
+    || pageType.includes('history')
+    || pageType.includes('complet')
+    || pageType.includes('past')
+    || pageType.includes('deliver')
+  )
 
   if (
     parseDateValue(rawPayload.cancelledAt)
@@ -626,13 +636,17 @@ function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
     return 'cancelled' as const
   }
 
+  // Grab history/completed buckets represent finalized orders even when
+  // the payload no longer carries a reliable active/completed status flag.
+  if (isGrabHistoryBucket) {
+    return 'completed' as const
+  }
+
   if (hasGrabActiveStatusSignal(normalized) && normalized.orderStatus !== 'cancelled') {
     // Nếu order đang ở tab ACTIVE của Grab portal (preparing/ready/upcoming),
     // tin tuyệt đối vào page bucket — KHÔNG check completion timestamps.
     // Các field completedAt/deliveredAt có thể là zero-value hoặc stale từ Grab API
     // khiến đơn mới nhất bị mark nhầm là completed.
-    const pageStage = String(rawPayload._pageStage ?? '').toLowerCase()
-    const pageType  = String(rawPayload._pageType  ?? rawPayload.pageType ?? '').toLowerCase()
     const isActivePageBucket = pageStage === 'preparing' || pageStage === 'ready' || pageStage === 'upcoming'
       || pageType === 'preparingv2' || pageType === 'ready' || pageType === 'upcoming'
 
