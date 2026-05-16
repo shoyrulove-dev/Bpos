@@ -6,7 +6,7 @@ import { ArrowLeft, Loader2, MapPin, Phone, Printer, RefreshCw, TicketPercent, T
 import { useOrder } from '@/hooks/use-orders-channels'
 import { getActualReceived as getSettlementActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown, getGrabMoneyBreakdown as getSettlementGrabMoneyBreakdown } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
-import { buildOrderPrintHtml, printOrderWithHtmlTemplate, tryBridgePrintOrder } from '@/lib/local-printer'
+import { buildOrderPrintHtml, printOrderWithFallback, printOrderWithHtmlTemplate, tryBridgePrintOrder } from '@/lib/local-printer'
 import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, PAYMENT_METHOD_LABEL } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import type { Order } from '@/types'
@@ -79,10 +79,15 @@ function PrintPreviewPanel({ orderId }: { orderId: string }) {
             <div className="bg-[#f0ece4] p-5 flex flex-col items-center min-h-[300px]">
               {loading
                 ? <div className="flex items-center gap-2 text-gray-500 py-16"><Loader2 className="h-5 w-5 animate-spin" /> Đang tải mẫu...</div>
-                : <div
-                    className="bg-white shadow-lg rounded-[12px] p-3 font-mono text-[12px] leading-[1.38]"
-                    style={{ width: paperWidthPx, maxWidth: '100%' }}
-                    dangerouslySetInnerHTML={{ __html: html }}
+                : <iframe
+                    srcDoc={html}
+                    title="Receipt preview"
+                    className="bg-white shadow-lg rounded-[12px]"
+                    style={{ width: paperWidthPx, maxWidth: '100%', border: 'none', minHeight: '320px', height: 'auto' }}
+                    onLoad={(e) => {
+                      const iframe = e.currentTarget
+                      try { iframe.style.height = iframe.contentDocument?.body.scrollHeight + 'px' } catch { /* cross-origin */ }
+                    }}
                   />}
             </div>
             <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between gap-3">
@@ -133,9 +138,7 @@ function PrintButton({ orderId, type = 'receipt', label, className }: { orderId:
     setErrorMsg('')
     let failed = false
     try {
-      const ok = type === 'receipt'
-        ? await printOrderWithHtmlTemplate(orderId, 'receipt')
-        : await tryBridgePrintOrder(orderId, 'label')
+      const ok = await printOrderWithFallback(orderId, type, { autoprint: true })
       if (ok) {
         setStatus('ok')
       } else {

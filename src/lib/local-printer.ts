@@ -256,6 +256,8 @@ export async function buildOrderPrintHtml(orderId: string, type: LocalPrinterTyp
       const templates = await tplRes.json() as BillTemplate[]
       const active = templates.find((t) => t.isActive && t.type === templateType && t.size === paperSize)
         ?? templates.find((t) => t.isActive && t.type === templateType)
+        ?? (templateType === 'receipt' ? templates.find((t) => t.isActive && t.type === 'order' && t.size === paperSize) : undefined)
+        ?? (templateType === 'receipt' ? templates.find((t) => t.isActive && t.type === 'order') : undefined)
       templateContent = active?.templateContent?.trim() ?? ''
     }
   } catch { /* fall through to default template */ }
@@ -287,6 +289,8 @@ export async function printOrderWithHtmlTemplate(orderId: string, type: LocalPri
       const templates = await tplRes.json() as BillTemplate[]
       const active = templates.find((t) => t.isActive && t.type === templateType && t.size === paperSize)
         ?? templates.find((t) => t.isActive && t.type === templateType)
+        ?? (templateType === 'receipt' ? templates.find((t) => t.isActive && t.type === 'order' && t.size === paperSize) : undefined)
+        ?? (templateType === 'receipt' ? templates.find((t) => t.isActive && t.type === 'order') : undefined)
       templateContent = active?.templateContent?.trim() ?? ''
     }
   } catch { /* fall through to default template */ }
