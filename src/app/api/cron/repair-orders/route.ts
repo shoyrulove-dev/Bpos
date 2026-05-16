@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
 import { runOrderRepair } from '@/lib/order-repair'
 
+export const maxDuration = 60
+
 const CRON_SECRET = process.env.CRON_SECRET
 
 export async function GET(req: NextRequest) {
