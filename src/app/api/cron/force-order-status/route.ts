@@ -35,6 +35,8 @@ export async function GET(req: NextRequest) {
 
   const setFields: Record<string, unknown> = { updatedAt: new Date() }
   if (status) setFields.status = status
+  // When completing an order, auto-set deliveredAt = now (unless already set via rawPayload)
+  if (status === 'completed') setFields.deliveredAt = new Date()
   if (customerName) setFields.customerName = customerName
   if (customerPhone) setFields.customerPhone = customerPhone
 
@@ -45,8 +47,45 @@ export async function GET(req: NextRequest) {
   await connectDB()
 
   const before = await OrderModel.find({ shortId: { $in: shortIds } })
-    .select('shortId status customerName customerPhone source externalOrderId')
-    .lean()
+    .select('shortId status customerName customerPhone source externalOrderId rawPayload deliveredAt')
+    .lean() as Array<Record<string, unknown>>
+
+  // When completing, prefer deliveredAt from rawPayload.times.deliveredAt over current time
+  if (status === 'completed') {
+    for (const order of before) {
+      const existingDeliveredAt = order.deliveredAt as Date | undefined
+      if (existingDeliveredAt) continue // already set — keep it
+      const times = (order.rawPayload as Record<string, unknown> | undefined)?.times
+      const rawDeliveredAt = times && typeof times === 'object'
+        ? String((times as Record<string, unknown>).deliveredAt ?? '').trim()
+        : ''
+      if (rawDeliveredAt) {
+        // Per-order update to use the correct rawPayload time
+        const deliveredAtDate = new Date(rawDeliveredAt)
+        if (!Number.isNaN(deliveredAtDate.getTime())) {
+          await OrderModel.updateOne(
+            { shortId: order.shortId as string },
+            { $set: { status: 'completed', deliveredAt: deliveredAtDate, updatedAt: new Date() } },
+          )
+          continue
+        }
+      }
+      // Fallback: set deliveredAt = now for this order
+      await OrderModel.updateOne(
+        { shortId: order.shortId as string },
+        { $set: { status: 'completed', deliveredAt: setFields.deliveredAt as Date, updatedAt: new Date() } },
+      )
+    }
+    const result2 = { matchedCount: before.length, modifiedCount: before.length }
+    return NextResponse.json({
+      ok: true,
+      shortIds,
+      fields: { status: 'completed' },
+      matched: result2.matchedCount,
+      modified: result2.modifiedCount,
+      before: before.map((o) => ({ shortId: o.shortId, oldStatus: o.status, source: o.source, externalOrderId: o.externalOrderId })),
+    })
+  }
 
   const result = await OrderModel.updateMany(
     { shortId: { $in: shortIds } },

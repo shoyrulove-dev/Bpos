@@ -355,6 +355,36 @@ export async function POST(req: NextRequest) {
     } catch { /* skip */ }
   }
 
+  // Ghost-order detection: orders that were at waiting_pickup/delivering but
+  // disappeared from the active push batch → they completed on the platform.
+  // Only run when the scraper pushes a non-empty active snapshot (healthy signal).
+  let ghostCompleted = 0
+  if (rawOrders.length > 0 && activeCount > 0 && intg.provider === 'grab' && intg.externalStoreId) {
+    const pushedExternalIds = new Set(normalized.map((n) => n.externalOrderId).filter(Boolean))
+    const ghostWindow = new Date(Date.now() - 4 * 60 * 60 * 1000)   // placed within last 4h
+    const staleThreshold = new Date(Date.now() - 40 * 60 * 1000)    // not updated for 40+ min
+    try {
+      const ghostOrders = await OrderModel.find({
+        source: 'grab',
+        externalStoreId: intg.externalStoreId,
+        status: { $in: ['waiting_pickup', 'delivering'] },
+        placedAt: { $gte: ghostWindow },
+        updatedAt: { $lte: staleThreshold },
+        externalOrderId: { $nin: Array.from(pushedExternalIds) },
+        locked: { $ne: true },
+      }).select('_id shortId externalOrderId').lean()
+
+      if (ghostOrders.length > 0) {
+        const now = new Date()
+        const ghostResult = await OrderModel.updateMany(
+          { _id: { $in: ghostOrders.map((o) => o._id) } },
+          { $set: { status: 'completed', deliveredAt: now } },
+        )
+        ghostCompleted = ghostResult.modifiedCount
+      }
+    } catch { /* ghost detection is best-effort */ }
+  }
+
   // Update integration to reflect successful push
   await IntegrationModel.findByIdAndUpdate(integrationId, {
     $set: {
@@ -369,10 +399,10 @@ export async function POST(req: NextRequest) {
   await SyncLogModel.create({
     type: 'order',
     status: 'success',
-      content: `[browser-push][${intg.provider}][integration:${integrationId}][store:${intg.externalStoreId ?? '-'}][raw:${rawOrders.length} normalized:${normalized.length} active:${activeCount} history:${historyCount}][rawDebugIds:${summarizeIds(rawDebugIds)}][rawOrderIds:${summarizeIds(rawOrderIds)}][normalizedIds:${summarizeIds(normalizedIds)}] +${upserted} mới, ${updated} cập nhật, ${skipped} bỏ qua (${Date.now() - startedAt}ms) [${source}]`,
+    content: `[browser-push][${intg.provider}][integration:${integrationId}][store:${intg.externalStoreId ?? '-'}][raw:${rawOrders.length} normalized:${normalized.length} active:${activeCount} history:${historyCount}][rawDebugIds:${summarizeIds(rawDebugIds)}][rawOrderIds:${summarizeIds(rawOrderIds)}][normalizedIds:${summarizeIds(normalizedIds)}] +${upserted} mới, ${updated} cập nhật, ${skipped} bỏ qua, ${ghostCompleted} ghost-completed (${Date.now() - startedAt}ms) [${source}]`,
     source: intg.provider,
     brandId: intg.brandId,
   })
 
-    return NextResponse.json({ ok: true, total: normalized.length, upserted, updated, skipped })
+  return NextResponse.json({ ok: true, total: normalized.length, upserted, updated, skipped, ghostCompleted })
 }

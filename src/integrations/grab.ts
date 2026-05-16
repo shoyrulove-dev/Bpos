@@ -325,6 +325,7 @@ export class GrabAdapter implements PlatformAdapter {
     return String(
       times?.dropOffTime ?? times?.dropoffTime ?? times?.deliveryTime ?? times?.estimatedDeliveryTime ??
       times?.pickUpTime ?? times?.pickupTime ?? times?.estimatedPickupTime ??
+      raw.busyModeOrderPickupTime ??
       raw.schedulePickupTime ?? raw.scheduledOrderPickUpTime ?? raw.scheduledAt ?? raw.estimatedDeliveryTime ??
       raw.estimatedPickupTime ?? raw.promisedDeliveryTime ?? raw.promisedPickupTime ??
       ''
