@@ -6,7 +6,7 @@ import { ArrowLeft, Loader2, MapPin, Phone, Printer, RefreshCw, TicketPercent, T
 import { useOrder } from '@/hooks/use-orders-channels'
 import { getActualReceived as getSettlementActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown, getGrabMoneyBreakdown as getSettlementGrabMoneyBreakdown } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
-import { buildOrderPrintHtml, printItemLabels, printOrderWithFallback, printOrderWithHtmlTemplate, tryBridgePrintOrder } from '@/lib/local-printer'
+import { buildOrderPrintHtml, printItemLabels, printOrderWithFallback, printOrderWithHtmlTemplate } from '@/lib/local-printer'
 import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, PAYMENT_METHOD_LABEL } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import type { Order } from '@/types'
@@ -720,12 +720,11 @@ function renderAmountCell(value: number | undefined) {
   return formatCurrency(value)
 }
 
-function GrabDetailView({ order, displayOrderCode, actualReceived, financialBreakdown, grabMoneyBreakdown, onRefresh, isRefreshing }: {
+function GrabDetailView({ order, displayOrderCode, actualReceived, financialBreakdown, onRefresh, isRefreshing }: {
   order: Order
   displayOrderCode: string
   actualReceived: number
   financialBreakdown: ReturnType<typeof getSettlementFinancialBreakdown>
-  grabMoneyBreakdown: ReturnType<typeof getSettlementGrabMoneyBreakdown>
   onRefresh: () => void
   isRefreshing: boolean
 }) {
@@ -763,6 +762,7 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={onRefresh} className="btn-outline h-9 text-sm" disabled={isRefreshing}><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /> Làm mới</button>
           <PrintButton orderId={order._id} />
+          <PrintButton orderId={order._id} type="label" />
           <PrintPreviewPanel orderId={order._id} />
         </div>
       </div>
@@ -947,6 +947,7 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={onRefresh} className="btn-outline h-9 text-sm" disabled={isRefreshing}><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /> Làm mới</button>
           <PrintButton orderId={order._id} />
+          <PrintButton orderId={order._id} type="label" />
           <PrintPreviewPanel orderId={order._id} />
         </div>
       </div>
@@ -1069,7 +1070,7 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
   const showExternalReference = Boolean(order.externalOrderId && order.externalOrderId !== displayOrderCode)
 
   if (order.source === 'grab') {
-    return <GrabDetailView order={order} displayOrderCode={displayOrderCode} actualReceived={actualReceived} financialBreakdown={financialBreakdown} grabMoneyBreakdown={grabMoneyBreakdown} onRefresh={() => refetch()} isRefreshing={isRefetching} />
+    return <GrabDetailView order={order} displayOrderCode={displayOrderCode} actualReceived={actualReceived} financialBreakdown={financialBreakdown} onRefresh={() => refetch()} isRefreshing={isRefetching} />
   }
 
   if (order.source === 'be') {
