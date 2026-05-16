@@ -19,9 +19,17 @@ export async function POST(req: NextRequest) {
   const { res } = await requireAuth(req)
   if (res) return res
   await connectDB()
-  const body = await req.json()
-  const { name, type, size, brandId, isActive, templateContent } = body
+  const body = await req.json() as Record<string, unknown>
+  const { name, type, size, brandId, isActive, templateContent } = body as {
+    name?: string; type?: string; size?: string; brandId?: string; isActive?: boolean; templateContent?: string
+  }
   if (!name) return err('Tên mẫu là bắt buộc')
-  const template = await BillTemplateModel.create({ name, type: type || 'order', size: size || '80mm', brandId, isActive: isActive ?? true, templateContent: templateContent || '' })
-  return ok(template, 201)
+  try {
+    const createData: Record<string, unknown> = { name, type: type || 'order', size: size || '80mm', isActive: isActive ?? true, templateContent: templateContent || '' }
+    if (brandId) createData.brandId = brandId
+    const template = await BillTemplateModel.create(createData)
+    return ok(template, 201)
+  } catch (e) {
+    return err(e instanceof Error ? e.message : 'Lỗi tạo mẫu in', 500)
+  }
 }

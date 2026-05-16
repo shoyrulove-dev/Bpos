@@ -93,6 +93,7 @@ export default function BillTemplatesPage() {
   const [form, setForm] = useState<TemplateFormState>(createFormState())
   const [testOrderId, setTestOrderId] = useState('')
   const [loadingTestOrder, setLoadingTestOrder] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [bridgePrintStatus, setBridgePrintStatus] = useState<'idle' | 'printing' | 'ok' | 'error'>('idle')
   const [bridgePrintError, setBridgePrintError] = useState('')
   const [printerName, setPrinterName] = useState('')
@@ -116,6 +117,7 @@ export default function BillTemplatesPage() {
   const openCreate = (type: BillType = 'receipt', size?: BillSize) => {
     setEditTemplate(null)
     setForm(createFormState(type, size))
+    setSaveError('')
     setShowForm(true)
   }
 
@@ -129,19 +131,24 @@ export default function BillTemplatesPage() {
       templateContent: template.templateContent,
       brandId: template.brandId ?? '',
     })
+    setSaveError('')
     setShowForm(true)
   }
 
   const handleSave = async () => {
     if (!form.name.trim()) return
+    setSaveError('')
 
-    if (editTemplate) {
-      await updateMutation.mutateAsync({ id: editTemplate._id, ...form })
-    } else {
-      await createMutation.mutateAsync(form)
+    try {
+      if (editTemplate) {
+        await updateMutation.mutateAsync({ id: editTemplate._id, ...form })
+      } else {
+        await createMutation.mutateAsync(form)
+      }
+      setShowForm(false)
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Lưu mẫu thất bại. Thử lại.')
     }
-
-    setShowForm(false)
   }
 
   const toggleActive = (template: BillTemplate) => updateMutation.mutate({ id: template._id, isActive: !template.isActive })
@@ -403,7 +410,8 @@ export default function BillTemplatesPage() {
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3">
+              {saveError && <p className="text-sm text-red-600 mr-auto">{saveError}</p>}
               <button onClick={() => setShowForm(false)} className="btn-outline">Hủy</button>
               <button onClick={handleSave} className="btn-primary" disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu mẫu'}</button>
             </div>
