@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import OrderModel from '@/models/Order'
+import DriverModel from '@/models/Driver'
 import { getAdapter } from '@/integrations/registry'
 import { decryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { buildOrderUpsert, getComparableDriverName, hasMeaningfulDriverName, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { upsertCustomerProfile } from '@/lib/customer-upsert'
+import { getOrderContactProfileCandidates } from '@/lib/order-contact-profiles'
 import type { NormalizedOrder } from '@/types'
 import type { SessionData } from '@/integrations/types'
 
@@ -33,6 +36,9 @@ async function upsertOrders(intg: {
     existingOrders.map((order) => [String(order.externalOrderId ?? ''), order])
   )
 
+  const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean; placedAt?: string | Date }> = []
+  const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean }> = []
+
   for (const normalized of orders) {
     if (!normalized.externalOrderId) continue
 
@@ -53,11 +59,53 @@ async function upsertOrders(intg: {
         { upsert: true, new: true, includeResultMetadata: true }
       )
 
-      if (result?.lastErrorObject?.updatedExisting === false) upserted++
+      const isNew = result?.lastErrorObject?.updatedExisting === false
+      if (isNew) upserted++
       else updated++
+
+      const profiles = getOrderContactProfileCandidates(mergedNormalized, {
+        brandId: String(intg.brandId),
+        platform: intg.provider,
+        isNew,
+      })
+      if (profiles.customer) customersToSave.push(profiles.customer)
+      if (profiles.driver) driversToSave.push(profiles.driver)
     } catch {
       continue
     }
+  }
+
+  // Save customer profiles
+  for (const c of customersToSave) {
+    try {
+      await upsertCustomerProfile({
+        phone: c.phone,
+        name: c.name,
+        brandId: c.brandId,
+        source: intg.provider,
+        placedAt: c.placedAt,
+        orderTotal: c.total,
+        isNewOrder: c.isNew,
+      })
+    } catch { /* skip */ }
+  }
+
+  // Save driver profiles
+  for (const d of driversToSave) {
+    try {
+      const existingDriver = await DriverModel.findOne({ phone: d.phone, platform: d.platform }).select('name').lean() as { name?: string } | null
+      const shouldUpdateName = !existingDriver || !hasMeaningfulDriverName(existingDriver.name) || isDriverNamePlaceholder(existingDriver.name)
+      const existingNameKey = getComparableDriverName(existingDriver?.name)
+      const incomingNameKey = getComparableDriverName(d.name)
+      if (existingDriver && existingNameKey && (!incomingNameKey || existingNameKey !== incomingNameKey)) continue
+      await DriverModel.findOneAndUpdate(
+        { phone: d.phone, platform: d.platform },
+        d.isNew
+          ? { $set: { ...(shouldUpdateName ? { name: d.name } : {}), lastSeenAt: new Date() }, $inc: { visitCount: 1 } }
+          : { $set: { ...(shouldUpdateName ? { name: d.name } : {}), lastSeenAt: new Date() }, $setOnInsert: { visitCount: 1 } },
+        { upsert: true },
+      )
+    } catch { /* skip */ }
   }
 
   return { upserted, updated }
