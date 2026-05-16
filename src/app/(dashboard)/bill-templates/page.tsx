@@ -382,7 +382,7 @@ export default function BillTemplatesPage() {
                     <div className="flex items-center gap-1.5">
                       <input
                         className="input h-7 text-xs w-[160px] px-2"
-                        placeholder="ID đơn để in thật..."
+                        placeholder="ID / shortId / GF-xxx..."
                         value={testOrderId}
                         onChange={(e) => setTestOrderId(e.target.value)}
                       />

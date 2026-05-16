@@ -96,8 +96,14 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
         }
 
         const templates = await response.json() as BillTemplate[]
+        // Priority order aligned with local-printer.ts:
+        // 1. Exact type + size  2. Exact type (any size)  3. 'order' type + size (legacy)  4. 'order' type (any size, legacy)
         const activeTemplate = templates.find((template) => template.isActive && template.type === templateType && template.size === paperSize)
           ?? templates.find((template) => template.isActive && template.type === templateType)
+          ?? (templateType !== 'label' && templateType !== 'delivery'
+            ? (templates.find((template) => template.isActive && template.type === 'order' && template.size === paperSize)
+                ?? templates.find((template) => template.isActive && template.type === 'order'))
+            : undefined)
 
         if (!cancelled) {
           setTemplateContent(activeTemplate?.templateContent?.trim() || fallbackTemplate)
