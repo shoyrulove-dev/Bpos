@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/repair-orders?historical=true&providers=grab",
-      "schedule": "0 */4 * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }
