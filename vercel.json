@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/backfill-orders",
       "schedule": "30 0 * * *"
+    },
+    {
+      "path": "/api/cron/repair-orders?historical=true&providers=grab",
+      "schedule": "0 */4 * * *"
     }
   ]
 }

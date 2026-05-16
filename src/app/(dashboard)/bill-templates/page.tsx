@@ -76,15 +76,10 @@ function openTemplatePrintWindow(content: string, type: BillType, size: BillSize
   printWindow.document.close()
 }
 
-async function printTemplateWithBridgeFallback(content: string, type: BillType, size: BillSize) {
+// "In thử demo" → chỉ mở popup browser + OS print dialog (không gửi LAN)
+// "In máy in" button riêng đã lo việc gửi bridge/LAN
+function printTemplateWithBridgeFallback(content: string, type: BillType, size: BillSize) {
   openTemplatePrintWindow(content, type, size)
-  const printerType = type === 'label' ? 'label' : 'receipt'
-  const paperSize = type === 'label' ? '58mm' : '80mm'
-  try {
-    await printDemoTemplateWithBridge(content, printerType, paperSize)
-  } catch {
-    alert('Đã mở preview nhưng không in được qua LAN. Kiểm tra bridge 127.0.0.1:3846 và máy in.')
-  }
 }
 
 export default function BillTemplatesPage() {
