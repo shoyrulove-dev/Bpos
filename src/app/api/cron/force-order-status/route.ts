@@ -39,11 +39,15 @@ export async function GET(req: NextRequest) {
 
   const customerName = (req.nextUrl.searchParams.get('customerName') ?? '').trim()
   const customerPhone = (req.nextUrl.searchParams.get('customerPhone') ?? '').trim()
+  const driverName = (req.nextUrl.searchParams.get('driverName') ?? '').trim()
+  const driverPhone = (req.nextUrl.searchParams.get('driverPhone') ?? '').trim()
 
   const setFields: Record<string, unknown> = { updatedAt: new Date() }
   if (status) setFields.status = status
   if (customerName) setFields.customerName = customerName
   if (customerPhone) setFields.customerPhone = customerPhone
+  if (driverName) setFields['driverInfo.name'] = driverName
+  if (driverPhone) setFields['driverInfo.phone'] = driverPhone
 
   // Accept explicit deliveredAt override, or auto-set when completing
   const deliveredAtParam = (req.nextUrl.searchParams.get('deliveredAt') ?? '').trim()
@@ -55,7 +59,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (Object.keys(setFields).length === 1) {
-    return NextResponse.json({ error: 'Provide at least one field to update: status, customerName, customerPhone' }, { status: 400 })
+    return NextResponse.json({ error: 'Provide at least one field to update: status, customerName, customerPhone, driverName, driverPhone' }, { status: 400 })
   }
 
   await connectDB()

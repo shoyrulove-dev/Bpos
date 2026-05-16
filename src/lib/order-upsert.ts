@@ -99,12 +99,26 @@ function mergeDriverInfoPreservingDetail(
   existing: NormalizedOrder['driverInfo'] | undefined,
   incoming: NormalizedOrder['driverInfo'] | undefined,
 ) {
+  // Detect driver reassignment: if both sides have a meaningful phone and the phones differ,
+  // Grab changed the driver — incoming data takes priority over existing.
+  const existingPhone = hasMeaningfulPhone(existing?.phone) ? normalizeCompactPhone(toTrimmedText(existing!.phone)) : undefined
+  const incomingPhone = hasMeaningfulPhone(incoming?.phone) ? normalizeCompactPhone(toTrimmedText(incoming!.phone)) : undefined
+  const isDriverReassignment = Boolean(
+    existingPhone && incomingPhone && existingPhone !== incomingPhone && hasMeaningfulDriverName(incoming?.name),
+  )
+
   const merged = mergeInfoObject(existing, incoming)
   if (!merged) return undefined
 
   const nextDriverInfo = { ...merged } as Record<string, unknown>
-  const driverName = pickPreferredName(incoming?.name, existing?.name, DRIVER_NAME_PLACEHOLDERS)
-  const driverPhone = pickPreferredPhone(incoming?.phone, existing?.phone)
+
+  // On reassignment, incoming name and phone win unconditionally.
+  const driverName = isDriverReassignment
+    ? toTrimmedText(incoming?.name)
+    : pickPreferredName(incoming?.name, existing?.name, DRIVER_NAME_PLACEHOLDERS)
+  const driverPhone = isDriverReassignment
+    ? incomingPhone
+    : pickPreferredPhone(incoming?.phone, existing?.phone)
 
   if (driverName) nextDriverInfo.name = driverName
   else delete nextDriverInfo.name
