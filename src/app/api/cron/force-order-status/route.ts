@@ -25,31 +25,44 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'shortIds is required' }, { status: 400 })
   }
 
-  const status = (req.nextUrl.searchParams.get('status') ?? 'completed').trim()
-  if (!ALLOWED_STATUSES.includes(status)) {
+  const status = (req.nextUrl.searchParams.get('status') ?? '').trim()
+  if (status && !ALLOWED_STATUSES.includes(status)) {
     return NextResponse.json({ error: `Invalid status. Allowed: ${ALLOWED_STATUSES.join(', ')}` }, { status: 400 })
+  }
+
+  const customerName = (req.nextUrl.searchParams.get('customerName') ?? '').trim()
+  const customerPhone = (req.nextUrl.searchParams.get('customerPhone') ?? '').trim()
+
+  const setFields: Record<string, unknown> = { updatedAt: new Date() }
+  if (status) setFields.status = status
+  if (customerName) setFields.customerName = customerName
+  if (customerPhone) setFields.customerPhone = customerPhone
+
+  if (Object.keys(setFields).length === 1) {
+    return NextResponse.json({ error: 'Provide at least one field to update: status, customerName, customerPhone' }, { status: 400 })
   }
 
   await connectDB()
 
   const before = await OrderModel.find({ shortId: { $in: shortIds } })
-    .select('shortId status source externalOrderId')
+    .select('shortId status customerName customerPhone source externalOrderId')
     .lean()
 
   const result = await OrderModel.updateMany(
     { shortId: { $in: shortIds } },
-    { $set: { status, updatedAt: new Date() } }
+    { $set: setFields }
   )
 
   return NextResponse.json({
     ok: true,
     shortIds,
-    targetStatus: status,
+    fields: setFields,
     matched: result.matchedCount,
     modified: result.modifiedCount,
     before: before.map((o) => ({
       shortId: o.shortId,
       oldStatus: o.status,
+      oldCustomerName: o.customerName,
       source: o.source,
       externalOrderId: o.externalOrderId,
     })),

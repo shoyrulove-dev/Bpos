@@ -29,6 +29,15 @@ export const PRINT_TEMPLATE_VARIABLES: Array<{ token: string; label: string; exa
   { token: '{{.Total}}', label: 'Tổng tiền', example: '170.000 đ' },
   { token: '{{.PlatformFee}}', label: 'Phí sàn', example: '28.000 đ' },
   { token: '{{.ItemLines}}', label: 'Danh sách món dạng text', example: 'Trà sữa x2 70.000 đ' },
+  { token: '{{.OrderSubTotal}}', label: 'Tạm tính (alias)', example: '185.000 đ' },
+  { token: '{{.OrderTotalDiscount}}', label: 'Giảm giá (alias)', example: '15.000 đ' },
+  { token: '{{.OrderTotalPaid}}', label: 'Thành tiền (alias)', example: '170.000 đ' },
+  { token: '{{.Name}}', label: 'Tên món (trong {{range .Items}})', example: 'Trà sữa trân châu' },
+  { token: '{{.Quantity}}', label: 'Số lượng món (trong {{range .Items}})', example: '2' },
+  { token: '{{.FinalPrice}}', label: 'Thành tiền món (trong {{range .Items}})', example: '70.000 đ' },
+  { token: '{{.DiscountPrice}}', label: 'Giá sau giảm món (trong {{range .Items}})', example: '35.000 đ' },
+  { token: '{{.Description}}', label: 'Mô tả món (trong {{range .Items}})', example: '' },
+  { token: '{{.OptionsText}}', label: 'Tuỳ chọn món dạng text (trong {{range .Items}})', example: '' },
 ]
 
 const DEFAULT_TEMPLATES: Record<EditablePrintTemplateType, string> = {
@@ -127,25 +136,98 @@ function escapeHtml(value: string) {
     .replace(/>/g, '&gt;')
 }
 
-function renderItemBlock(block: string, item: OrderItem) {
+/**
+ * Strip Go template directives that our engine doesn't support:
+ *   - Variable assignments: {{$var := expr}}
+ *   - Complex range blocks: {{range $k, $v := map}}...{{end}} (innermost first)
+ */
+function stripGoTemplateDirectives(template: string): string {
+  // Remove variable assignments
+  let result = template.replace(/\{\{-?\s*\$\w+\s*:=.*?-?\}\}/g, '')
+
+  // Remove complex range blocks (with $var) from innermost out
+  let prev = ''
+  let iterations = 0
+  while (result !== prev && iterations < 10) {
+    prev = result
+    iterations++
+    result = result.replace(
+      /\{\{-?\s*range\s+\$[\s\S]*?-?\}\}(?:(?!\{\{-?\s*(?:range|end)\b)[\s\S])*?\{\{-?\s*end\s*-?\}\}/g,
+      '',
+    )
+  }
+
+  return result
+}
+
+/**
+ * Process {{if .Var}}...{{end}} and {{if ne .A .B}}...{{end}} conditionals.
+ * Handles nesting by processing innermost blocks first (iteratively).
+ * Inner blocks must not contain other {{if}} or {{range}} directives.
+ */
+function processConditionals(template: string, context: Record<string, string>): string {
+  // Pattern for "content with no nested {{if / {{range / {{end"
+  const FLAT_CONTENT = '((?:(?!\\{\\{-?\\s*(?:if|range|end)\\b)[\\s\\S])*?)'
+
+  let result = template
+  let prev = ''
+  let iterations = 0
+
+  while (result !== prev && iterations < 20) {
+    prev = result
+    iterations++
+
+    // {{if ne .A .B}}...{{end}}
+    result = result.replace(
+      new RegExp(`\\{\\{-?\\s*if\\s+ne\\s+\\.(\\w+)\\s+\\.(\\w+)\\s*-?\\}\\}${FLAT_CONTENT}\\{\\{-?\\s*end\\s*-?\\}\\}`, 'g'),
+      (_m, a, b, inner) => (context[a] ?? '') !== (context[b] ?? '') ? inner : '',
+    )
+
+    // {{if .Var}}...{{end}}
+    result = result.replace(
+      new RegExp(`\\{\\{-?\\s*if\\s+\\.(\\w+)\\s*-?\\}\\}${FLAT_CONTENT}\\{\\{-?\\s*end\\s*-?\\}\\}`, 'g'),
+      (_m, varName, inner) => (context[varName] ?? '').trim() ? inner : '',
+    )
+  }
+
+  return result
+}
+
+function buildItemContext(item: OrderItem, orderCtx: TemplateContext): TemplateContext {
   const noteLine = item.note ? `  Ghi chú: ${item.note}` : ''
-  const replacements: TemplateContext = {
+  return {
+    // Order-level vars available inside item blocks
+    ...orderCtx,
+    // Item-level vars (override order vars with same name if any)
     Name: item.name,
     Qty: String(item.quantity),
     Quantity: String(item.quantity),
     Price: formatCurrency(item.price),
+    DiscountPrice: formatCurrency(item.price), // same as Price (no per-item discount in current model)
+    FinalPrice: formatCurrency(getItemTotal(item)),
     Total: formatCurrency(getItemTotal(item)),
     Note: item.note ?? '',
     NoteLine: noteLine,
+    Description: '',  // not in OrderItem model currently
+    RawOptions: '',   // not in OrderItem model currently
+    OptionsText: '',  // pre-rendered options (empty for now)
   }
+}
+
+function renderItemBlock(block: string, item: OrderItem, orderCtx?: TemplateContext) {
+  const context = buildItemContext(item, orderCtx ?? {})
+
+  // Strip unsupported Go template syntax, then process conditionals
+  const stripped = stripGoTemplateDirectives(block)
+  const withConditionals = processConditionals(stripped, context)
 
   // Use function replacer to avoid special $ sequences in values being misinterpreted
-  const rendered = Object.entries(replacements).reduce((output, [key, value]) => {
+  const rendered = Object.entries(context).reduce((output, [key, value]) => {
     return output.replace(new RegExp(`\\{\\{\\s*\\.${key}\\s*\\}\\}`, 'g'), () => value)
-  }, block)
+  }, withConditionals)
 
   // If noteLine is empty, remove lines that became blank after NoteLine substitution
-  if (!noteLine) {
+  if (!context.NoteLine) {
     return rendered.split('\n').filter((l) => l.trim() !== '').join('\n')
   }
   return rendered
@@ -186,6 +268,10 @@ export function buildPrintTemplateContext(order: PrintableTemplateOrder, overrid
     Total: formatCurrency(order.total),
     PlatformFee: formatCurrency(order.platformFee ?? 0),
     ItemLines: itemLines,
+    // Aliases used in custom templates
+    OrderSubTotal: formatCurrency(order.subtotal),
+    OrderTotalDiscount: formatCurrency(order.discount),
+    OrderTotalPaid: formatCurrency(order.total),
     ...(overrides ?? {}),
   }
 }
@@ -226,15 +312,20 @@ export function renderPrintTemplateText(content: string, context: TemplateContex
   const source = content.trim() || DEFAULT_TEMPLATES.receipt
   const safeItems = Array.isArray(items) ? items : []
 
+  // Replace {{range .Items}}...{{end}} with per-item rendered blocks
   const withItems = source.replace(/\{\{\s*range\s+\.Items\s*\}\}([\s\S]*?)\{\{\s*end\s*\}\}/g, (_match, block: string) => {
     if (!safeItems.length) return ''
-    return safeItems.map((item) => renderItemBlock(block, item)).join('\n')
+    return safeItems.map((item) => renderItemBlock(block, item, context)).join('\n')
   })
+
+  // Strip unsupported Go directives, process conditionals, then substitute order-level vars
+  const stripped = stripGoTemplateDirectives(withItems)
+  const withConditionals = processConditionals(stripped, context)
 
   // Use function replacer to safely handle $ in context values
   return Object.entries(context).reduce((output, [key, value]) => {
     return output.replace(new RegExp(`\\{\\{\\s*\\.${key}\\s*\\}\\}`, 'g'), () => value)
-  }, withItems)
+  }, withConditionals)
 }
 
 export function renderPrintTemplateHtml(content: string, context: TemplateContext, items: OrderItem[]) {

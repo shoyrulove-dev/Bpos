@@ -544,7 +544,7 @@ async function backfillOrderDetails(days: number, providers: string[], externalO
       }
 
   const candidateDocs = await OrderModel.find(query)
-    .select('shortId source externalOrderId externalStoreId brandId hubId items discount status deliveredAt deliveryInfo rawPayload')
+    .select('shortId source externalOrderId externalStoreId brandId hubId customerName customerPhone driverInfo items discount status deliveredAt deliveryInfo rawPayload')
     .lean()
 
   const candidates = candidateDocs
