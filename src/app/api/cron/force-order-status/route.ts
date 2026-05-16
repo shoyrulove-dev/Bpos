@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
 import OrderModel from '@/models/Order'
+import mongoose from 'mongoose'
 
 export const maxDuration = 30
 
@@ -21,8 +22,14 @@ export async function GET(req: NextRequest) {
     .map((v) => v.trim())
     .filter(Boolean)
 
-  if (!shortIds.length) {
-    return NextResponse.json({ error: 'shortIds is required' }, { status: 400 })
+  // Also accept MongoDB ObjectIds via ?ids= for unambiguous single-order lookup
+  const mongoIds = (req.nextUrl.searchParams.get('ids') ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter((v) => mongoose.isValidObjectId(v))
+
+  if (!shortIds.length && !mongoIds.length) {
+    return NextResponse.json({ error: 'shortIds or ids (MongoDB ObjectId) is required' }, { status: 400 })
   }
 
   const status = (req.nextUrl.searchParams.get('status') ?? '').trim()
@@ -53,18 +60,22 @@ export async function GET(req: NextRequest) {
 
   await connectDB()
 
-  const before = await OrderModel.find({ shortId: { $in: shortIds } })
+  const query = shortIds.length && mongoIds.length
+    ? { $or: [{ shortId: { $in: shortIds } }, { _id: { $in: mongoIds } }] }
+    : shortIds.length
+      ? { shortId: { $in: shortIds } }
+      : { _id: { $in: mongoIds } }
+
+  const before = await OrderModel.find(query)
     .select('shortId status customerName customerPhone source externalOrderId')
     .lean() as Array<Record<string, unknown>>
 
-  const result = await OrderModel.updateMany(
-    { shortId: { $in: shortIds } },
-    { $set: setFields }
-  )
+  const result = await OrderModel.updateMany(query, { $set: setFields })
 
   return NextResponse.json({
     ok: true,
     shortIds,
+    ids: mongoIds,
     fields: setFields,
     matched: result.matchedCount,
     modified: result.modifiedCount,

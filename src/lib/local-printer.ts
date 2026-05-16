@@ -1,6 +1,6 @@
 'use client'
 
-import { buildDemoPrintTemplateContext, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, renderPrintTemplateHtml } from '@/lib/print-template'
+import { buildDemoPrintTemplateContext, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, renderPrintTemplateHtml, renderPrintTemplateText, renderTemplateTextAsHtml } from '@/lib/print-template'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
 import type { BillTemplate, Order } from '@/types'
 
@@ -264,7 +264,14 @@ export async function buildOrderPrintHtml(orderId: string, type: LocalPrinterTyp
   const context = buildPrintTemplateContext(order, {
     BillName: type === 'label' ? 'TEM IN BẾP' : 'PHIẾU LÀM MÓN',
   })
-  const renderedContent = renderPrintTemplateHtml(templateContent, context, order.items ?? [])
+  const items = order.items ?? []
+  // Detect broken custom templates (unresolved {{.Var}} tokens) and fall back to built-in default
+  let textContent = renderPrintTemplateText(templateContent, context, items)
+  if (/\{\{[\s-]*\./.test(textContent)) {
+    templateContent = getDefaultTemplateContent(templateType)
+    textContent = renderPrintTemplateText(templateContent, context, items)
+  }
+  const renderedContent = renderTemplateTextAsHtml(textContent)
   const html = buildThermalHtmlPage(renderedContent, paperSize)
   return { html, paperSize, order }
 }
