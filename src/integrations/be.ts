@@ -468,7 +468,9 @@ export class BeAdapter implements PlatformAdapter {
     let orderStatus: OrderStatus = (fetchType ? STATUS_BY_FETCH[fetchType] : undefined) ?? 'waiting_confirm'
     if (!isActiveBucket) {
       // Only apply cancel/complete detection for history buckets (previous, cancelled) or unknown fetchType
-      const isDefinitelyCompleted = (statusInt === 21 || statusInt === 20) && fetchType !== 'cancelled'
+      // Be completed status ints: 20, 21 = delivered, 25 = another delivery-complete variant
+      const COMPLETED_INTS = new Set([20, 21, 25])
+      const isDefinitelyCompleted = COMPLETED_INTS.has(statusInt) && fetchType !== 'cancelled'
       if (isDefinitelyCompleted) {
         orderStatus = 'completed'
       } else if (fetchType === 'previous') {

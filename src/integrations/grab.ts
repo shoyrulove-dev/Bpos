@@ -137,6 +137,17 @@ function hasGrabDateValue(value: unknown) {
   return !Number.isNaN(date.getTime())
 }
 
+// States that Grab explicitly sends for in-progress orders.
+// When the primary state is one of these, it takes precedence over page-tab location signals
+// (e.g., _pageType = "Cancelled" due to a stale tab while the order is still active).
+const GRAB_EXPLICIT_ACTIVE_STATES = new Set([
+  'PENDING', 'ORDER_RECEIVED', 'NEW',
+  'ACCEPTED', 'CONFIRMED', 'PREPARING',
+  'ORDER_IN_PREPARE', 'ORDER_EXECUTING',
+  'DRIVER_ALLOCATED', 'DRIVER_ARRIVED',
+  'READY_FOR_PICKUP', 'COLLECTED', 'IN_DELIVERY',
+])
+
 function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): OrderStatus {
   const mappedStatus = mapGrabStatus(rawStatus)
   // cancelled is always final — no override possible
@@ -164,6 +175,15 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
   ]
     .map((value) => String(value ?? '').trim().toLowerCase())
     .filter(Boolean)
+
+  // If the primary state is explicitly active, trust it over page-tab signals.
+  // Scenario: scraper briefly sees the order in the Cancelled tab due to a driver cancel/reassign,
+  // but the order state itself is still ORDER_IN_PREPARE / ACCEPTED / etc.
+  if (GRAB_EXPLICIT_ACTIVE_STATES.has(rawStatus)) {
+    if (hasGrabCompletionSignal(secondarySignals)) return 'completed'
+    if (hasGrabDeliverySignal(secondarySignals)) return 'waiting_pickup'
+    return mappedStatus
+  }
 
   if (secondarySignals.some((value) => value.includes('cancel') || value.includes('fail') || value.includes('refund'))) {
     return 'cancelled'

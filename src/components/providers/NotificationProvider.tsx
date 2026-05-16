@@ -42,6 +42,7 @@ export const useNotifications = () => useContext(NotificationContext)
 
 type AlertOrder = {
   _id: string
+  shortId?: string
   externalOrderId?: string
   customerName?: string
   placedAt?: string
@@ -58,7 +59,7 @@ function getLatestOrder(orderList: AlertOrder[]) {
 
 function getOrderLabel(order: AlertOrder | null) {
   if (!order) return 'đơn mới nhất'
-  return order.externalOrderId?.trim() || order._id.slice(-6)
+  return order.shortId?.trim() || order._id.slice(-6)
 }
 
 function showSystemOrderNotification(order: AlertOrder | null, href: string) {
