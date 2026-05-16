@@ -308,15 +308,64 @@ export function buildDemoPrintTemplateContext(type: EditablePrintTemplateType = 
   })
 }
 
+/**
+ * Nesting-aware extractor for {{range .Items}}...{{end}}.
+ * Simple regex with lazy match cuts at the FIRST inner {{end}} (e.g. from {{if .Note}}...{{end}}).
+ * This function tracks depth so it finds the MATCHING closing {{end}} for the range.
+ */
+function extractItemsRangeBlock(source: string): { before: string; block: string; after: string } | null {
+  const openMatch = source.match(/\{\{\s*range\s+\.Items\s*\}\}/)
+  if (!openMatch || openMatch.index == null) return null
+
+  const afterOpen = openMatch.index + openMatch[0].length
+  const rest = source.slice(afterOpen)
+
+  // Scan forward counting nesting depth
+  const controlRe = /\{\{-?\s*(range|if|with|block|end)\b/g
+  let depth = 1
+  let matchingEndStart = -1
+  let matchingEndFull = -1
+
+  let m: RegExpExecArray | null
+  while ((m = controlRe.exec(rest)) !== null) {
+    if (m[1] === 'end') {
+      depth--
+      if (depth === 0) {
+        matchingEndStart = m.index
+        // Find closing }} of the {{end}} tag
+        const closeIdx = rest.indexOf('}}', m.index)
+        matchingEndFull = closeIdx >= 0 ? closeIdx + 2 : m.index + m[0].length + 2
+        break
+      }
+    } else {
+      depth++ // range, if, with, block all open a new scope
+    }
+  }
+
+  if (matchingEndStart === -1) return null
+
+  return {
+    before: source.slice(0, openMatch.index),
+    block: rest.slice(0, matchingEndStart),
+    after: rest.slice(matchingEndFull),
+  }
+}
+
 export function renderPrintTemplateText(content: string, context: TemplateContext, items: OrderItem[]) {
   const source = content.trim() || DEFAULT_TEMPLATES.receipt
   const safeItems = Array.isArray(items) ? items : []
 
-  // Replace {{range .Items}}...{{end}} with per-item rendered blocks
-  const withItems = source.replace(/\{\{\s*range\s+\.Items\s*\}\}([\s\S]*?)\{\{\s*end\s*\}\}/g, (_match, block: string) => {
-    if (!safeItems.length) return ''
-    return safeItems.map((item) => renderItemBlock(block, item, context)).join('\n')
-  })
+  // Use nesting-aware extraction so inner {{if/end}} blocks don't confuse the range boundary
+  const extracted = extractItemsRangeBlock(source)
+  let withItems: string
+  if (extracted) {
+    const renderedItems = safeItems.length > 0
+      ? safeItems.map((item) => renderItemBlock(extracted.block, item, context)).join('\n')
+      : ''
+    withItems = extracted.before + renderedItems + extracted.after
+  } else {
+    withItems = source
+  }
 
   // Strip unsupported Go directives, process conditionals, then substitute order-level vars
   const stripped = stripGoTemplateDirectives(withItems)
