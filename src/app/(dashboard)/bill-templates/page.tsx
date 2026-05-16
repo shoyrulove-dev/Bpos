@@ -239,7 +239,7 @@ export default function BillTemplatesPage() {
                 <span className="badge badge-gray">{typeLabel[item.type]}</span>
                 {existingForCard && <span className={cn('badge', existingForCard.isActive ? 'badge-green' : 'badge-red')}>{existingForCard.isActive ? 'Kích hoạt' : 'Tắt'}</span>}
               </div>
-              <p className="text-sm text-gray-500 mt-1">{item.subtitle}</p>
+              <p className="text-sm text-gray-500 mt-1 truncate">{item.subtitle}</p>
               <p className="text-xs text-gray-400 mt-2">{getTemplateGuide(item.type, item.size)}</p>
             </div>
             <button

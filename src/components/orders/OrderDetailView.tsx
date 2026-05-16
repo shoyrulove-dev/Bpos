@@ -6,7 +6,7 @@ import { ArrowLeft, Loader2, MapPin, Phone, Printer, RefreshCw, TicketPercent, T
 import { useOrder } from '@/hooks/use-orders-channels'
 import { getActualReceived as getSettlementActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown, getGrabMoneyBreakdown as getSettlementGrabMoneyBreakdown } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
-import { buildOrderPrintHtml, printOrderWithFallback, printOrderWithHtmlTemplate, tryBridgePrintOrder } from '@/lib/local-printer'
+import { buildOrderPrintHtml, printItemLabels, printOrderWithFallback, printOrderWithHtmlTemplate, tryBridgePrintOrder } from '@/lib/local-printer'
 import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, PAYMENT_METHOD_LABEL } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import type { Order } from '@/types'
@@ -138,7 +138,9 @@ function PrintButton({ orderId, type = 'receipt', label, className }: { orderId:
     setErrorMsg('')
     let failed = false
     try {
-      const ok = await printOrderWithFallback(orderId, type, { autoprint: true })
+      const ok = type === 'label'
+        ? await printItemLabels(orderId)
+        : await printOrderWithFallback(orderId, type, { autoprint: true })
       if (ok) {
         setStatus('ok')
       } else {

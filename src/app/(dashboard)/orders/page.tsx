@@ -8,7 +8,7 @@ import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { getActualReceived, getDisplayCustomerPhone, getDisplayDriverPhone } from '@/lib/order-financials'
-import { printOrderWithFallback } from '@/lib/local-printer'
+import { printItemLabels, printOrderWithFallback } from '@/lib/local-printer'
 import { formatDateInput } from '@/lib/date-range'
 import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '@/lib/utils'
 import type { Order } from '@/types'
@@ -295,7 +295,7 @@ export default function OrdersPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={() => void printOrderWithFallback(order._id, 'receipt', { autoprint: true })} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In Đơn</button>
-                      <button type="button" onClick={() => void printOrderWithFallback(order._id, 'label')} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In phiếu tem</button>
+                      <button type="button" onClick={() => void printItemLabels(order._id)} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In phiếu tem</button>
                     </div>
                   </div>
                 </article>

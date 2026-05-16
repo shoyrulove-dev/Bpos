@@ -2,6 +2,7 @@
 
 import { buildDemoPrintTemplateContext, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, renderPrintTemplateHtml, renderPrintTemplateText, renderTemplateTextAsHtml } from '@/lib/print-template'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
+import { CHANNEL_SOURCE_LABEL } from '@/lib/utils'
 import type { BillTemplate, Order } from '@/types'
 
 export type LocalPrinterType = 'receipt' | 'label'
@@ -352,19 +353,44 @@ function isTemplateBroken(content: string): boolean {
   return hasItemVars && !hasRange
 }
 
-// Per-item label template: one minimal 58mm ticket per item×unit.
-// Shows only item name, slot indicator (1/N), and note — small enough to stick on a cup or box.
-const PER_ITEM_LABEL_TEMPLATE = [
-  '{{range .Items}}',
-  '{{.Name}}',
-  '[{{.SlotLabel}}]',
-  '{{if .Note}}* {{.Note}}{{end}}',
-  '{{end}}',
-].join('\n')
+// Build compact 58mm label HTML for a single item unit.
+// Item name is large/bold; slot counter shows position (e.g. 2/3); note below.
+function buildItemLabelHtml(params: {
+  shortId: string
+  channel: string
+  dateStr: string
+  itemName: string
+  slot: number
+  total: number
+  note?: string
+}): string {
+  const { shortId, channel, dateStr, itemName, slot, total, note } = params
+  const noteHtml = note
+    ? `<div style="font-size:3.5mm;margin-top:1.5mm;border-top:.35mm dashed #000;padding-top:1mm;text-align:left;word-break:break-word">* ${note}</div>`
+    : ''
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Tem</title>
+<style>*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#fff;color:#000;height:fit-content;min-height:0}
+body{width:58mm;font-family:'Courier New',Consolas,'Lucida Console',monospace}
+.wrap{width:50mm;margin:0 auto;padding:2mm 1mm 3mm;text-align:center}
+.meta{font-size:3mm;color:#444}
+.div{border:none;border-top:.35mm dashed #000;margin:1.5mm 0}
+.name{font-size:6.5mm;font-weight:900;line-height:1.2;word-break:break-word;margin:2mm 0 1.5mm}
+.slot{font-size:5mm;font-weight:700;letter-spacing:.5px}
+</style></head><body>
+<div class="wrap">
+  <div class="meta">${shortId} · ${channel} · ${dateStr}</div>
+  <div class="div"></div>
+  <div class="name">${itemName}</div>
+  <div class="slot">${slot}/${total}</div>
+  ${noteHtml}
+</div>
+</body></html>`
+}
 
-// Print one 58mm label ticket per item×quantity unit.
-// Each ticket shows the item name, slot indicator (1/N), and any notes.
-async function printLabelPerItem(orderId: string): Promise<boolean> {
+// Print one 58mm USB label per item×quantity unit.
+// qty=2 → 2 labels: 1/2, 2/2. qty=3 → 3 labels: 1/3, 2/3, 3/3.
+export async function printItemLabels(orderId: string): Promise<boolean> {
   const orderRes = await fetch(`/api/orders/${orderId}`, { signal: AbortSignal.timeout(10000) })
   if (!orderRes.ok) throw new Error('Không tải được đơn hàng')
   const order = await orderRes.json() as Order
@@ -372,19 +398,25 @@ async function printLabelPerItem(orderId: string): Promise<boolean> {
   const items = order.items ?? []
   if (items.length === 0) return false
 
+  const rawDisplayId = (order.rawPayload as Record<string, unknown> | undefined)?.displayID
+  const shortId = (typeof rawDisplayId === 'string' ? rawDisplayId.trim() : '') || order.shortId || ''
+  const channel = CHANNEL_SOURCE_LABEL[order.source ?? ''] ?? order.source ?? ''
+  const dateStr = order.placedAt ? new Date(order.placedAt).toLocaleDateString('vi-VN') : ''
+
   let allOk = true
   for (const item of items) {
-    const slotTotal = Math.max(1, item.quantity || 1)
-    const printCount = Math.min(slotTotal, 20) // safety cap at 20 per item
-    for (let slotIndex = 1; slotIndex <= printCount; slotIndex++) {
-      const ctx = buildPrintTemplateContext(order, {
-        BillName: 'TEM IN BẾP',
-        SlotLabel: `${slotIndex}/${slotTotal}`,
+    const total = Math.max(1, item.quantity || 1)
+    const printCount = Math.min(total, 20) // safety cap
+    for (let slot = 1; slot <= printCount; slot++) {
+      const html = buildItemLabelHtml({
+        shortId,
+        channel,
+        dateStr,
+        itemName: item.name,
+        slot,
+        total,
+        note: item.note,
       })
-      // Pass [item] so {{range .Items}} renders only this item.
-      // buildItemContext spreads orderCtx, so SlotLabel is available inside the range block.
-      const rendered = renderPrintTemplateHtml(PER_ITEM_LABEL_TEMPLATE, ctx, [item])
-      const html = buildThermalHtmlPage(rendered, '58mm')
       try {
         const res = await fetch(`${LOCAL_PRINTER_BRIDGE_ORIGIN}/print-template-html`, {
           method: 'POST',
