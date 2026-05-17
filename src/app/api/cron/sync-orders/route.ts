@@ -266,6 +266,7 @@ export async function GET(req: NextRequest) {
       const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean; placedAt?: string | Date }> = []
       const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean }> = []
       const customerSaveErrors: string[] = []
+      const ACTIVE_ORDER_STATUSES = new Set(['waiting_confirm', 'waiting_pickup', 'delivering', 'draft', 'pre_order'])
 
       for (const normalized of orders) {
         if (!normalized.externalOrderId) continue
@@ -285,8 +286,33 @@ export async function GET(req: NextRequest) {
 
           // Don't downgrade: once cancelled, keep cancelled (historical sync may return wrong status)
           const existingDbStatus = (existingDoc as { status?: string } | undefined)?.status
-          if (existingDbStatus === 'cancelled' && mergedNormalized.orderStatus === 'completed') {
-            mergedNormalized.orderStatus = 'cancelled'
+          const rawPayloadIncoming = normalized.rawPayload as Record<string, unknown> | undefined
+          const incomingPageType = String(rawPayloadIncoming?._pageType ?? '').trim()
+          const incomingPageStage = String(rawPayloadIncoming?._pageStage ?? '').trim()
+          const incomingFetchType = String(rawPayloadIncoming?._fetchType ?? '').trim()
+          const isFromActiveBucket = ['PreparingV2', 'Ready', 'Upcoming'].includes(incomingPageType)
+            || ['preparing', 'ready', 'upcoming'].includes(incomingPageStage.toLowerCase())
+            || ['in_progress', 'on_delivery', 'pending'].includes(incomingFetchType)
+
+          if (existingDbStatus === 'cancelled') {
+            const canRecoverCancelledGrabOrder = intg.provider === 'grab'
+              && (
+                isFromActiveBucket
+                || mergedNormalized.orderStatus === 'completed'
+              )
+            if (!canRecoverCancelledGrabOrder) {
+              mergedNormalized.orderStatus = 'cancelled'
+            }
+          }
+
+          // Active bucket orders should not be forced to completed by stale timestamps.
+          if (isFromActiveBucket && mergedNormalized.orderStatus === 'completed') {
+            mergedNormalized.orderStatus = 'waiting_pickup'
+          }
+
+          // Completed orders should not revert back to active unless we truly see active bucket data.
+          if (!isFromActiveBucket && existingDbStatus === 'completed' && ACTIVE_ORDER_STATUSES.has(mergedNormalized.orderStatus)) {
+            mergedNormalized.orderStatus = 'completed'
           }
 
           if (shouldSkipFinalizedOrderSync(existingDoc as Record<string, unknown> | undefined, mergedNormalized)) {
@@ -375,6 +401,37 @@ export async function GET(req: NextRequest) {
         } catch { /* skip */ }
       }
 
+      // Ghost-order detection: Grab orders that were active but have disappeared
+      // from the current live sync payload are likely completed on the platform.
+      let ghostCompleted = 0
+      if (intg.provider === 'grab' && intg.externalStoreId) {
+        const pushedExternalIds = new Set(orders.map((o) => o.externalOrderId).filter(Boolean))
+        const ghostWindow = new Date(Date.now() - 4 * 60 * 60 * 1000)   // placed within last 4h
+        const staleThreshold = new Date(Date.now() - 40 * 60 * 1000)    // not updated for 40+ min
+        try {
+          const ghostOrders = await OrderModel.find({
+            source: 'grab',
+            externalStoreId: intg.externalStoreId,
+            status: { $in: ['waiting_pickup', 'delivering'] },
+            placedAt: { $gte: ghostWindow },
+            updatedAt: { $lte: staleThreshold },
+            externalOrderId: { $nin: Array.from(pushedExternalIds) },
+            locked: { $ne: true },
+          }).select('_id shortId externalOrderId').lean()
+
+          if (ghostOrders.length > 0) {
+            const now = new Date()
+            const ghostResult = await OrderModel.updateMany(
+              { _id: { $in: ghostOrders.map((o) => o._id) } },
+              { $set: { status: 'completed', deliveredAt: now } },
+            )
+            ghostCompleted = ghostResult.modifiedCount
+          }
+        } catch {
+          // Best effort only.
+        }
+      }
+
       const integrationSuccessUpdate = intg.loginMode === 'auto'
         ? {
             ...buildSessionSuccessUpdate({
@@ -397,7 +454,7 @@ export async function GET(req: NextRequest) {
       await SyncLogModel.create({
         type:    'order',
         status:  'success',
-        content: `[cron][${intg.provider}] +${upserted} mới, ${updated} cập nhật, ${skipped} bỏ qua (${Date.now() - startedAt}ms)`,
+        content: `[cron][${intg.provider}] +${upserted} mới, ${updated} cập nhật, ${skipped} bỏ qua, ${ghostCompleted} ghost-completed (${Date.now() - startedAt}ms)`,
         source:  intg.provider,
         brandId: intg.brandId,
       })

@@ -222,7 +222,7 @@ function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58m
   const isLabel = type === 'label'
   // Most 58mm printers have an effective printable width around 48mm.
   // Using 54mm causes clipping and blurry raster scaling on some heads.
-  const wrapWidth = paperWidth === '58mm' ? '48mm' : paperWidth === 'A4' ? '190mm' : '72mm'
+  const wrapWidth = paperWidth === '58mm' ? '45.5mm' : paperWidth === 'A4' ? '190mm' : '72mm'
   const fontFamily = isLabel
     ? "Tahoma,Arial,'Segoe UI',sans-serif"
     : "'Courier New',Consolas,'Lucida Console',monospace"
@@ -233,16 +233,16 @@ function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58m
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff!important;color:#000;height:fit-content;min-height:0}
 body{width:${paperWidth};font-family:${fontFamily}}
-.receipt-wrap{width:${wrapWidth};margin:0 auto;padding:${isLabel ? '0.9mm 0.8mm 1.6mm' : '2mm 2mm 6mm'}}
-.receipt-template{font-family:${fontFamily};font-size:${isLabel ? '3.35mm' : '4.2mm'};line-height:${isLabel ? '1.14' : '1.35'};white-space:normal}
+  .receipt-wrap{width:${wrapWidth};margin:0 auto;padding:${isLabel ? '0.5mm 0.9mm 0.6mm 1.5mm' : '2mm 2mm 6mm'}}
+  .receipt-template{font-family:${fontFamily};font-size:${isLabel ? '2.8mm' : '4.2mm'};line-height:${isLabel ? '1.03' : '1.35'};white-space:normal}
 .tpl-line{white-space:pre-wrap;word-break:break-word;margin:0}
 .tpl-empty{height:1.35em;margin:0}
 .tpl-center{text-align:center}
-.tpl-strong{font-weight:700;letter-spacing:.02em}
-.tpl-slot{text-align:center;font-size:${isLabel ? '3.8mm' : '4.6mm'};font-weight:700;line-height:1.1}
+.tpl-strong{font-weight:700;letter-spacing:.01em}
+.tpl-slot{text-align:center;font-size:${isLabel ? '3.45mm' : '4.6mm'};font-weight:700;line-height:1.06}
 .tpl-divider{border:none;border-top:.35mm dashed #000;margin:1.5mm 0}
 .tpl-indent{padding-left:3mm}
-${isLabel ? '.receipt-template,.tpl-line,.tpl-slot{background:transparent!important;color:#000!important;font-weight:600;letter-spacing:0;font-synthesis:none}.receipt-template .tpl-line:first-child{text-align:center;font-size:4.2mm;font-weight:700;line-height:1.08}.receipt-template .tpl-line:nth-child(3){font-size:3.4mm;line-height:1.12}' : ''}
+${isLabel ? '.receipt-template,.tpl-line,.tpl-slot{background:transparent!important;color:#000!important;font-weight:600;letter-spacing:0;font-synthesis:none}.label-sheet{width:100%;height:13.4mm;min-height:13.4mm;margin:0;padding:0;display:flex;align-items:flex-start;justify-content:flex-start;overflow:hidden;break-inside:avoid;page-break-inside:avoid}.receipt-template .tpl-line:first-child{text-align:center;font-size:3.55mm;font-weight:700;line-height:1.02}.receipt-template .tpl-line:nth-child(3){font-size:2.85mm;line-height:1.04}' : ''}
 </style></head><body>
 <div class="receipt-wrap receipt-template">${renderedContent}</div>
 </body></html>`
@@ -326,6 +326,15 @@ export async function printOrderWithHtmlTemplate(orderId: string, type: LocalPri
   return true
 }
 
+export async function printOrderWithFallback(orderId: string, type: LocalPrinterType, options?: { autoprint?: boolean }): Promise<boolean> {
+  try {
+    return await printOrderWithHtmlTemplate(orderId, type)
+  } catch {
+    openFallbackPrintWindow(orderId, type, { autoprint: options?.autoprint ?? true })
+    return true
+  }
+}
+
 // Send the currently-editing template to the real printer via bridge using demo data.
 // Used by the bill-templates editor page to verify layout before going live.
 export async function printDemoTemplateWithBridge(templateContent: string, type: LocalPrinterType, size?: '80mm' | '58mm'): Promise<boolean> {
@@ -390,7 +399,9 @@ export async function printItemLabels(orderId: string): Promise<boolean> {
   if (!orderRes.ok) throw new Error('Không tải được đơn hàng')
   const order = await orderRes.json() as Order
 
-  const items = order.items ?? []
+  const items = (order.items ?? [])
+    .filter((item) => Number(item.quantity ?? 0) > 0)
+    .filter((item) => String(item.name ?? '').trim().length > 0)
   if (items.length === 0) return false
 
   let templateContent = ''
@@ -405,45 +416,29 @@ export async function printItemLabels(orderId: string): Promise<boolean> {
   } catch { /* fall through to default template */ }
   if (!templateContent || isTemplateBroken(templateContent)) templateContent = getDefaultTemplateContent('label')
 
-  let allOk = true
+  const labelBlocks: string[] = []
   for (const item of items) {
     const total = Math.max(1, item.quantity || 1)
     const printCount = Math.min(total, 20) // safety cap
     for (let slot = 1; slot <= printCount; slot++) {
       const { context, items: labelItems } = buildLabelUnitTemplateData(order, item, slot, total)
-      const renderedContent = renderPrintTemplateHtml(templateContent, context, labelItems)
-      const html = buildThermalHtmlPage(renderedContent, '58mm', 'label')
-      try {
-        const res = await fetch(`${LOCAL_PRINTER_BRIDGE_ORIGIN}/print-template-html`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ html, paperWidth: '58mm', type: 'label' }),
-          signal: AbortSignal.timeout(35000),
-        })
-        const data = await res.json() as { ok?: boolean; message?: string }
-        if (!data.ok) allOk = false
-      } catch {
-        allOk = false
-      }
-    }
-  }
-  return allOk
-}
-
-export async function printOrderWithFallback(orderId: string, type: LocalPrinterType, options?: { autoprint?: boolean; allowBrowserFallback?: boolean }) {
-  if (isBridgePrintingEnabled(type)) {
-    try {
-      // Both receipt and label use the active DB template (printOrderWithHtmlTemplate).
-      // This ensures the user's saved "Mẫu tem bếp" template is used for label printing.
-      const printed = await printOrderWithHtmlTemplate(orderId, type)
-      if (printed) return true
-    } catch {
-      // Bridge unavailable or failed → fall back to browser print dialog below
+      labelBlocks.push(`<div class="label-sheet">${renderPrintTemplateHtml(templateContent, context, labelItems)}</div>`)
     }
   }
 
-  if (options?.allowBrowserFallback === false) return false
-  // Open popup with autoprint so OS print dialog fires automatically as fallback
-  openFallbackPrintWindow(orderId, type, { autoprint: options?.autoprint ?? true })
-  return true
+  if (!labelBlocks.length) return false
+
+  const html = buildThermalHtmlPage(labelBlocks.join(''), '58mm', 'label')
+  try {
+    const res = await fetch(`${LOCAL_PRINTER_BRIDGE_ORIGIN}/print-template-html`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html, paperWidth: '58mm', type: 'label' }),
+      signal: AbortSignal.timeout(35000),
+    })
+    const data = await res.json() as { ok?: boolean; message?: string }
+    return Boolean(data.ok)
+  } catch {
+    return false
+  }
 }
