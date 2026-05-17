@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
 
 /**
  * GET /api/integrations/pause-store
- * Returns current pause status from scraper
+ * Returns current pause status from scraper, with DB fallback
  */
 export async function GET(req: NextRequest) {
   const { res: authRes } = await requireAdmin(req)
@@ -81,9 +81,36 @@ export async function GET(req: NextRequest) {
     const res = await fetch(`${SCRAPER_URL}/store-status`, {
       signal: AbortSignal.timeout(10_000),
     })
-    const data = await res.json().catch(() => ({ ok: false, stores: [] }))
-    return NextResponse.json(data)
-  } catch {
-    return NextResponse.json({ ok: false, stores: [], message: 'Scraper offline hoặc không kết nối được' })
+    const data = await res.json().catch(() => null)
+    if (data && data.ok !== false && Array.isArray(data.stores) && data.stores.length > 0) {
+      return NextResponse.json(data)
+    }
+  } catch { /* fall through to DB fallback */ }
+
+  // Fallback: fetch stores from Integration DB
+  try {
+    const { default: Integration } = await import('@/models/Integration')
+    const integrations = await Integration
+      .find({ provider: { $in: ['grab', 'be'] }, isActive: true })
+      .select('_id provider externalStoreId externalStoreName')
+      .lean()
+      .exec()
+
+    const stores = integrations.map((integ: any) => ({
+      integrationId: integ._id.toString(),
+      source: integ.provider === 'be' ? 'be' : 'grab',
+      label: integ.externalStoreName || integ.externalStoreId || 'Unknown store',
+      storeId: integ.externalStoreId,
+      paused: false,
+      loggedIn: false,
+    }))
+
+    return NextResponse.json({ ok: true, stores, message: 'Fetched from DB (scraper may be offline)' })
+  } catch (err) {
+    return NextResponse.json({
+      ok: false,
+      stores: [],
+      message: 'Scraper offline và không tải được danh sách từ DB',
+    })
   }
 }

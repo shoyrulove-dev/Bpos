@@ -234,8 +234,8 @@ function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58m
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff!important;color:#000;height:fit-content;min-height:0}
 body{width:${paperWidth};font-family:${fontFamily}}
-  .receipt-wrap{width:${wrapWidth};margin:0 auto;padding:${isLabel ? '0.3mm 0.6mm 0.2mm 1.2mm' : '2mm 2mm 6mm'}}
-  .receipt-template{font-family:${fontFamily};font-size:${isLabel ? '2.5mm' : '4.2mm'};line-height:${isLabel ? '0.98' : '1.35'};white-space:normal}
+  .receipt-wrap{width:${wrapWidth};margin:0;padding:${isLabel ? '0 0.3mm 0 0.3mm' : '2mm 2mm 6mm'}}
+  .receipt-template{font-family:${fontFamily};font-size:${isLabel ? '2.2mm' : '4.2mm'};line-height:${isLabel ? '0.92' : '1.35'};white-space:normal}
 .tpl-line{white-space:pre-wrap;word-break:break-word;margin:0}
 .tpl-empty{height:1.35em;margin:0}
 .tpl-center{text-align:center}
@@ -243,7 +243,7 @@ body{width:${paperWidth};font-family:${fontFamily}}
 .tpl-slot{text-align:center;font-size:${isLabel ? '3.45mm' : '4.6mm'};font-weight:700;line-height:1.06}
 .tpl-divider{border:none;border-top:.35mm dashed #000;margin:1.5mm 0}
 .tpl-indent{padding-left:3mm}
-${isLabel ? '.receipt-template,.tpl-line,.tpl-slot{background:transparent!important;color:#000!important;font-weight:600;letter-spacing:0;font-synthesis:none}.label-sheet{width:100%;height:10.5mm;min-height:10.5mm;margin:0;padding:0;display:flex;align-items:flex-start;justify-content:flex-start;overflow:hidden;break-inside:avoid;page-break-inside:avoid}.receipt-template .tpl-line:first-child{text-align:center;font-size:3.2mm;font-weight:700;line-height:1.0}.receipt-template .tpl-line:nth-child(3){font-size:2.4mm;line-height:0.98}' : ''}
+${isLabel ? '.receipt-template,.tpl-line,.tpl-slot{background:transparent!important;color:#000!important;font-weight:600;letter-spacing:0;font-synthesis:none;margin:0;padding:0}.label-sheet{width:100%;height:9.2mm;min-height:9.2mm;margin:0;padding:0;display:flex;align-items:flex-start;justify-content:flex-start;overflow:hidden;break-inside:avoid;page-break-inside:avoid}.receipt-template{margin:0;padding:0}.receipt-template .tpl-line:first-child{text-align:left;font-size:2.9mm;font-weight:700;line-height:0.92;margin:0}.receipt-template .tpl-line:nth-child(3){font-size:2.0mm;line-height:0.90;margin:0}' : ''}
 </style></head><body>
 <div class="receipt-wrap receipt-template">${renderedContent}</div>
 </body></html>`
