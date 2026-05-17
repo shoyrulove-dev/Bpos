@@ -331,6 +331,7 @@ type StoreStatus = {
 }
 
 const SCRAPER_DIRECT = 'http://127.0.0.1:3845'
+const PAUSE_STORE_API = '/api/integrations/pause-store'
 const GRAB_PAUSE_DURATIONS = ['30m', '1h', '24h'] as const
 const BE_BULK_ACTIONS = [
   { value: 'pause-tomorrow', label: '⏸ Pause đến Ngày mai' },
@@ -352,16 +353,50 @@ function PauseStoreSection() {
 
   const getKey = (s: StoreStatus) => s.integrationId ?? String(s.storeId ?? '') ?? s.label
 
+  const normalizeSource = (value: unknown): 'grab' | 'be' | null => {
+    const source = String(value ?? '').trim().toLowerCase()
+    if (source === 'grab' || source === 'grabfood') return 'grab'
+    if (source === 'be' || source === 'befood') return 'be'
+    return null
+  }
+
+  const normalizeStores = (input: unknown): StoreStatus[] => {
+    if (!Array.isArray(input)) return []
+    const next: StoreStatus[] = []
+    for (const entry of input) {
+      const source = normalizeSource((entry as Record<string, unknown>)?.source)
+      if (!source) continue
+
+      const store = entry as Record<string, unknown>
+      next.push({
+        integrationId: typeof store.integrationId === 'string' ? store.integrationId : undefined,
+        storeId: typeof store.storeId === 'string' ? store.storeId : undefined,
+        label: String(store.label ?? store.storeName ?? store.storeId ?? 'Unknown store'),
+        source,
+        username: typeof store.username === 'string' ? store.username : undefined,
+        loggedIn: Boolean(store.loggedIn),
+        paused: Boolean(store.paused),
+        pausedUntil: typeof store.pausedUntil === 'string' ? store.pausedUntil : null,
+        pauseMode: store.pauseMode === 'tomorrow' || store.pauseMode === 'until-reopen' ? store.pauseMode : null,
+        pauseLabel: typeof store.pauseLabel === 'string' ? store.pauseLabel : null,
+      })
+    }
+    return next
+  }
+
   const load = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${SCRAPER_DIRECT}/store-status`, { signal: AbortSignal.timeout(10_000) })
-      const data = await res.json() as { stores?: StoreStatus[] }
-      setStores(data.stores ?? [])
+      const res = await fetch(PAUSE_STORE_API, { signal: AbortSignal.timeout(15_000) })
+      const data = await res.json() as { ok?: boolean; stores?: unknown[]; message?: string }
+      setStores(normalizeStores(data.stores))
       setStatusMsg('Cập nhật ' + new Date().toLocaleTimeString('vi-VN'))
       setSelected(new Set())
+      if (data.ok === false && data.message) {
+        setStatusMsg(data.message)
+      }
     } catch {
-      setStatusMsg('Không kết nối được scraper (127.0.0.1:3845)')
+      setStatusMsg('Không tải được trạng thái pause từ server')
     } finally {
       setLoading(false)
     }
@@ -370,12 +405,11 @@ function PauseStoreSection() {
   useEffect(() => { void load() }, [])
 
   const doAction = async (action: 'pause' | 'resume', storeList: StoreStatus[], dur?: string) => {
-    const path = action === 'pause' ? '/pause-store' : '/resume-store'
     const results = await Promise.allSettled(storeList.map(s =>
-      fetch(`${SCRAPER_DIRECT}${path}`, {
+      fetch(PAUSE_STORE_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ integrationId: s.integrationId, source: s.source, ...(dur ? { duration: dur } : {}) }),
+        body: JSON.stringify({ integrationId: s.integrationId, source: s.source, action, ...(dur ? { duration: dur } : {}) }),
         signal: AbortSignal.timeout(35_000),
       }).then(r => r.json())
     ))

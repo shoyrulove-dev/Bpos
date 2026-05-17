@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
       createdAt: { $gte: new Date(Date.now() - EXTERNAL_SCRAPER_LOOKBACK_MS) },
     })
       .sort({ createdAt: -1 })
-      .limit(500)
+      .limit(2000)
       .select('content createdAt')
       .lean() as Array<{ content?: string; createdAt?: Date | string }>
 

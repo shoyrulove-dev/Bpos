@@ -11,10 +11,12 @@ export async function GET(req: NextRequest) {
   const type = searchParams.get('type') || ''
   const status = searchParams.get('status') || ''
   const brandId = searchParams.get('brandId') || ''
+  const limitParam = Number(searchParams.get('limit') ?? '500')
+  const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 1000) : 500
   const filter: Record<string, unknown> = {}
   if (type) filter.type = type
   if (status) filter.status = status
   if (brandId) filter.brandId = brandId
-  const logs = await SyncLogModel.find(filter).populate('brandId', 'name').sort({ createdAt: -1 }).limit(200).lean()
+  const logs = await SyncLogModel.find(filter).populate('brandId', 'name').sort({ createdAt: -1 }).limit(limit).lean()
   return ok(logs)
 }
