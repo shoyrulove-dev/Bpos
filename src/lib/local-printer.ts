@@ -222,7 +222,8 @@ function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58m
   const isLabel = type === 'label'
   // Most 58mm printers have an effective printable width around 48mm.
   // Using 54mm causes clipping and blurry raster scaling on some heads.
-  const wrapWidth = paperWidth === '58mm' ? '45.5mm' : paperWidth === 'A4' ? '190mm' : '72mm'
+  // For labels: tighten to 42mm (10.5mm height) to prevent overflow into 2 labels from 1 item.
+  const wrapWidth = paperWidth === '58mm' ? '42mm' : paperWidth === 'A4' ? '190mm' : '72mm'
   const fontFamily = isLabel
     ? "Tahoma,Arial,'Segoe UI',sans-serif"
     : "'Courier New',Consolas,'Lucida Console',monospace"
@@ -233,8 +234,8 @@ function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58m
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff!important;color:#000;height:fit-content;min-height:0}
 body{width:${paperWidth};font-family:${fontFamily}}
-  .receipt-wrap{width:${wrapWidth};margin:0 auto;padding:${isLabel ? '0.5mm 0.9mm 0.6mm 1.5mm' : '2mm 2mm 6mm'}}
-  .receipt-template{font-family:${fontFamily};font-size:${isLabel ? '2.8mm' : '4.2mm'};line-height:${isLabel ? '1.03' : '1.35'};white-space:normal}
+  .receipt-wrap{width:${wrapWidth};margin:0 auto;padding:${isLabel ? '0.3mm 0.6mm 0.2mm 1.2mm' : '2mm 2mm 6mm'}}
+  .receipt-template{font-family:${fontFamily};font-size:${isLabel ? '2.5mm' : '4.2mm'};line-height:${isLabel ? '0.98' : '1.35'};white-space:normal}
 .tpl-line{white-space:pre-wrap;word-break:break-word;margin:0}
 .tpl-empty{height:1.35em;margin:0}
 .tpl-center{text-align:center}
@@ -242,7 +243,7 @@ body{width:${paperWidth};font-family:${fontFamily}}
 .tpl-slot{text-align:center;font-size:${isLabel ? '3.45mm' : '4.6mm'};font-weight:700;line-height:1.06}
 .tpl-divider{border:none;border-top:.35mm dashed #000;margin:1.5mm 0}
 .tpl-indent{padding-left:3mm}
-${isLabel ? '.receipt-template,.tpl-line,.tpl-slot{background:transparent!important;color:#000!important;font-weight:600;letter-spacing:0;font-synthesis:none}.label-sheet{width:100%;height:13.4mm;min-height:13.4mm;margin:0;padding:0;display:flex;align-items:flex-start;justify-content:flex-start;overflow:hidden;break-inside:avoid;page-break-inside:avoid}.receipt-template .tpl-line:first-child{text-align:center;font-size:3.55mm;font-weight:700;line-height:1.02}.receipt-template .tpl-line:nth-child(3){font-size:2.85mm;line-height:1.04}' : ''}
+${isLabel ? '.receipt-template,.tpl-line,.tpl-slot{background:transparent!important;color:#000!important;font-weight:600;letter-spacing:0;font-synthesis:none}.label-sheet{width:100%;height:10.5mm;min-height:10.5mm;margin:0;padding:0;display:flex;align-items:flex-start;justify-content:flex-start;overflow:hidden;break-inside:avoid;page-break-inside:avoid}.receipt-template .tpl-line:first-child{text-align:center;font-size:3.2mm;font-weight:700;line-height:1.0}.receipt-template .tpl-line:nth-child(3){font-size:2.4mm;line-height:0.98}' : ''}
 </style></head><body>
 <div class="receipt-wrap receipt-template">${renderedContent}</div>
 </body></html>`
