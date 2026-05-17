@@ -66,6 +66,24 @@ function countGrabHistoryOrders(rawOrders: unknown[]) {
 function needsGrabSessionDetailEnrichment(order: NormalizedOrder) {
   if (order.source !== 'grab') return false
 
+  const rawPayload = order.rawPayload as Record<string, unknown> | undefined
+  const pageType = String(rawPayload?._pageType ?? rawPayload?.pageType ?? '').trim().toLowerCase()
+  const pageStage = String(rawPayload?._pageStage ?? '').trim().toLowerCase()
+  const isActiveBucket = pageType.includes('ready')
+    || pageType.includes('prepar')
+    || pageType.includes('upcoming')
+    || pageStage === 'ready'
+    || pageStage === 'preparing'
+    || pageStage === 'upcoming'
+  const placedAt = new Date(String(order.placedAt ?? '')).getTime()
+  const isAgedActiveOrder = Number.isFinite(placedAt)
+    && (Date.now() - placedAt) > (90 * 60 * 1000)
+    && order.orderStatus === 'waiting_pickup'
+    && isActiveBucket
+  const isStatusBucketMismatch = isActiveBucket && order.orderStatus === 'cancelled'
+
+  if (isAgedActiveOrder || isStatusBucketMismatch) return true
+
   return !hasMeaningfulPhone(order.customerPhone)
     || !hasMeaningfulPhone(order.driverInfo?.phone)
     || !order.items.length
@@ -267,9 +285,17 @@ export async function POST(req: NextRequest) {
       const isFromActiveBucket = ['PreparingV2', 'Ready', 'Upcoming'].includes(incomingPageType)
         || ['preparing', 'ready', 'upcoming'].includes(incomingPageStage.toLowerCase())
         || ['in_progress', 'on_delivery', 'pending'].includes(incomingFetchType)
-      // Cancelled orders never change status via auto-sync (any source)
+      // Keep cancelled as final by default, but allow Grab to recover from stale/incorrect
+      // cancel snapshots when new payload shows active bucket or explicit completion.
       if (existingStatus === 'cancelled') {
-        merged.orderStatus = 'cancelled'
+        const canRecoverCancelledGrabOrder = intg.provider === 'grab'
+          && (
+            isFromActiveBucket
+            || merged.orderStatus === 'completed'
+          )
+        if (!canRecoverCancelledGrabOrder) {
+          merged.orderStatus = 'cancelled'
+        }
       }
       // Active bucket orders (PreparingV2/Ready/Upcoming) must NEVER be completed
       // — resolveNormalizedOrderStatus may still compute 'completed' from stale timestamps

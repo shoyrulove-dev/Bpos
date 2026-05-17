@@ -220,9 +220,11 @@ export async function tryBridgePrintOrder(orderId: string, type: LocalPrinterTyp
 // On Windows, Consolas/Arial/Tahoma all support Vietnamese Unicode properly
 function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58mm' | 'A4', type: LocalPrinterType = 'receipt'): string {
   const isLabel = type === 'label'
-  const wrapWidth = paperWidth === '58mm' ? '54mm' : paperWidth === 'A4' ? '190mm' : '72mm'
+  // Most 58mm printers have an effective printable width around 48mm.
+  // Using 54mm causes clipping and blurry raster scaling on some heads.
+  const wrapWidth = paperWidth === '58mm' ? '48mm' : paperWidth === 'A4' ? '190mm' : '72mm'
   const fontFamily = isLabel
-    ? "Arial,'Segoe UI',Tahoma,sans-serif"
+    ? "Tahoma,Arial,'Segoe UI',sans-serif"
     : "'Courier New',Consolas,'Lucida Console',monospace"
   // NOTE: No @page rule here — Playwright uses screenshot (not print), so @page is irrelevant.
   // html/body height must be fit-content so scrollHeight = actual content height (not viewport 4000px).
@@ -231,16 +233,16 @@ function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58m
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff!important;color:#000;height:fit-content;min-height:0}
 body{width:${paperWidth};font-family:${fontFamily}}
-.receipt-wrap{width:${wrapWidth};margin:0 auto;padding:${isLabel ? '1.5mm 1mm 2.5mm' : '2mm 2mm 6mm'}}
-.receipt-template{font-family:${fontFamily};font-size:${isLabel ? '5.2mm' : '4.2mm'};line-height:${isLabel ? '1.22' : '1.35'};white-space:normal}
+.receipt-wrap{width:${wrapWidth};margin:0 auto;padding:${isLabel ? '0.9mm 0.8mm 1.6mm' : '2mm 2mm 6mm'}}
+.receipt-template{font-family:${fontFamily};font-size:${isLabel ? '3.35mm' : '4.2mm'};line-height:${isLabel ? '1.14' : '1.35'};white-space:normal}
 .tpl-line{white-space:pre-wrap;word-break:break-word;margin:0}
 .tpl-empty{height:1.35em;margin:0}
 .tpl-center{text-align:center}
-.tpl-strong{font-weight:800;letter-spacing:.04em}
-.tpl-slot{text-align:center;font-size:${isLabel ? '5.9mm' : '4.6mm'};font-weight:800;line-height:1.12}
+.tpl-strong{font-weight:700;letter-spacing:.02em}
+.tpl-slot{text-align:center;font-size:${isLabel ? '3.8mm' : '4.6mm'};font-weight:700;line-height:1.1}
 .tpl-divider{border:none;border-top:.35mm dashed #000;margin:1.5mm 0}
 .tpl-indent{padding-left:3mm}
-${isLabel ? '.receipt-template .tpl-line:first-child{text-align:center;font-size:6.8mm;font-weight:800;line-height:1.08}.receipt-template .tpl-line:nth-child(3){font-size:3.6mm;line-height:1.25}' : ''}
+${isLabel ? '.receipt-template,.tpl-line,.tpl-slot{background:transparent!important;color:#000!important;font-weight:600;letter-spacing:0;font-synthesis:none}.receipt-template .tpl-line:first-child{text-align:center;font-size:4.2mm;font-weight:700;line-height:1.08}.receipt-template .tpl-line:nth-child(3){font-size:3.4mm;line-height:1.12}' : ''}
 </style></head><body>
 <div class="receipt-wrap receipt-template">${renderedContent}</div>
 </body></html>`
