@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
 import OrderModel from '@/models/Order'
 import mongoose from 'mongoose'
+import { requireAdmin } from '@/lib/api-helpers'
 
 export const maxDuration = 30
 
@@ -13,8 +14,14 @@ export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
   const secretParam = req.nextUrl.searchParams.get('secret')
 
-  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}` && secretParam !== CRON_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Accept CRON_SECRET OR a valid admin NextAuth session
+  const secretOk = CRON_SECRET
+    ? authHeader === `Bearer ${CRON_SECRET}` || secretParam === CRON_SECRET
+    : false
+
+  if (!secretOk) {
+    const { res: authRes } = await requireAdmin(req)
+    if (authRes) return authRes
   }
 
   const shortIds = (req.nextUrl.searchParams.get('shortIds') ?? '')

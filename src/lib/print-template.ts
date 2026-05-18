@@ -110,7 +110,7 @@ const DEFAULT_TEMPLATES: Record<EditablePrintTemplateType, string> = {
   // --- 58mm kitchen label: mẫu tem bếp (máy USB) ---
   label: [
     '{{range .Items}}',
-    '{{.Name}} (x{{.Quantity}})',
+    '{{.Name}} (x{{.SlotTotal}})',
     '{{.SlotLabel}}',
     '{{if .Note}}* {{.Note}}{{end}}',
     '{{end}}',
