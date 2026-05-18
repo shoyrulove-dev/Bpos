@@ -16,6 +16,7 @@ type DriverProfileCandidate = {
   phone: string
   platform: string
   isNew: boolean
+  placedAt?: string | Date
 }
 
 export function getOrderContactProfileCandidates(
@@ -49,6 +50,7 @@ export function getOrderContactProfileCandidates(
       phone: driverPhone,
       platform: options.platform,
       isNew: options.isNew,
+      placedAt: normalized.placedAt,
     } satisfies DriverProfileCandidate
     : undefined
 

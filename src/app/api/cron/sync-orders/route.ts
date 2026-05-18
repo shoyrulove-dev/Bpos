@@ -264,7 +264,7 @@ export async function GET(req: NextRequest) {
       )
 
       const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean; placedAt?: string | Date }> = []
-      const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean }> = []
+      const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean; placedAt?: string | Date }> = []
       const customerSaveErrors: string[] = []
       const ACTIVE_ORDER_STATUSES = new Set(['waiting_confirm', 'waiting_pickup', 'delivering', 'draft', 'pre_order'])
 
@@ -385,17 +385,16 @@ export async function GET(req: NextRequest) {
             continue
           }
 
+          const parsedPlacedAt = d.placedAt ? new Date(String(d.placedAt)) : null
+          const driverDate = parsedPlacedAt && !Number.isNaN(parsedPlacedAt.getTime()) ? parsedPlacedAt : new Date()
+
           await DriverModel.findOneAndUpdate(
             { phone: d.phone, platform: d.platform },
-            d.isNew
-              ? {
-                  $set: { ...(shouldUpdateName ? { name: d.name } : {}), lastSeenAt: new Date() },
-                  $inc: { visitCount: 1 },
-                }
-              : {
-                  $set: { ...(shouldUpdateName ? { name: d.name } : {}), lastSeenAt: new Date() },
-                  $setOnInsert: { visitCount: 1 },
-                },
+            {
+              $set: { ...(shouldUpdateName ? { name: d.name } : {}) },
+              $max: { lastSeenAt: driverDate },
+              $setOnInsert: { visitCount: 1 },
+            },
             { upsert: true }
           )
         } catch { /* skip */ }

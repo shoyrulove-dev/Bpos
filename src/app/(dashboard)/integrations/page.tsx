@@ -21,6 +21,8 @@ const PROVIDERS = [
   { value: 'xanh_sm',  label: 'Xanh SM',     color: 'bg-teal-100 text-teal-700' },
 ]
 
+const PROVIDER_TAB_STORAGE_KEY = 'bpos-integ-tab'
+
 type CredField = { key: string; label: string; type?: string; placeholder?: string }
 
 const CRED_FIELDS: Record<string, CredField[]> = {
@@ -1070,7 +1072,16 @@ export default function IntegrationsPage() {
   const [qtCreds, setQtCreds]       = useState<Record<string, string>>({})
   const [qtResult, setQtResult]     = useState<QtResult | null>(null)
   const [actionStatus, setActionStatus] = useState<ActionStatus>(null)
-  const [activeProviderTab, setActiveProviderTab] = useState(PROVIDERS[0].value)
+  const [activeProviderTab, setActiveProviderTab] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem(PROVIDER_TAB_STORAGE_KEY)
+      const validTabs = new Set([...PROVIDERS.map((provider) => provider.value), 'pause'])
+      if (saved && validTabs.has(saved)) {
+        return saved
+      }
+    }
+    return PROVIDERS[0].value
+  })
 
   // Inline name edit
   const [editingNameId, setEditingNameId]   = useState<string | null>(null)
@@ -1102,6 +1113,10 @@ export default function IntegrationsPage() {
     const t = setInterval(() => setTick(n => n + 1), 30_000)
     return () => clearInterval(t)
   }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(PROVIDER_TAB_STORAGE_KEY, activeProviderTab)
+  }, [activeProviderTab])
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
   const provInfo  = (v: string) => PROVIDERS.find(p => p.value === v)
@@ -1303,11 +1318,13 @@ export default function IntegrationsPage() {
               Test
             </button>
           )}
-          <button onClick={() => handleSync(integ._id)} disabled={isPendingSetup || !!sr?.loading}
-            className="btn-primary btn-sm flex-1 flex items-center gap-1 justify-center text-xs disabled:opacity-50">
-            {sr?.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-            {isPendingSetup ? 'Chờ bật' : 'Sync'}
-          </button>
+          {!isExternalScraperManaged && (
+            <button onClick={() => handleSync(integ._id)} disabled={isPendingSetup || !!sr?.loading}
+              className="btn-primary btn-sm flex-1 flex items-center gap-1 justify-center text-xs disabled:opacity-50">
+              {sr?.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              {isPendingSetup ? 'Chờ bật' : 'Sync'}
+            </button>
+          )}
         </div>
       </div>
     )
