@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/api-helpers'
+import { connectDB } from '@/lib/db'
 
 const SCRAPER_URL = process.env.SCRAPER_CONTROL_URL ?? 'http://127.0.0.1:3845'
 
@@ -77,36 +78,132 @@ export async function GET(req: NextRequest) {
   const { res: authRes } = await requireAdmin(req)
   if (authRes) return authRes
 
+  type PauseStoreRow = {
+    integrationId?: string
+    source: 'grab' | 'be'
+    label: string
+    storeId?: string
+    paused: boolean
+    loggedIn: boolean
+    pausedUntil?: string | null
+    pauseMode?: 'tomorrow' | 'until-reopen' | null
+    pauseLabel?: string | null
+    username?: string
+  }
+
+  const normalizeSource = (value: unknown): 'grab' | 'be' | null => {
+    const normalized = String(value ?? '').trim().toLowerCase()
+    if (normalized === 'grab' || normalized === 'grabfood') return 'grab'
+    if (normalized === 'be' || normalized === 'befood') return 'be'
+    return null
+  }
+
+  const toPauseStoreRow = (value: unknown): PauseStoreRow | null => {
+    const record = value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null
+    if (!record) return null
+
+    const source = normalizeSource(record.source)
+    if (!source) return null
+
+    return {
+      integrationId: typeof record.integrationId === 'string' ? record.integrationId : undefined,
+      source,
+      label: String(record.label ?? record.storeName ?? record.storeId ?? 'Unknown store'),
+      storeId: typeof record.storeId === 'string' ? record.storeId : undefined,
+      paused: Boolean(record.paused),
+      loggedIn: Boolean(record.loggedIn),
+      pausedUntil: typeof record.pausedUntil === 'string' ? record.pausedUntil : null,
+      pauseMode: record.pauseMode === 'tomorrow' || record.pauseMode === 'until-reopen' ? record.pauseMode : null,
+      pauseLabel: typeof record.pauseLabel === 'string' ? record.pauseLabel : null,
+      username: typeof record.username === 'string' ? record.username : undefined,
+    }
+  }
+
+  let scraperStores: PauseStoreRow[] = []
   try {
     const res = await fetch(`${SCRAPER_URL}/store-status`, {
       signal: AbortSignal.timeout(10_000),
     })
     const data = await res.json().catch(() => null)
-    if (data && data.ok !== false && Array.isArray(data.stores) && data.stores.length > 0) {
-      return NextResponse.json(data)
+    if (data && data.ok !== false && Array.isArray(data.stores)) {
+      scraperStores = data.stores
+        .map((store: unknown) => toPauseStoreRow(store))
+        .filter((store: PauseStoreRow | null): store is PauseStoreRow => Boolean(store))
     }
-  } catch { /* fall through to DB fallback */ }
+  } catch {
+    // Keep empty scraperStores and continue to DB merge/fallback.
+  }
 
-  // Fallback: fetch stores from Integration DB
   try {
+    await connectDB()
     const { default: Integration } = await import('@/models/Integration')
     const integrations = await Integration
       .find({ provider: { $in: ['grab', 'be'] }, isActive: true })
-      .select('_id provider externalStoreId externalStoreName')
+      .select('_id provider externalStoreId externalStoreName loginUsername')
       .lean()
       .exec()
 
-    const stores = integrations.map((integ: any) => ({
+    const dbStores: PauseStoreRow[] = integrations.map((integ: any) => ({
       integrationId: integ._id.toString(),
       source: integ.provider === 'be' ? 'be' : 'grab',
       label: integ.externalStoreName || integ.externalStoreId || 'Unknown store',
       storeId: integ.externalStoreId,
       paused: false,
       loggedIn: false,
+      username: integ.loginUsername || undefined,
     }))
 
-    return NextResponse.json({ ok: true, stores, message: 'Fetched from DB (scraper may be offline)' })
-  } catch (err) {
+    if (scraperStores.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        stores: dbStores,
+        message: 'Không lấy được trạng thái từ scraper, đang hiển thị danh sách từ DB',
+      })
+    }
+
+    const mergedByKey = new Map<string, PauseStoreRow>()
+    const makeKey = (store: PauseStoreRow) => {
+      if (store.integrationId) return `id:${store.integrationId}`
+      return `src:${store.source}|store:${String(store.storeId ?? '').trim().toLowerCase()}`
+    }
+
+    for (const store of dbStores) {
+      mergedByKey.set(makeKey(store), store)
+    }
+
+    for (const scraperStore of scraperStores) {
+      const key = makeKey(scraperStore)
+      const existing = mergedByKey.get(key)
+      if (existing) {
+        mergedByKey.set(key, {
+          ...existing,
+          ...scraperStore,
+          label: scraperStore.label || existing.label,
+          storeId: scraperStore.storeId || existing.storeId,
+          username: scraperStore.username || existing.username,
+        })
+      } else {
+        mergedByKey.set(key, scraperStore)
+      }
+    }
+
+    const stores = Array.from(mergedByKey.values())
+    return NextResponse.json({
+      ok: true,
+      stores,
+      message: `Merged ${scraperStores.length} trạng thái scraper với ${dbStores.length} cửa hàng DB`,
+    })
+  } catch {
+    if (scraperStores.length > 0) {
+      return NextResponse.json({
+        ok: true,
+        stores: scraperStores,
+        message: 'Không tải được DB, đang hiển thị trạng thái từ scraper',
+      })
+    }
+
     return NextResponse.json({
       ok: false,
       stores: [],
