@@ -1246,10 +1246,17 @@ export async function runOrderRepair(options?: {
   const forceCancelledOrderIds = (options?.forceCancelledOrderIds ?? []).map((value) => value.trim()).filter(Boolean)
   const forceCompletedShortIds = (options?.forceCompletedShortIds ?? []).map((value) => value.trim()).filter(Boolean)
   const forceAll = Boolean(options?.forceAll)
-  const isScopedRepair = Boolean(externalOrderIds.length || shortIds.length || driverPhone || externalStoreIds.length)
-  const scopedExternalOrderIds = await resolveScopedExternalOrderIds(providers, externalOrderIds, shortIds, externalStoreIds)
+  // When only force-IDs are provided with no other scoping, auto-scope to those IDs and
+  // skip the slow historical integration scan to avoid serverless function timeouts.
+  const isForceOnlyMode = !shortIds.length && !externalOrderIds.length && !driverPhone && !externalStoreIds.length
+    && (forceCompletedShortIds.length > 0 || forceCancelledOrderIds.length > 0)
+  const effectiveShortIds = isForceOnlyMode && forceCompletedShortIds.length ? forceCompletedShortIds : shortIds
+  const effectiveExternalOrderIds = isForceOnlyMode && forceCancelledOrderIds.length ? forceCancelledOrderIds : externalOrderIds
 
-  const historical = includeHistorical
+  const isScopedRepair = Boolean(effectiveExternalOrderIds.length || effectiveShortIds.length || driverPhone || externalStoreIds.length)
+  const scopedExternalOrderIds = await resolveScopedExternalOrderIds(providers, effectiveExternalOrderIds, effectiveShortIds, externalStoreIds)
+
+  const historical = (includeHistorical && !isForceOnlyMode)
     ? await upsertHistoricalOrders(days, providers, scopedExternalOrderIds.length ? scopedExternalOrderIds : undefined, externalStoreIds)
     : {
         integrations: 0,
@@ -1259,9 +1266,9 @@ export async function runOrderRepair(options?: {
         failed: 0,
         skipped: true,
       }
-  const detailBackfill = await backfillOrderDetails(days, providers, scopedExternalOrderIds, shortIds, externalStoreIds, forceAll)
-  const orders = await repairStoredOrders(providers, { externalOrderIds, shortIds, driverPhone, externalStoreIds, forceCancelledOrderIds, forceCompletedShortIds })
-  const customerBackfill = await backfillCustomersFromOrders({ providers, externalOrderIds, shortIds, externalStoreIds })
+  const detailBackfill = await backfillOrderDetails(days, providers, scopedExternalOrderIds, effectiveShortIds, externalStoreIds, forceAll)
+  const orders = await repairStoredOrders(providers, { externalOrderIds: effectiveExternalOrderIds, shortIds: effectiveShortIds, driverPhone, externalStoreIds, forceCancelledOrderIds, forceCompletedShortIds })
+  const customerBackfill = await backfillCustomersFromOrders({ providers, externalOrderIds: effectiveExternalOrderIds, shortIds: effectiveShortIds, externalStoreIds })
   let customerRepair: Awaited<ReturnType<typeof repairCustomers>> | null = null
   let customerRepairError: string | null = null
   if (!isScopedRepair) {
@@ -1282,7 +1289,7 @@ export async function runOrderRepair(options?: {
   let driverRepairError: string | null = null
   try {
     drivers = isScopedRepair
-      ? await backfillDriversFromOrders({ providers, externalOrderIds, shortIds, driverPhone, externalStoreIds })
+      ? await backfillDriversFromOrders({ providers, externalOrderIds: effectiveExternalOrderIds, shortIds: effectiveShortIds, driverPhone, externalStoreIds })
       : await repairDrivers()
   } catch (error) {
     driverRepairError = error instanceof Error ? error.message : String(error)
