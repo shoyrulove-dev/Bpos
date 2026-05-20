@@ -35,8 +35,20 @@ export async function GET(req: NextRequest) {
     .map((v) => v.trim())
     .filter((v) => mongoose.isValidObjectId(v))
 
-  if (!shortIds.length && !mongoIds.length) {
-    return NextResponse.json({ error: 'shortIds or ids (MongoDB ObjectId) is required' }, { status: 400 })
+  // Accept platform externalOrderIds (e.g. Be order "72621474")
+  const externalOrderIds = (req.nextUrl.searchParams.get('externalOrderIds') ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean)
+
+  // Accept rawPayload display IDs for GrabFood (e.g. "866" from displayID field)
+  const rawDisplayIds = (req.nextUrl.searchParams.get('rawDisplayIds') ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean)
+
+  if (!shortIds.length && !mongoIds.length && !externalOrderIds.length && !rawDisplayIds.length) {
+    return NextResponse.json({ error: 'Provide shortIds, ids (MongoDB ObjectId), externalOrderIds, or rawDisplayIds' }, { status: 400 })
   }
 
   const status = (req.nextUrl.searchParams.get('status') ?? '').trim()
@@ -71,11 +83,12 @@ export async function GET(req: NextRequest) {
 
   await connectDB()
 
-  const query = shortIds.length && mongoIds.length
-    ? { $or: [{ shortId: { $in: shortIds } }, { _id: { $in: mongoIds } }] }
-    : shortIds.length
-      ? { shortId: { $in: shortIds } }
-      : { _id: { $in: mongoIds } }
+  const clauses: object[] = []
+  if (shortIds.length) clauses.push({ shortId: { $in: shortIds } })
+  if (mongoIds.length) clauses.push({ _id: { $in: mongoIds } })
+  if (externalOrderIds.length) clauses.push({ externalOrderId: { $in: externalOrderIds } })
+  if (rawDisplayIds.length) clauses.push({ 'rawPayload.displayID': { $in: rawDisplayIds } })
+  const query = clauses.length === 1 ? clauses[0] : { $or: clauses }
 
   const before = await OrderModel.find(query)
     .select('shortId status customerName customerPhone source externalOrderId')
@@ -87,6 +100,8 @@ export async function GET(req: NextRequest) {
     ok: true,
     shortIds,
     ids: mongoIds,
+    externalOrderIds,
+    rawDisplayIds,
     fields: setFields,
     matched: result.matchedCount,
     modified: result.modifiedCount,
