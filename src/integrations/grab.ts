@@ -1458,20 +1458,21 @@ export class GrabAdapter implements PlatformAdapter {
       const modifierTexts: string[] = []
       for (const m of [...modifiers, ...addons]) {
         const mItems = Array.isArray(m.modifierItems) ? m.modifierItems as Record<string, unknown>[] : Array.isArray(m.items) ? m.items as Record<string, unknown>[] : []
+        const groupLabel = String(m.name ?? m.groupName ?? '').trim()
         for (const mi of mItems) {
           const miName = String(mi.name ?? mi.itemName ?? '').trim()
-          if (miName) modifierTexts.push(miName)
+          if (miName) modifierTexts.push(groupLabel ? `${groupLabel}: ${miName}` : miName)
         }
-        // Some formats have name directly on modifier item
-        const mName = String(m.name ?? '').trim()
-        if (mName && mItems.length === 0) modifierTexts.push(mName)
+        // Some formats have name directly on modifier item (group label = option value)
+        if (mItems.length === 0 && groupLabel) modifierTexts.push(groupLabel)
       }
       // Grab portal format: modifierGroups[].modifiers[].modifierName
       for (const mg of modifierGroups) {
+        const groupLabel = String(mg.groupName ?? mg.name ?? mg.groupTitle ?? '').trim()
         const mgMods = Array.isArray(mg.modifiers) ? mg.modifiers as Record<string, unknown>[] : []
         for (const m of mgMods) {
           const mName = String(m.modifierName ?? m.name ?? m.itemName ?? '').trim()
-          if (mName) modifierTexts.push(mName)
+          if (mName) modifierTexts.push(groupLabel ? `${groupLabel}: ${mName}` : mName)
         }
       }
       const itemNote = [
