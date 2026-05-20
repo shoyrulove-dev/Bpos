@@ -1235,17 +1235,43 @@ export async function runOrderRepair(options?: {
   forceCancelledOrderIds?: string[]
   forceCompletedShortIds?: string[]
   forceAll?: boolean
+  staleActiveHours?: number
+  staleActiveMax?: number
 }) {
   const providers = (options?.providers?.length ? options.providers : ['be', 'grab']).map((value) => value.trim()).filter(Boolean)
   const days = Math.max(1, Math.min(90, Number(options?.days ?? 30) || 30))
   const includeHistorical = options?.includeHistorical !== false
-  const externalOrderIds = (options?.externalOrderIds ?? []).map((value) => value.trim()).filter(Boolean)
+  let externalOrderIds = (options?.externalOrderIds ?? []).map((value) => value.trim()).filter(Boolean)
   const shortIds = (options?.shortIds ?? []).map((value) => value.trim()).filter(Boolean)
   const driverPhone = normalizeCompactPhone(options?.driverPhone)
   const externalStoreIds = (options?.externalStoreIds ?? []).map((value) => value.trim()).filter(Boolean)
   const forceCancelledOrderIds = (options?.forceCancelledOrderIds ?? []).map((value) => value.trim()).filter(Boolean)
   const forceCompletedShortIds = (options?.forceCompletedShortIds ?? []).map((value) => value.trim()).filter(Boolean)
   const forceAll = Boolean(options?.forceAll)
+
+  // Auto-detect orders stuck in active status beyond threshold and scope repair to them.
+  // Triggered by staleActiveHours > 0. Only runs when no explicit scope is given.
+  const staleActiveHours = Math.max(0, Number(options?.staleActiveHours ?? 0) || 0)
+  const staleActiveMax = Math.max(1, Math.min(30, Number(options?.staleActiveMax ?? 10) || 10))
+  let staleOrderIds: string[] = []
+  if (
+    staleActiveHours > 0
+    && !externalOrderIds.length && !shortIds.length && !externalStoreIds.length
+    && !forceCancelledOrderIds.length && !forceCompletedShortIds.length
+  ) {
+    const staleCutoff = new Date(Date.now() - staleActiveHours * 60 * 60 * 1000)
+    const staleDocs = await OrderModel.find({
+      source: { $in: providers },
+      status: { $in: ['waiting_confirm', 'waiting_pickup', 'delivering'] },
+      updatedAt: { $lt: staleCutoff },
+    })
+      .sort({ updatedAt: 1 })
+      .limit(staleActiveMax)
+      .select('externalOrderId')
+      .lean()
+    staleOrderIds = staleDocs.map((doc) => String(doc.externalOrderId ?? '').trim()).filter(Boolean)
+    externalOrderIds = [...externalOrderIds, ...staleOrderIds]
+  }
   // When only force-IDs are provided with no other scoping, auto-scope to those IDs and
   // skip the slow historical integration scan to avoid serverless function timeouts.
   const isForceOnlyMode = !shortIds.length && !externalOrderIds.length && !driverPhone && !externalStoreIds.length
@@ -1308,6 +1334,7 @@ export async function runOrderRepair(options?: {
     driverPhone,
     forceCancelledOrderIds,
     forceCompletedShortIds,
+    staleOrderIds,
     historical,
     detailBackfill,
     orders,

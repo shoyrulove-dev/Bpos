@@ -42,8 +42,10 @@ export async function GET(req: NextRequest) {
     .map((value) => value.trim())
     .filter(Boolean)
   const forceAll = req.nextUrl.searchParams.get('forceAll') === 'true'
+  const staleActiveHours = Math.max(0, Math.min(24, Number(req.nextUrl.searchParams.get('staleHours') ?? 0) || 0))
+  const staleActiveMax = Math.max(1, Math.min(30, Number(req.nextUrl.searchParams.get('staleMax') ?? 10) || 10))
 
   await connectDB()
-  const result = await runOrderRepair({ days, providers, includeHistorical, externalOrderIds, shortIds, externalStoreIds, driverPhone, forceCancelledOrderIds, forceCompletedShortIds, forceAll })
+  const result = await runOrderRepair({ days, providers, includeHistorical, externalOrderIds, shortIds, externalStoreIds, driverPhone, forceCancelledOrderIds, forceCompletedShortIds, forceAll, staleActiveHours, staleActiveMax })
   return NextResponse.json(result)
 }
