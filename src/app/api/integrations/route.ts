@@ -8,7 +8,7 @@ import { ensureChannelForIntegration } from '@/lib/channel-sync'
 import { getDefaultSessionRefreshMode } from '@/lib/session-refresh-mode'
 
 const EXTERNAL_SCRAPER_STALE_MS = 15 * 60 * 1000
-const EXTERNAL_SCRAPER_LOOKBACK_MS = 24 * 60 * 60 * 1000
+const EXTERNAL_SCRAPER_LOOKBACK_MS = 30 * 60 * 1000 // 30 phút (stale threshold là 15 phút)
 
 type ScraperSyncStatus = 'success' | 'error' | 'pending' | 'starting' | 'logging-in'
 
@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
       createdAt: { $gte: new Date(Date.now() - EXTERNAL_SCRAPER_LOOKBACK_MS) },
     })
       .sort({ createdAt: -1 })
-      .limit(2000)
+      .limit(300)
       .select('content createdAt')
       .lean() as Array<{ content?: string; createdAt?: Date | string }>
 
