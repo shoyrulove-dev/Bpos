@@ -231,10 +231,10 @@ function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58m
     : "'Courier New',Consolas,'Lucida Console',monospace"
   // NOTE: No @page rule here — Playwright uses screenshot (not print), so @page is irrelevant.
   // html/body height must be fit-content so scrollHeight = actual content height (not viewport 4000px).
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light"><title>Print</title>
 <style>
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:#fff!important;color:#000;height:fit-content;min-height:0}
+html,body{margin:0;padding:0;background:#fff!important;color:#000;height:fit-content;min-height:0;color-scheme:light}
 body{width:${paperWidth};${isLabel ? 'padding-left:3mm;' : ''}font-family:${fontFamily}}
   .receipt-wrap{width:${wrapWidth};margin:0;padding:${isLabel ? '0 0.5mm 0 0' : '2mm 2mm 6mm'}}
   .receipt-template{font-family:${fontFamily};font-size:${isLabel ? '4mm' : '4.2mm'};line-height:${isLabel ? '1.25' : '1.35'};white-space:normal}
