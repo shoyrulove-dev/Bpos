@@ -89,6 +89,8 @@ export async function GET(req: NextRequest) {
     pauseMode?: 'tomorrow' | 'until-reopen' | null
     pauseLabel?: string | null
     username?: string
+    isUnknown?: boolean
+    platformStatus?: string | null
   }
 
   const normalizeSource = (value: unknown): 'grab' | 'be' | null => {
@@ -118,6 +120,8 @@ export async function GET(req: NextRequest) {
       pauseMode: record.pauseMode === 'tomorrow' || record.pauseMode === 'until-reopen' ? record.pauseMode : null,
       pauseLabel: typeof record.pauseLabel === 'string' ? record.pauseLabel : null,
       username: typeof record.username === 'string' ? record.username : undefined,
+      isUnknown: Boolean(record.isUnknown),
+      platformStatus: typeof record.platformStatus === 'string' ? record.platformStatus : null,
     }
   }
 

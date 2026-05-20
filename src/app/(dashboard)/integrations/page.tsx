@@ -330,6 +330,8 @@ type StoreStatus = {
   pausedUntil?: string | null
   pauseMode?: 'tomorrow' | 'until-reopen' | null
   pauseLabel?: string | null
+  isUnknown?: boolean
+  platformStatus?: string | null
 }
 
 const SCRAPER_DIRECT = 'http://127.0.0.1:3845'
@@ -383,6 +385,8 @@ function PauseStoreSection() {
         pausedUntil: typeof store.pausedUntil === 'string' ? store.pausedUntil : null,
         pauseMode: store.pauseMode === 'tomorrow' || store.pauseMode === 'until-reopen' ? store.pauseMode : null,
         pauseLabel: typeof store.pauseLabel === 'string' ? store.pauseLabel : null,
+        isUnknown: Boolean(store.isUnknown),
+        platformStatus: typeof store.platformStatus === 'string' ? store.platformStatus : null,
       })
     }
     return next
@@ -727,12 +731,15 @@ function PauseStoreSection() {
             const showGroupHeader = isGrouped && store.username && store.username !== lastUsername
             if (showGroupHeader) lastUsername = store.username!
             const isSelected = selected.has(key)
+            const isUnknownStatus = store.isUnknown === true
             const rowBg = !store.loggedIn
               ? 'bg-red-50'
-              : store.paused
-                ? (isGrouped ? (idx % 2 === 0 ? 'bg-amber-50' : 'bg-amber-50/70') : 'bg-amber-50')
-                : (isGrouped ? (idx % 2 === 0 ? 'bg-green-50/60' : 'bg-green-50/40') : (idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'))
-            const dotColor = !store.loggedIn ? 'text-red-500' : store.paused ? 'text-amber-500' : 'text-green-500'
+              : isUnknownStatus
+                ? (isGrouped ? (idx % 2 === 0 ? 'bg-gray-100' : 'bg-gray-50') : 'bg-gray-100')
+                : store.paused
+                  ? (isGrouped ? (idx % 2 === 0 ? 'bg-amber-50' : 'bg-amber-50/70') : 'bg-amber-50')
+                  : (isGrouped ? (idx % 2 === 0 ? 'bg-green-50/60' : 'bg-green-50/40') : (idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'))
+            const dotColor = !store.loggedIn ? 'text-red-500' : isUnknownStatus ? 'text-gray-400' : store.paused ? 'text-amber-500' : 'text-green-500'
             const pausedUntilStr = store.pausedUntil
               ? new Date(store.pausedUntil).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
               : null
@@ -765,12 +772,15 @@ function PauseStoreSection() {
                     {!store.loggedIn && (
                       <span className="ml-1.5 text-[11px] font-bold text-red-600">Offline</span>
                     )}
-                    {store.paused && (
+                    {isUnknownStatus && store.loggedIn && (
+                      <span className="ml-1.5 text-[11px] font-bold text-gray-500" title={store.platformStatus ?? 'Unknown'}>Unknown</span>
+                    )}
+                    {store.paused && !isUnknownStatus && (
                       <span className="ml-1.5 text-[11px] font-bold text-amber-600">
                         ⏸ {store.pauseLabel ? `Tạm dừng: ${store.pauseLabel}` : 'Tạm dừng'}{pausedUntilStr ? ` đến ${pausedUntilStr}` : ''}
                       </span>
                     )}
-                    {!store.paused && store.loggedIn && (
+                    {!store.paused && !isUnknownStatus && store.loggedIn && (
                       <span className="ml-1.5 text-[11px] font-bold text-green-600">Active</span>
                     )}
                   </span>
