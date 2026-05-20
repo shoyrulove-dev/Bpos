@@ -124,7 +124,7 @@ export async function GET(req: NextRequest) {
   let scraperStores: PauseStoreRow[] = []
   try {
     const res = await fetch(`${SCRAPER_URL}/store-status`, {
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(5_000),
     })
     const data = await res.json().catch(() => null)
     if (data && data.ok !== false && Array.isArray(data.stores)) {
@@ -158,6 +158,7 @@ export async function GET(req: NextRequest) {
     if (scraperStores.length === 0) {
       return NextResponse.json({
         ok: true,
+        scraperOnline: false,
         stores: dbStores,
         message: 'Không lấy được trạng thái từ scraper, đang hiển thị danh sách từ DB',
       })
@@ -192,6 +193,7 @@ export async function GET(req: NextRequest) {
     const stores = Array.from(mergedByKey.values())
     return NextResponse.json({
       ok: true,
+      scraperOnline: true,
       stores,
       message: `Merged ${scraperStores.length} trạng thái scraper với ${dbStores.length} cửa hàng DB`,
     })
@@ -199,6 +201,7 @@ export async function GET(req: NextRequest) {
     if (scraperStores.length > 0) {
       return NextResponse.json({
         ok: true,
+        scraperOnline: true,
         stores: scraperStores,
         message: 'Không tải được DB, đang hiển thị trạng thái từ scraper',
       })
@@ -206,6 +209,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ok: false,
+      scraperOnline: false,
       stores: [],
       message: 'Scraper offline và không tải được danh sách từ DB',
     })

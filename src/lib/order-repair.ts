@@ -128,17 +128,20 @@ async function upsertDriverFromOrder(order: StoredOrder) {
     ? displayName
     : `(Tài xế ${String(order.source ?? '').trim() || 'platform'})`
 
+  // In repair mode we scan existing (possibly old) orders — do NOT bump lastSeenAt to "now".
+  // lastSeenAt is set only when the driver record is first created (via $setOnInsert), using the
+  // order's actual placedAt date. Real-time upserts that create the record fresh will also use
+  // placedAt, so lastSeenAt always reflects the most recent order the driver actually served,
+  // not the time the repair job happened to run.
   await DriverModel.updateOne(
     { phone, platform: String(order.source) },
     {
-      $set: {
-        name,
-        lastSeenAt: new Date(),
-      },
+      $set: { name },
       $setOnInsert: {
         phone,
         platform: String(order.source),
         visitCount: 1,
+        lastSeenAt: parseDateValue(order.placedAt) ?? new Date(),
       },
     },
     { upsert: true }
@@ -241,10 +244,11 @@ async function upsertHistoricalOrders(days: number, providers: string[], targetE
           normalized
         )
 
-        const existingDbStatus = (existingOrdersByExternalId.get(normalized.externalOrderId) as { status?: string } | undefined)?.status
-        if (existingDbStatus === 'cancelled' && mergedNormalized.orderStatus === 'completed') {
-          mergedNormalized.orderStatus = 'cancelled'
-        }
+        // NOTE: Do NOT block completed from overriding cancelled here.
+        // fetchHistoricalOrders processes the 'cancelled' bucket FIRST and uses a `seen` set to
+        // deduplicate — so any order that is genuinely cancelled will already arrive as 'cancelled'.
+        // If mergedNormalized.orderStatus === 'completed', the platform has confirmed delivery
+        // (e.g. Be status 20/21/25 from 'previous' bucket) and the DB status is stale/wrong.
 
         if (shouldSkipFinalizedOrderSync(existingOrdersByExternalId.get(normalized.externalOrderId) as Record<string, unknown> | undefined, mergedNormalized)) {
           skipped += 1
@@ -452,7 +456,8 @@ function getGrabRepairTargetStatus(order: Pick<StoredOrder, 'rawPayload'>) {
 function shouldRepairGrabStatus(order: Pick<StoredOrder, 'status'>, targetStatus: 'completed' | 'cancelled' | null) {
   if (!targetStatus) return false
   if (targetStatus === 'cancelled') return order.status !== 'cancelled'
-  return order.status !== 'completed' && order.status !== 'cancelled'
+  // completed: cho phép ghi đè cả cancelled — đơn bị hủy nhầm mà thực tế đã giao
+  return order.status !== 'completed'
 }
 
 function needsOrderDetailBackfill(order: StoredOrder) {
@@ -707,7 +712,25 @@ async function repairStoredOrders(
         if (!sameNumber(order.platformFee, financialBreakdown.platformFee)) set.platformFee = Number(financialBreakdown.platformFee ?? 0)
       }
 
-      if (order.source === 'be' && order.rawPayload && hasBeCancelSignal(order.rawPayload) && order.status !== 'cancelled') {
+      // Be cancel signal check: only force cancelled if the raw status int does NOT indicate delivery.
+      // Status 20/21/25 = delivered on Be. Some completed orders may still carry driver_cancel_reason
+      // (e.g. first driver cancelled, second driver delivered) — do NOT re-cancel those.
+      const beRawStatusInt = Number(
+        order.rawPayload?.status
+        ?? order.rawPayload?.order_status
+        ?? order.rawPayload?.current_status
+        ?? order.rawPayload?.state
+        ?? order.rawPayload?.order_state
+        ?? -1
+      )
+      const BE_COMPLETED_INTS = new Set([20, 21, 25])
+      if (
+        order.source === 'be' &&
+        order.rawPayload &&
+        hasBeCancelSignal(order.rawPayload) &&
+        order.status !== 'cancelled' &&
+        !BE_COMPLETED_INTS.has(beRawStatusInt)
+      ) {
         set.status = 'cancelled'
         set.cancelReason = String(
           order.rawPayload.cancel_reason
@@ -727,6 +750,24 @@ async function repairStoredOrders(
           ?? order.rawPayload.updatedAt
         ) ?? new Date()
         unset.deliveredAt = ''
+      }
+
+      // Be completion repair: rawPayload int = 20/21/25 nhưng DB vẫn là cancelled → sửa thành completed
+      if (
+        order.source === 'be' &&
+        BE_COMPLETED_INTS.has(beRawStatusInt) &&
+        order.status === 'cancelled'
+      ) {
+        set.status = 'completed'
+        set.deliveredAt = parseDateValue(
+          order.rawPayload?.delivered_at
+          ?? order.rawPayload?.deliveredAt
+          ?? order.rawPayload?.updated_at
+          ?? order.rawPayload?.updatedAt
+          ?? order.deliveredAt
+        ) ?? new Date()
+        unset.cancelledAt = ''
+        unset.cancelReason = ''
       }
 
       const grabRepairStatus = order.source === 'grab' ? getGrabRepairTargetStatus(order) : null
@@ -814,7 +855,7 @@ async function backfillDriversFromOrders(options?: {
   let failed = 0
 
   const cursor = OrderModel.find(buildScopedOrderQuery({ providers, externalOrderIds: options?.externalOrderIds, shortIds: options?.shortIds, externalStoreIds: options?.externalStoreIds }))
-    .select('shortId source externalOrderId driverInfo rawPayload')
+    .select('shortId source externalOrderId placedAt driverInfo rawPayload')
     .lean()
     .cursor()
 
@@ -837,14 +878,13 @@ async function backfillDriversFromOrders(options?: {
       await DriverModel.updateOne(
         { phone, platform: String(order.source) },
         {
-          $set: {
-            name,
-            lastSeenAt: new Date(),
-          },
+          $set: { name },
           $setOnInsert: {
             phone,
             platform: String(order.source),
             visitCount: 1,
+            // Use the order's own date so historical backfill doesn't stamp "now" as lastSeenAt
+            lastSeenAt: parseDateValue(order.placedAt) ?? new Date(),
           },
         },
         { upsert: true }

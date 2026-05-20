@@ -352,6 +352,8 @@ function PauseStoreSection() {
   const [bulkDur, setBulkDur]       = useState<string>('24h')
   const [selected, setSelected]     = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy]     = useState(false)
+  const [scraperOnline, setScraperOnline] = useState<boolean | null>(null)
+  const [scraperVersion, setScraperVersion] = useState<string | null>(null)
 
   const getKey = (s: StoreStatus) => s.integrationId ?? String(s.storeId ?? '') ?? s.label
 
@@ -390,13 +392,19 @@ function PauseStoreSection() {
     setLoading(true)
     try {
       const res = await fetch(PAUSE_STORE_API, { signal: AbortSignal.timeout(15_000) })
-      const data = await res.json() as { ok?: boolean; stores?: unknown[]; message?: string }
-      setStores(normalizeStores(data.stores))
-      setStatusMsg('Cập nhật ' + new Date().toLocaleTimeString('vi-VN'))
-      setSelected(new Set())
-      if (data.ok === false && data.message) {
-        setStatusMsg(data.message)
+      const data = await res.json() as { ok?: boolean; scraperOnline?: boolean; stores?: unknown[]; message?: string }
+      const normalized = normalizeStores(data.stores)
+      // Chỉ replace stores khi server trả dữ liệu hợp lệ — giữ nguyên state cũ nếu lỗi + empty
+      if (data.ok !== false || normalized.length > 0) {
+        setStores(normalized)
+        setSelected(new Set())
       }
+      if (typeof data.scraperOnline === 'boolean') setScraperOnline(data.scraperOnline)
+      setStatusMsg(
+        data.ok === false && data.message
+          ? data.message
+          : 'Cập nhật ' + new Date().toLocaleTimeString('vi-VN')
+      )
     } catch {
       setStatusMsg('Không tải được trạng thái pause từ server')
     } finally {
@@ -406,18 +414,63 @@ function PauseStoreSection() {
 
   useEffect(() => { void load() }, [])
 
+  // Kiểm tra version scraper trực tiếp (port 3845) — refresh mỗi 30 giây
+  useEffect(() => {
+    const checkVersion = async () => {
+      try {
+        const r = await fetch(`${SCRAPER_DIRECT}/version`, { signal: AbortSignal.timeout(3_000) })
+        const d = await r.json().catch(() => null)
+        if (d?.version) setScraperVersion(String(d.version))
+        setScraperOnline(true)
+      } catch {
+        // version endpoint optional — đồng bộ từ load() là chính
+      }
+    }
+    void checkVersion()
+    const timer = window.setInterval(checkVersion, 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
   const doAction = async (action: 'pause' | 'resume', storeList: StoreStatus[], dur?: string) => {
-    const results = await Promise.allSettled(storeList.map(s =>
-      fetch(PAUSE_STORE_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ integrationId: s.integrationId, source: s.source, action, ...(dur ? { duration: dur } : {}) }),
-        signal: AbortSignal.timeout(35_000),
-      }).then(r => r.json())
-    ))
-    const ok = results.filter((result) => result.status === 'fulfilled' && result.value?.ok !== false).length
-    setStatusMsg(`${action === 'pause' ? 'Đã dừng' : 'Đã mở lại'} ${ok}/${storeList.length} cửa hàng`)
-    setTimeout(() => void load(), 3000)
+    const isMultiBe = storeList.length > 1 && storeList.every(s => s.source === 'be')
+
+    if (isMultiBe) {
+      // Be: xử lý nối tiếp vì scraper thực hiện automation Be portal theo từng store
+      let ok = 0
+      for (let i = 0; i < storeList.length; i++) {
+        const s = storeList[i]
+        setStatusMsg(`${action === 'pause' ? 'Đang dừng' : 'Đang mở lại'} ${i + 1}/${storeList.length}: ${s.label}…`)
+        try {
+          const r = await fetch(PAUSE_STORE_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ integrationId: s.integrationId, source: s.source, action, ...(dur ? { duration: dur } : {}) }),
+            signal: AbortSignal.timeout(60_000),
+          })
+          const data = await r.json() as { ok?: boolean }
+          if (data?.ok !== false) ok++
+        } catch { /* tiếp tục store kế tiếp */ }
+      }
+      setStatusMsg(`${action === 'pause' ? 'Đã dừng' : 'Đã mở lại'} ${ok}/${storeList.length} cửa hàng Be`)
+      // Be scraper cập nhật async — poll 2 lần để bắt trạng thái mới nhất
+      for (let p = 0; p < 2; p++) {
+        await new Promise<void>(resolve => setTimeout(resolve, 5_000))
+        await load()
+      }
+    } else {
+      // Grab hoặc single-store: parallel như cũ
+      const results = await Promise.allSettled(storeList.map(s =>
+        fetch(PAUSE_STORE_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ integrationId: s.integrationId, source: s.source, action, ...(dur ? { duration: dur } : {}) }),
+          signal: AbortSignal.timeout(35_000),
+        }).then(r => r.json())
+      ))
+      const ok = results.filter((result) => result.status === 'fulfilled' && result.value?.ok !== false).length
+      setStatusMsg(`${action === 'pause' ? 'Đã dừng' : 'Đã mở lại'} ${ok}/${storeList.length} cửa hàng`)
+      setTimeout(() => void load(), 3000)
+    }
   }
 
   const doPause = async (store: StoreStatus) => {
@@ -511,7 +564,27 @@ function PauseStoreSection() {
         <div className="flex items-center gap-2">
           <span className="text-xl">⏸</span>
           <div>
-            <p className="font-semibold text-gray-900 text-sm">Tạm dừng / Mở lại cửa hàng</p>
+            <div className="flex items-center gap-2">
+              <p className="font-semibold text-gray-900 text-sm">Tạm dừng / Mở lại cửa hàng</p>
+              <span className={cn(
+                'flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+                scraperOnline === true
+                  ? 'bg-green-100 text-green-700'
+                  : scraperOnline === false
+                    ? 'bg-red-100 text-red-600'
+                    : 'bg-gray-100 text-gray-400'
+              )}>
+                <span className={cn(
+                  'w-1.5 h-1.5 rounded-full flex-shrink-0',
+                  scraperOnline === true ? 'bg-green-500' : scraperOnline === false ? 'bg-red-500' : 'bg-gray-300'
+                )} />
+                {scraperOnline === true
+                  ? `Scraper${scraperVersion ? ` v${scraperVersion}` : ''} Online`
+                  : scraperOnline === false
+                    ? 'Scraper Offline'
+                    : 'Scraper…'}
+              </span>
+            </div>
             <p className="text-xs text-gray-400 mt-0.5">Dừng nhận đơn trên Grab / Be qua scraper</p>
           </div>
         </div>

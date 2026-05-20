@@ -233,8 +233,8 @@ function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58m
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff!important;color:#000;height:fit-content;min-height:0}
-body{width:${paperWidth};font-family:${fontFamily}}
-  .receipt-wrap{width:${wrapWidth};margin:0;padding:${isLabel ? '0 0.3mm 0 0.3mm' : '2mm 2mm 6mm'}}
+body{width:${paperWidth};${isLabel ? 'padding-left:3mm;' : ''}font-family:${fontFamily}}
+  .receipt-wrap{width:${wrapWidth};margin:0;padding:${isLabel ? '0 0.5mm 0 0' : '2mm 2mm 6mm'}}
   .receipt-template{font-family:${fontFamily};font-size:${isLabel ? '2.2mm' : '4.2mm'};line-height:${isLabel ? '0.92' : '1.35'};white-space:normal}
 .tpl-line{white-space:pre-wrap;word-break:break-word;margin:0}
 .tpl-empty{height:1.35em;margin:0}

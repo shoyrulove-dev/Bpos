@@ -252,7 +252,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       existingOrders.map((order) => [String(order.externalOrderId ?? ''), order])
     )
     const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean; placedAt?: string | Date }> = []
-    const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean }> = []
+    const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean; placedAt?: string | Date }> = []
 
     for (const normalized of orders) {
       try {

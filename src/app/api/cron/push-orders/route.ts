@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
   let updated = 0
   let skipped = 0
   const customersToSave: Array<{ name: string; phone: string; brandId: string; total: number; isNew: boolean; placedAt?: string | Date }> = []
-  const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean }> = []
+  const driversToSave: Array<{ name: string; phone: string; platform: string; isNew: boolean; placedAt?: string | Date }> = []
   const historyCount = intg.provider === 'grab' ? countGrabHistoryOrders(rawOrders) : 0
   const activeCount = Math.max(rawOrders.length - historyCount, 0)
   const rawDebugIds = rawOrders.map(getRawDebugId)
