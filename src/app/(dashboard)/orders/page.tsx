@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Download, Loader2, Plus, Printer, RefreshCw, Search, ArrowLeftRight } from 'lucide-react'
 import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
@@ -125,6 +125,7 @@ export default function OrdersPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [statusTarget, setStatusTarget] = useState<StatusChangeTarget | null>(null)
   const [statusSaving, setStatusSaving] = useState(false)
+  const ordersTopRef = useRef<HTMLDivElement>(null)
   const dq = useDebounce(search)
   const pollingEnabled = page === 1 && !dq && !statusFilter && !sourceFilter
   const { data, isLoading, refetch, isRefetching } = useOrders({
@@ -176,6 +177,11 @@ export default function OrdersPage() {
   const totalPages = Math.max(1, ordersData?.totalPages ?? 1)
   const currentFrom = ordersData?.total ? (page - 1) * pageSize + 1 : 0
   const currentTo = ordersData?.total ? Math.min(page * pageSize, ordersData.total) : 0
+
+  const handlePageChange = (nextPage: number) => {
+    setPage(nextPage)
+    setTimeout(() => ordersTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
 
   const handleExportOrders = () => {
     const sp = new URLSearchParams()
@@ -239,8 +245,13 @@ export default function OrdersPage() {
               </button>
               <button type="button" onClick={handleExportOrders} className="btn-outline h-9 w-9 shrink-0 justify-center px-0" aria-label="Export Excel" title="Export Excel"><Download className="h-4 w-4" /></button>
             </div>
+            {(ordersData?.total ?? 0) > 0 && (
+              <div className="mt-2 border-t border-gray-100 pt-2">
+                <PaginationControls page={page} pageSize={pageSize} total={ordersData?.total ?? 0} totalPages={totalPages} currentFrom={currentFrom} currentTo={currentTo} onPageChange={handlePageChange} onPageSizeChange={(nextSize) => setPageSize(nextSize)} />
+              </div>
+            )}
           </div>
-          <div className="space-y-4">
+          <div ref={ordersTopRef} className="space-y-4">
             {isLoading ? (
               <div className="flex min-h-[260px] items-center justify-center rounded-[28px] border border-gray-200 bg-white"><div className="flex items-center gap-3 text-gray-500"><Loader2 className="h-5 w-5 animate-spin" /> Đang tải đơn hàng...</div></div>
             ) : orders.length === 0 ? (
@@ -304,7 +315,7 @@ export default function OrdersPage() {
           </div>
 
           <div className="card p-4">
-            <PaginationControls page={page} pageSize={pageSize} total={ordersData?.total ?? 0} totalPages={totalPages} currentFrom={currentFrom} currentTo={currentTo} onPageChange={setPage} onPageSizeChange={(nextSize) => setPageSize(nextSize)} />
+            <PaginationControls page={page} pageSize={pageSize} total={ordersData?.total ?? 0} totalPages={totalPages} currentFrom={currentFrom} currentTo={currentTo} onPageChange={handlePageChange} onPageSizeChange={(nextSize) => setPageSize(nextSize)} />
           </div>
         </div>
         </div>
