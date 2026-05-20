@@ -455,8 +455,9 @@ function getGrabRepairTargetStatus(order: Pick<StoredOrder, 'rawPayload'>) {
 
 function shouldRepairGrabStatus(order: Pick<StoredOrder, 'status'>, targetStatus: 'completed' | 'cancelled' | null) {
   if (!targetStatus) return false
-  if (targetStatus === 'cancelled') return order.status !== 'cancelled'
-  // completed: cho phép ghi đè cả cancelled — đơn bị hủy nhầm mà thực tế đã giao
+  // Không cho phép cancelled ghi đè completed — đơn đã force-complete thủ công phải giữ nguyên.
+  // completed ghi đè được cancelled (đơn bị hủy nhầm mà thực tế đã giao).
+  if (targetStatus === 'cancelled') return order.status !== 'cancelled' && order.status !== 'completed'
   return order.status !== 'completed'
 }
 
@@ -729,6 +730,7 @@ async function repairStoredOrders(
         order.rawPayload &&
         hasBeCancelSignal(order.rawPayload) &&
         order.status !== 'cancelled' &&
+        order.status !== 'completed' &&
         !BE_COMPLETED_INTS.has(beRawStatusInt)
       ) {
         set.status = 'cancelled'

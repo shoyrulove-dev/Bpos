@@ -603,6 +603,11 @@ export function shouldSkipFinalizedOrderSync(existing: Partial<NormalizedOrder> 
   const incomingStatus = String(incoming.orderStatus ?? '').trim().toLowerCase()
 
   if (!FINALIZED_ORDER_STATUSES.has(existingStatus)) return false
+
+  // Đơn đã được force-complete không được bị historical sync ghi đè thành cancelled.
+  // completed có thể ghi đè cancelled (đơn bị hủy nhầm), nhưng không chiều ngược lại.
+  if (existingStatus === 'completed' && incomingStatus === 'cancelled') return true
+
   if (existingStatus !== incomingStatus) return false
 
   return !hasMeaningfulFinalizedOrderChange(existing, incoming)
