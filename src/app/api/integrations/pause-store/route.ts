@@ -127,30 +127,35 @@ export async function GET(req: NextRequest) {
 
   const wantsLive = req.nextUrl.searchParams.get('live') === '1'
 
-  let scraperStores: PauseStoreRow[] = []
-  try {
-    const scraperPath = wantsLive ? '/store-status?live=1' : '/store-status'
-    const res = await fetch(`${SCRAPER_URL}${scraperPath}`, {
+  // Fetch scraper status and DB integrations in parallel to minimize latency
+  const scraperPath = wantsLive ? '/store-status?live=1' : '/store-status'
+  const [scraperResult, dbResult] = await Promise.allSettled([
+    fetch(`${SCRAPER_URL}${scraperPath}`, {
       signal: AbortSignal.timeout(wantsLive ? 30_000 : 5_000),
-    })
-    const data = await res.json().catch(() => null)
+    }).then(r => r.json()).catch(() => null),
+    (async () => {
+      await connectDB()
+      const { default: Integration } = await import('@/models/Integration')
+      return Integration
+        .find({ provider: { $in: ['grab', 'be'] }, isActive: true })
+        .select('_id provider externalStoreId externalStoreName loginUsername')
+        .lean()
+        .exec()
+    })(),
+  ])
+
+  let scraperStores: PauseStoreRow[] = []
+  if (scraperResult.status === 'fulfilled' && scraperResult.value) {
+    const data = scraperResult.value
     if (data && data.ok !== false && Array.isArray(data.stores)) {
       scraperStores = data.stores
         .map((store: unknown) => toPauseStoreRow(store))
         .filter((store: PauseStoreRow | null): store is PauseStoreRow => Boolean(store))
     }
-  } catch {
-    // Keep empty scraperStores and continue to DB merge/fallback.
   }
 
   try {
-    await connectDB()
-    const { default: Integration } = await import('@/models/Integration')
-    const integrations = await Integration
-      .find({ provider: { $in: ['grab', 'be'] }, isActive: true })
-      .select('_id provider externalStoreId externalStoreName loginUsername')
-      .lean()
-      .exec()
+    const integrations = dbResult.status === 'fulfilled' ? dbResult.value as unknown as Array<{ _id: unknown; provider: string; externalStoreId?: string; externalStoreName?: string; loginUsername?: string }> : []
 
     const dbStores: PauseStoreRow[] = integrations.map((integ: any) => ({
       integrationId: integ._id.toString(),
