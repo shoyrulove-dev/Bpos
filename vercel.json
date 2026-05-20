@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/repair-orders?staleHours=3&staleMax=10&historical=false&providers=be,grab",
-      "schedule": "0 */3 * * *"
+      "schedule": "0 1 * * *"
     }
   ]
 }
