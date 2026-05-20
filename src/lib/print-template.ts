@@ -112,7 +112,7 @@ const DEFAULT_TEMPLATES: Record<EditablePrintTemplateType, string> = {
     '{{range .Items}}',
     '{{.Name}}',
     '{{.SlotLabel}}',
-    '{{if .Note}}* {{.Note}}{{end}}',
+    '{{if .Note}}{{.Note}}{{end}}',
     '{{end}}',
   ].join('\n'),
 }

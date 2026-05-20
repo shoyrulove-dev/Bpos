@@ -456,7 +456,7 @@ export class BeAdapter implements PlatformAdapter {
         quantity,
         price:    computedUnitPrice,
         total:    lineTotal || computedUnitPrice * quantity,
-        note:     noteParts.join(' | ') || undefined,
+        note:     noteParts.join('\n') || undefined,
       }
     })
 
