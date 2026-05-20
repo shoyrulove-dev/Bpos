@@ -392,10 +392,11 @@ function PauseStoreSection() {
     return next
   }
 
-  const load = async () => {
+  const load = async (live = false) => {
     setLoading(true)
     try {
-      const res = await fetch(PAUSE_STORE_API, { signal: AbortSignal.timeout(15_000) })
+      const url = PAUSE_STORE_API + (live ? '?live=1' : '')
+      const res = await fetch(url, { signal: AbortSignal.timeout(live ? 35_000 : 15_000) })
       const data = await res.json() as { ok?: boolean; scraperOnline?: boolean; stores?: unknown[]; message?: string }
       const normalized = normalizeStores(data.stores)
       // Chỉ replace stores khi server trả dữ liệu hợp lệ — giữ nguyên state cũ nếu lỗi + empty
@@ -599,6 +600,11 @@ function PauseStoreSection() {
             {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             Làm mới
           </button>
+          <button onClick={() => void load(true)} disabled={loading}
+            className="btn-outline flex items-center gap-1.5 disabled:opacity-50 text-sm py-1.5 text-blue-600 border-blue-300 hover:bg-blue-50">
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Kiểm tra thực tế
+          </button>
         </div>
       </div>
 
@@ -784,8 +790,8 @@ function PauseStoreSection() {
                       <span className="ml-1.5 text-[11px] font-bold text-green-600">Active</span>
                     )}
                   </span>
-                  {/* Duration select (Grab only, not paused) */}
-                  {store.source === 'grab' && !store.paused && store.loggedIn && (
+                  {/* Duration select (Grab only, not paused, not unknown) */}
+                  {store.source === 'grab' && !store.paused && !isUnknownStatus && store.loggedIn && (
                     <select
                       value={selectedDur}
                       onChange={e => setSelectedDur(e.target.value)}
@@ -798,18 +804,18 @@ function PauseStoreSection() {
                   )}
                   {/* Action button */}
                   <button
-                    onClick={() => store.paused ? void doResume(store) : void doPause(store)}
+                    onClick={() => (store.paused || isUnknownStatus) ? void doResume(store) : void doPause(store)}
                     disabled={isBusy || !store.loggedIn}
                     className={cn(
                       'flex-shrink-0 flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50',
-                      store.paused
+                      (store.paused || isUnknownStatus)
                         ? 'bg-green-500 hover:bg-green-600 text-white'
                         : 'bg-red-500 hover:bg-red-600 text-white'
                     )}
                   >
                     {isBusy
                       ? <Loader2 className="w-3 h-3 animate-spin" />
-                      : store.paused ? '▶ Mở lại' : '⏸ Dừng'}
+                      : (store.paused || isUnknownStatus) ? '▶ Mở lại' : '⏸ Dừng'}
                   </button>
                 </div>
               </div>

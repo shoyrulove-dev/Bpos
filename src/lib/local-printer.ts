@@ -225,7 +225,7 @@ function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58m
   // For labels: tighten to 42mm usable content width.
   // Label height (40mm) matches physical 58mm × 40mm self-adhesive label stock.
   // Each .label-sheet div = exactly 1 physical sticker; content fills the full sticker height.
-  const wrapWidth = paperWidth === '58mm' ? '42mm' : paperWidth === 'A4' ? '190mm' : '72mm'
+  const wrapWidth = paperWidth === '58mm' ? (isLabel ? '46mm' : '42mm') : paperWidth === 'A4' ? '190mm' : '72mm'
   const fontFamily = isLabel
     ? "Tahoma,Arial,'Segoe UI',sans-serif"
     : "'Courier New',Consolas,'Lucida Console',monospace"
@@ -245,7 +245,7 @@ body{width:${paperWidth};${isLabel ? 'padding-left:3mm;' : ''}font-family:${font
 .tpl-slot{text-align:center;font-size:${isLabel ? '5mm' : '4.6mm'};font-weight:700;line-height:1.1}
 .tpl-divider{border:none;border-top:.35mm dashed #000;margin:1.5mm 0}
 .tpl-indent{padding-left:3mm}
-${isLabel ? '.receipt-template,.tpl-line,.tpl-slot{background:transparent!important;color:#000!important;font-weight:600;letter-spacing:0;font-synthesis:none;margin:0;padding:0}.label-sheet{width:100%;height:40mm;min-height:40mm;margin:0;padding:2mm 0 1mm;display:block;overflow:hidden;break-inside:avoid;page-break-inside:avoid}.receipt-template{margin:0;padding:0}.label-sheet .tpl-empty{display:none}.label-sheet .tpl-line:not(.tpl-slot){font-size:4.5mm;font-weight:700;line-height:1.2;margin:0 0 0.5mm}.label-sheet .tpl-slot{font-size:6mm;font-weight:700;text-align:center;line-height:1.2;margin:0.5mm 0}' : ''}
+${isLabel ? '.receipt-template,.tpl-line,.tpl-slot{background:transparent!important;color:#000!important;font-weight:600;letter-spacing:0;font-synthesis:none;margin:0;padding:0}.label-sheet{background:#fff!important;width:100%;height:30mm;min-height:30mm;margin:0;padding:2mm 0 1mm;display:block;overflow:hidden;break-inside:avoid;page-break-inside:avoid}.receipt-template{margin:0;padding:0}.label-sheet .tpl-empty{display:none}.label-sheet .tpl-line:not(.tpl-slot){font-size:3.5mm;font-weight:700;line-height:1.2;margin:0 0 0.5mm}.label-sheet .tpl-slot{font-size:5mm;font-weight:700;text-align:center;line-height:1.2;margin:0.5mm 0}' : ''}
 </style></head><body>
 <div class="receipt-wrap receipt-template">${renderedContent}</div>
 </body></html>`

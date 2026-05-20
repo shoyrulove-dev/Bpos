@@ -125,10 +125,13 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const wantsLive = req.nextUrl.searchParams.get('live') === '1'
+
   let scraperStores: PauseStoreRow[] = []
   try {
-    const res = await fetch(`${SCRAPER_URL}/store-status`, {
-      signal: AbortSignal.timeout(5_000),
+    const scraperPath = wantsLive ? '/store-status?live=1' : '/store-status'
+    const res = await fetch(`${SCRAPER_URL}${scraperPath}`, {
+      signal: AbortSignal.timeout(wantsLive ? 30_000 : 5_000),
     })
     const data = await res.json().catch(() => null)
     if (data && data.ok !== false && Array.isArray(data.stores)) {
