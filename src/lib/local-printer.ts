@@ -310,11 +310,20 @@ export async function printOrderWithHtmlTemplate(orderId: string, type: LocalPri
   } catch { /* fall through to default template */ }
   if (!templateContent || isTemplateBroken(templateContent)) templateContent = getDefaultTemplateContent(templateType)
 
-  // 3. Render HTML
-  const context = buildPrintTemplateContext(order, {
-    BillName: type === 'label' ? 'TEM IN BẾP' : 'PHIẾU LÀM MÓN',
-  })
-  const renderedContent = renderPrintTemplateHtml(templateContent, context, order.items ?? [])
+  // 3. Render HTML — for labels each item becomes a separate .label-sheet div
+  //    so the scraper screenshots them individually (correct size, white bg, no scaling blur)
+  let renderedContent: string
+  if (type === 'label') {
+    const items = order.items ?? []
+    renderedContent = items.map((item) => {
+      const slotTotal = Math.max(1, item.quantity)
+      const { context: labelCtx, items: labelItems } = buildLabelUnitTemplateData(order, item, 1, slotTotal)
+      return `<div class="label-sheet">${renderPrintTemplateHtml(templateContent, labelCtx, labelItems)}</div>`
+    }).join('\n')
+  } else {
+    const context = buildPrintTemplateContext(order, { BillName: 'PHIẾU LÀM MÓN' })
+    renderedContent = renderPrintTemplateHtml(templateContent, context, order.items ?? [])
+  }
   const fullHtml = buildThermalHtmlPage(renderedContent, paperSize, type)
 
   // 4. POST to bridge — bridge uses Playwright to screenshot → ESC/POS raster → LAN/USB
