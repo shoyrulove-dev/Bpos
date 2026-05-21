@@ -362,8 +362,8 @@ export async function printDemoTemplateWithBridge(templateContent: string, type:
   ]
   const renderedContent = type === 'label'
     ? (() => {
-        const { context: labelContext, items: labelItems } = buildLabelUnitTemplateData({
-          source: 'grab',
+        const demoOrder = {
+          source: 'grab' as const,
           externalOrderId: '00123456789-C76DEMO',
           shortId: 'ORD-DEMO',
           brandName: 'BPOS Demo Hub',
@@ -380,8 +380,20 @@ export async function printDemoTemplateWithBridge(templateContent: string, type:
           placedAt: new Date().toISOString(),
           deliveredAt: new Date(Date.now() + 25 * 60_000).toISOString(),
           items: demoItems,
-        }, demoItems[0], 1, 3)
-        return renderPrintTemplateHtml(content, labelContext, labelItems)
+        }
+        // Each item × each quantity slot gets its own .label-sheet div so the scraper
+        // screenshots them individually (avoids the full-page fallback that produces a
+        // huge TSPL bitmap and causes continuous black output on the label printer).
+        const labelBlocks: string[] = []
+        for (const item of demoItems) {
+          const total = Math.max(1, item.quantity || 1)
+          const printCount = Math.min(total, 2) // cap at 2 copies per item for demo
+          for (let slot = 1; slot <= printCount; slot++) {
+            const { context: lCtx, items: lItems } = buildLabelUnitTemplateData(demoOrder, item, slot, total)
+            labelBlocks.push(`<div class="label-sheet">${renderPrintTemplateHtml(content, lCtx, lItems)}</div>`)
+          }
+        }
+        return labelBlocks.join('')
       })()
     : renderPrintTemplateHtml(content, context, demoItems)
   const fullHtml = buildThermalHtmlPage(renderedContent, paperSize, type)
