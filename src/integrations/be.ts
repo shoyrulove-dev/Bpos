@@ -19,7 +19,7 @@ import type { PlatformAdapter, AdapterConfig, SessionData } from './types'
 const BE_BASE_PROD    = 'https://gw.be.com.vn/api/v1/be-food-gateway'
 const BE_BASE_STAGING = 'https://gw.veep.me/api/v1/be-food-gateway'
 const BE_MERCHANT_BASE = 'https://gw.be.com.vn/api/v1/be-merchant-gateway/v2/merchant'
-const BE_MERCHANT_OPERATOR_TOKEN = '0b28e008bc323838f5ec84f718ef11e6'
+const BE_MERCHANT_OPERATOR_TOKEN = process.env.BE_MERCHANT_OPERATOR_TOKEN ?? ''
 const BE_MERCHANT_DEVICE_TYPE = '2'
 
 // Status integer → fetch_type context mapping (Be API uses int, not string enum)
@@ -118,7 +118,6 @@ export class BeAdapter implements PlatformAdapter {
       // might have missed (e.g. unknown status int), force cancelled
       if (fetchType === 'previous' && normalized.orderStatus !== 'cancelled') {
         if (this.hasCancelSignal(order) || (detailMap.has(orderId) && this.hasCancelSignal(detailMap.get(orderId)!))) {
-          console.log(`[BE] previous order ${orderId} forced cancelled by cancel signal fields`)
           return { ...normalized, orderStatus: 'cancelled' as const }
         }
       }
@@ -645,13 +644,12 @@ export class BeAdapter implements PlatformAdapter {
             const partnerData = await partnerRes.json() as { restaurant_orders?: Record<string, unknown>[] }
             if (partnerData.restaurant_orders?.length) {
               cancelled = partnerData.restaurant_orders
-              console.log(`[BE] partner-api cancelled fallback: ${cancelled.length} orders for restaurant=${resId}`)
             }
           } else {
-            console.log(`[BE] partner-api cancelled fallback HTTP ${partnerRes.status} for restaurant=${resId}`)
+            console.warn(`[BE] partner-api cancelled fallback HTTP ${partnerRes.status} for restaurant=${resId}`)
           }
         } catch (e) {
-          console.log(`[BE] partner-api cancelled fallback error: ${e instanceof Error ? e.message : String(e)}`)
+          console.error(`[BE] partner-api cancelled fallback error: ${e instanceof Error ? e.message : String(e)}`)
         }
       }
 
@@ -707,14 +705,6 @@ export class BeAdapter implements PlatformAdapter {
       data?: { restaurant_orders?: Record<string, unknown>[] }
       code?: number
       message?: string
-    }
-    if (fetchType === 'cancelled') {
-      console.log(`[BE] cancelled bucket code=${data.code} msg=${data.message ?? ''} orders=${(data.restaurant_orders ?? data.orders ?? []).length}`)
-    }
-    if (fetchType === 'previous') {
-      const orders = data.restaurant_orders ?? data.orders ?? []
-      const statusLog = orders.slice(0, 20).map((o) => `${o.order_id}:s=${o.status ?? o.order_status ?? '?'},c=${o.cancel_reason ?? o.cancel_time ?? o.is_cancelled ?? o.is_cancel ?? '-'}`).join(' | ')
-      console.log(`[BE] previous bucket: ${orders.length} orders | ${statusLog}`)
     }
     // Support alternate response shapes the merchant API might use
     return data.restaurant_orders ?? data.orders ?? data.data?.restaurant_orders ?? []

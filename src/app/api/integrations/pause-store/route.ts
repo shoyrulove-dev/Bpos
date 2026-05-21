@@ -181,9 +181,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const integrations = dbResult.status === 'fulfilled' ? dbResult.value as unknown as Array<{ _id: unknown; provider: string; externalStoreId?: string; externalStoreName?: string; loginUsername?: string }> : []
+    const integrations = dbResult.status === 'fulfilled' ? dbResult.value as unknown as Array<{ _id: { toString(): string }; provider: string; externalStoreId?: string; externalStoreName?: string; loginUsername?: string }> : []
 
-    const dbStores: PauseStoreRow[] = integrations.map((integ: any) => ({
+    const dbStores: PauseStoreRow[] = integrations.map((integ) => ({
       integrationId: integ._id.toString(),
       source: integ.provider === 'be' ? 'be' : 'grab',
       label: integ.externalStoreName || integ.externalStoreId || 'Unknown store',

@@ -25,6 +25,11 @@ grab-parse-chunks.js
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+build_log*.txt
+build_output*.txt
+build-*.txt
+build-out.txt
+build-verify.txt
 
 # local env files
 .env*.local

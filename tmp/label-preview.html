@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Label Demo Tổng — BE & Grab · 50×40mm · Tahoma</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#888;padding:24px 28px;font-family:Arial,sans-serif;display:flex;flex-wrap:wrap;gap:0;align-items:flex-start}
+
+/* ─── Cuộn giấy giả lập ─── */
+.roll-wrap{margin:0 20px 24px 0}
+.roll-title{
+  font-size:10px;font-weight:700;color:#fff;
+  background:#444;border-radius:4px 4px 0 0;
+  padding:5px 10px;letter-spacing:.4px;
+  display:flex;align-items:center;gap:6px
+}
+.roll{
+  background:#ccc;
+  padding:0 5mm;
+  display:flex;flex-direction:column;align-items:center;
+  gap:0;
+  box-shadow:2px 2px 8px rgba(0,0,0,.4);
+  border-radius:0 0 4px 4px
+}
+.gap{width:50mm;height:3mm;background:#ccc}
+
+/* ─── Sticker 50mm × 40mm ─── */
+.sticker{
+  width:50mm;height:40mm;
+  background:#fff;
+  border-radius:2mm;
+  overflow:hidden;
+  box-shadow:0 0 0 .3mm #bbb;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:2mm 2.5mm 1.5mm;
+  gap:.35mm;
+  font-family:Tahoma,Arial,'Segoe UI',sans-serif;
+  text-align:center
+}
+
+/* ─── CSS y hệt local-printer.ts ─── */
+.tpl-name{
+  font-size:3.15mm;font-weight:800;
+  line-height:1.25;color:#000;
+  word-break:break-word
+}
+.tpl-slot{
+  font-size:3.95mm;font-weight:700;
+  line-height:1.2;color:#000;
+  margin:.4mm 0
+}
+.tpl-opt{
+  font-size:1.7mm;font-weight:400;
+  line-height:1.4;color:#000;
+  word-break:break-word
+}
+
+/* ─── Badge nền tảng ─── */
+.badge{
+  font-size:8px;font-weight:700;
+  padding:1px 5px;border-radius:3px;
+  display:inline-block
+}
+.grab{background:#00b14f;color:#fff}
+.be  {background:#fbbf24;color:#000}
+.note-box{
+  background:#1e1e2e;color:#a6e3a1;
+  font-family:monospace;font-size:8px;
+  padding:6px 8px;border-radius:4px;
+  width:50mm;margin-top:4px;
+  line-height:1.5;word-break:break-all
+}
+.note-box .label{color:#89b4fa;font-weight:700}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+  CUỘN 1 — BE · Format ngắn "Group: Value"
+══════════════════════════════════════════ -->
+<div class="roll-wrap">
+  <div class="roll-title"><span class="badge be">BE</span> Format gọn · GroupName: Giá trị</div>
+  <div class="roll">
+    <div class="gap"></div>
+
+    <!-- có 3 option -->
+    <div class="sticker">
+      <div class="tpl-name">Rau Má Tươi Nguyên Chất (L)</div>
+      <div class="tpl-slot">1/2</div>
+      <div class="tpl-opt">Mức đường: Ít ngọt</div>
+      <div class="tpl-opt">Mức đá: Bình thường</div>
+      <div class="tpl-opt">Topping: Hạt chia (+5.000đ)</div>
+    </div>
+
+    <div class="gap"></div>
+
+    <!-- có 3 option -->
+    <div class="sticker">
+      <div class="tpl-name">Rau Má Tươi Nguyên Chất (L)</div>
+      <div class="tpl-slot">2/2</div>
+      <div class="tpl-opt">Mức đường: Bình thường</div>
+      <div class="tpl-opt">Mức đá: Bình thường</div>
+    </div>
+
+    <div class="gap"></div>
+
+    <!-- không có option -->
+    <div class="sticker">
+      <div class="tpl-name">Rau Má Đậu Xanh (M)</div>
+      <div class="tpl-slot">1/1</div>
+    </div>
+
+    <div class="gap"></div>
+  </div>
+  <div class="note-box">
+    <span class="label">note lưu DB:</span><br>
+    "Mức đường: Ít ngọt\nMức đá: Bình thường\nTopping: Hạt chia (+5.000đ)"
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+  CUỘN 2 — Grab · Format đầy đủ portal
+  "Tùy chọn X (Bắt buộc)" trên 1 dòng
+  "• Giá trị" trên dòng tiếp theo
+══════════════════════════════════════════ -->
+<div class="roll-wrap">
+  <div class="roll-title"><span class="badge grab">GRAB</span> Format portal đầy đủ · 2 dòng / option</div>
+  <div class="roll">
+    <div class="gap"></div>
+
+    <!-- Grab lưu: header group trên 1 dòng, value trên dòng tiếp -->
+    <div class="sticker">
+      <div class="tpl-name">Rau Má Tươi Nguyên Chất (L)</div>
+      <div class="tpl-slot">1/1</div>
+      <div class="tpl-opt">Tùy chọn Mức đường - L (Bắt buộc)</div>
+      <div class="tpl-opt">• Ít ngọt</div>
+      <div class="tpl-opt">Tùy chọn Mức đá - L (Bắt buộc)</div>
+      <div class="tpl-opt">• Bình thường</div>
+      <div class="tpl-opt">Tùy chọn Topping (Không bắt buộc)</div>
+      <div class="tpl-opt">• Hạt chia 5.000 ₫</div>
+    </div>
+
+    <div class="gap"></div>
+
+    <!-- 2 option, 2 group -->
+    <div class="sticker">
+      <div class="tpl-name">Rau Má Đậu Xanh Sữa Dừa (M)</div>
+      <div class="tpl-slot">1/1</div>
+      <div class="tpl-opt">Tùy chọn Mức đường - M (Bắt buộc)</div>
+      <div class="tpl-opt">• Nhiều ngọt</div>
+      <div class="tpl-opt">Tùy chọn Mức đá - M (Bắt buộc)</div>
+      <div class="tpl-opt">• Đá riêng</div>
+    </div>
+
+    <div class="gap"></div>
+  </div>
+  <div class="note-box">
+    <span class="label">note lưu DB (portal DOM):</span><br>
+    "Tùy chọn Mức đường - L (Bắt buộc)\n• Ít ngọt\nTùy chọn Mức đá - L (Bắt buộc)\n• Bình thường\n..."<br><br>
+    <span style="color:#f38ba8">⚠ Mỗi group = 2 dòng → chật hơn!</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+  CUỘN 3 — Grab · Format gọn đề xuất
+  "Mức đường - L: Ít ngọt" 1 dòng / option
+══════════════════════════════════════════ -->
+<div class="roll-wrap">
+  <div class="roll-title"><span class="badge grab">GRAB</span> Format gọn đề xuất · 1 dòng / option</div>
+  <div class="roll">
+    <div class="gap"></div>
+
+    <div class="sticker">
+      <div class="tpl-name">Rau Má Tươi Nguyên Chất (L)</div>
+      <div class="tpl-slot">1/2</div>
+      <div class="tpl-opt">Mức đường - L: Ít ngọt</div>
+      <div class="tpl-opt">Mức đá - L: Bình thường</div>
+      <div class="tpl-opt">Topping: Hạt chia (+5.000đ)</div>
+    </div>
+
+    <div class="gap"></div>
+
+    <div class="sticker">
+      <div class="tpl-name">Rau Má Tươi Nguyên Chất (L)</div>
+      <div class="tpl-slot">2/2</div>
+      <div class="tpl-opt">Mức đường - L: Bình thường</div>
+      <div class="tpl-opt">Mức đá - L: Bình thường</div>
+    </div>
+
+    <div class="gap"></div>
+
+    <div class="sticker">
+      <div class="tpl-name">Rau Má Nha Đam Hạt Chia (L)</div>
+      <div class="tpl-slot">1/1</div>
+      <div class="tpl-opt">Mức đường - L: Ít ngọt</div>
+      <div class="tpl-opt">Mức đá - L: Đá riêng</div>
+    </div>
+
+    <div class="gap"></div>
+  </div>
+  <div class="note-box">
+    <span class="label">note lưu DB (gọn):</span><br>
+    "Mức đường - L: Ít ngọt\nMức đá - L: Bình thường\nTopping: Hạt chia"<br><br>
+    <span style="color:#a6e3a1">✓ Mỗi group = 1 dòng → gọn nhất</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+  CUỘN 4 — Stress test tên dài + nhiều option
+══════════════════════════════════════════ -->
+<div class="roll-wrap">
+  <div class="roll-title">STRESS TEST · Tên dài + slot lớn + 5 options</div>
+  <div class="roll">
+    <div class="gap"></div>
+
+    <!-- tên dài + 5 opt -->
+    <div class="sticker">
+      <div class="tpl-name">Matcha Đá Xay Kem Phô Mai Size L</div>
+      <div class="tpl-slot">9/12</div>
+      <div class="tpl-opt">Mức đường: 30%</div>
+      <div class="tpl-opt">Mức đá: 100%</div>
+      <div class="tpl-opt">Topping: Trân châu đen</div>
+      <div class="tpl-opt">Kem phô mai thêm</div>
+      <div class="tpl-opt">Pudding trứng</div>
+    </div>
+
+    <div class="gap"></div>
+
+    <!-- opt dài (có thể wrap) -->
+    <div class="sticker">
+      <div class="tpl-name">Cà Phê Trứng Muối Kem Béo Size M</div>
+      <div class="tpl-slot">1/1</div>
+      <div class="tpl-opt">Tùy chọn Mức đường - M (Bắt buộc): Ít ngọt</div>
+      <div class="tpl-opt">Tùy chọn Mức đá - M (Bắt buộc): Bình thường</div>
+    </div>
+
+    <div class="gap"></div>
+
+    <!-- chỉ 1 opt -->
+    <div class="sticker">
+      <div class="tpl-name">Nước Ép Cam Tươi Nguyên Chất</div>
+      <div class="tpl-slot">1/1</div>
+      <div class="tpl-opt">Không đá</div>
+    </div>
+
+    <div class="gap"></div>
+  </div>
+  <div class="note-box">
+    <span class="label">Ghi chú:</span><br>
+    Opt 1.7mm · Tahoma · 50mm rộng<br>
+    Dòng opt dài ~40-45 ký tự vẫn vừa 1 dòng<br>
+    Dòng &gt;50 ký tự mới wrap xuống dòng 2
+  </div>
+</div>
+
+</body></html>

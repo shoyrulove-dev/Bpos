@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Label Demo – 50mm × 40mm</title>
+<style>
+  body { background: #888; margin: 0; padding: 20px; font-family: sans-serif; }
+  h2 { color: #fff; font-size: 13px; margin: 0 0 8px; }
+  .sticker-wrap {
+    display: inline-block;
+    background: #fff;
+    width: 50mm;
+    min-height: 40mm;
+    max-height: 40mm;
+    border-radius: 3mm;
+    margin: 6px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    vertical-align: top;
+  }
+
+  /* ===== EXACT COPY of label CSS from buildThermalHtmlPage ===== */
+  * { box-sizing: border-box; }
+  .receipt-template,.tpl-line,.tpl-slot,.tpl-strong,.tpl-center,.tpl-indent {
+    background: transparent !important;
+    color: #000 !important;
+    font-weight: 700;
+    letter-spacing: 0;
+    font-synthesis: none;
+    margin: 0;
+    padding: 0;
+    forced-color-adjust: none !important;
+  }
+  .label-sheet {
+    background: #fff !important;
+    color: #000 !important;
+    width: 100%;
+    min-height: 20mm;
+    margin: 0;
+    padding: 0 3mm;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    forced-color-adjust: none !important;
+    font-family: Tahoma, sans-serif;
+  }
+  .receipt-template { margin: 0; padding: 0; text-align: center; }
+  .label-sheet .tpl-empty { display: none; }
+  .label-sheet .tpl-line:not(.tpl-slot):not(.tpl-indent):not(.tpl-empty) {
+    font-size: 4.5mm;
+    font-weight: 800 !important;
+    line-height: 1.25;
+    margin: 0 0 0.4mm;
+    text-align: center;
+    color: #000 !important;
+  }
+  .label-sheet .tpl-slot {
+    font-size: 2.5mm;
+    font-weight: 800 !important;
+    text-align: center;
+    line-height: 1.25;
+    margin: 0.4mm 0;
+    white-space: normal;
+    word-break: break-word;
+    color: #000 !important;
+  }
+  .label-sheet .tpl-indent {
+    font-size: 2.5mm !important;
+    font-weight: 700 !important;
+    font-family: Tahoma, sans-serif !important;
+    line-height: 1.35;
+    text-align: center;
+    margin: 0;
+    padding: 0;
+    color: #000 !important;
+  }
+  .label-sheet .tpl-line:not(.tpl-slot):not(.tpl-empty) ~ .tpl-line:not(.tpl-slot) {
+    font-size: 2.5mm !important;
+    font-weight: 700 !important;
+    font-family: Tahoma, sans-serif !important;
+    line-height: 1.35;
+    text-align: center;
+    margin: 0;
+    padding: 0;
+    color: #000 !important;
+  }
+  .tpl-divider { border-color: #000 !important; }
+  /* ===== END label CSS ===== */
+
+  .row { display: flex; flex-wrap: wrap; align-items: flex-start; margin-bottom: 16px; }
+  .label-info { color: #fff; font-size: 11px; margin: 6px; align-self: center; }
+</style>
+</head>
+<body>
+
+<h2>Label Preview – 50mm × 40mm sticker demo (browser = screen DPI, printer = 203dpi sẽ sắc nét hơn)</h2>
+
+<div class="row">
+
+  <!-- Case 1: Tên ngắn, không option -->
+  <div>
+    <div class="label-info">Tên ngắn, không option</div>
+    <div class="sticker-wrap">
+      <div class="label-sheet" id="s1">
+        <div class="tpl-line">Cá viên chiên</div>
+        <div class="tpl-line tpl-slot">1/1</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Case 2: Tên vừa + 1 option -->
+  <div>
+    <div class="label-info">Tên vừa + 1 option</div>
+    <div class="sticker-wrap">
+      <div class="label-sheet" id="s2">
+        <div class="tpl-line">Gà Nướng Ớt Cay</div>
+        <div class="tpl-line tpl-slot">1/2</div>
+        <div class="tpl-line tpl-indent">* Món Dùng Kèm: Bánh mì</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Case 3: Tên dài 3 dòng + nhiều option (test auto-resize) -->
+  <div>
+    <div class="label-info">Tên dài + nhiều option (auto-resize)</div>
+    <div class="sticker-wrap">
+      <div class="label-sheet" id="s3">
+        <div class="tpl-line">Gà Nướng Ớt Cay Địa Trung Hải - Nguyên con</div>
+        <div class="tpl-line tpl-slot">1/1</div>
+        <div class="tpl-line tpl-indent">* Món Dùng Kèm: Bánh mì</div>
+        <div class="tpl-line tpl-indent">Món Dùng Kèm: Xôi Hành Phi</div>
+        <div class="tpl-line tpl-indent">Mức độ cay: 100% Cháy Họng</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Case 4: Tên rất dài + số lượng nhiều -->
+  <div>
+    <div class="label-info">Tên rất dài + slot 3/5</div>
+    <div class="sticker-wrap">
+      <div class="label-sheet" id="s4">
+        <div class="tpl-line">Combo Gà Nướng Đặc Biệt Hương Vị Tây Ban Nha</div>
+        <div class="tpl-line tpl-slot">3/5</div>
+        <div class="tpl-line tpl-indent">* Size: Lớn</div>
+        <div class="tpl-line tpl-indent">Nước: Không đá</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// Auto-resize: giống hệt script trong buildThermalHtmlPage
+(function() {
+  // Đối với demo, dùng height của sticker-wrap = 40mm
+  // Tính px/mm từ độ rộng thực của label-sheet (50mm)
+  document.querySelectorAll('.label-sheet').forEach(function(sh) {
+    var m = sh.offsetWidth / 50;       // px per mm
+    var t = 38 * m;                    // target: 38mm in px
+    if (sh.scrollHeight <= t) return;
+    var n = sh.querySelectorAll('.tpl-line:not(.tpl-slot):not(.tpl-indent):not(.tpl-empty)');
+    var s = sh.querySelectorAll('.tpl-slot');
+    var a = [].slice.call(n).concat([].slice.call(s));
+    for (var i = 0; i < 50 && sh.scrollHeight > t; i++) {
+      a.forEach(function(e) {
+        var f = parseFloat(getComputedStyle(e).fontSize);
+        if (f > 8) e.style.fontSize = (f - 0.5) + 'px';
+      });
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

@@ -38,7 +38,7 @@ export interface BridgePrinterResponse {
 }
 
 const STORAGE_KEY = 'bpos.local-printers'
-export const LOCAL_PRINTER_BRIDGE_ORIGIN = 'http://127.0.0.1:3846'
+export const LOCAL_PRINTER_BRIDGE_ORIGIN = process.env.NEXT_PUBLIC_LOCAL_PRINTER_BRIDGE_ORIGIN ?? 'http://127.0.0.1:3846'
 
 export const DEFAULT_LOCAL_PRINTER_SETTINGS: LocalPrinterSettings = {
   receipt: {
