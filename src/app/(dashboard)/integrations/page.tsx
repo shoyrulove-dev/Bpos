@@ -395,29 +395,61 @@ function PauseStoreSection() {
   const load = async (live = false) => {
     setLoading(true)
     try {
-      const url = PAUSE_STORE_API + (live ? '?live=1' : '')
-      const res = await fetch(url, { signal: AbortSignal.timeout(live ? 35_000 : 15_000) })
-      const data = await res.json() as { ok?: boolean; scraperOnline?: boolean; stores?: unknown[]; message?: string }
-      const normalized = normalizeStores(data.stores)
-      // Chỉ replace stores khi server trả dữ liệu hợp lệ — giữ nguyên state cũ nếu lỗi + empty
-      if (data.ok !== false || normalized.length > 0) {
-        setStores(normalized)
+      // Gọi scraper trực tiếp từ browser (scraper đã có CORS + Private-Network header)
+      // Gọi DB API riêng để lấy danh sách integration đã đăng ký
+      const scraperPath = live ? '/store-status?live=1' : '/store-status'
+      const [scraperResult, dbResult] = await Promise.allSettled([
+        fetch(`${SCRAPER_DIRECT}${scraperPath}`, {
+          signal: AbortSignal.timeout(live ? 30_000 : 5_000),
+        }).then(r => r.json()).catch(() => null),
+        fetch(`${PAUSE_STORE_API}?dbonly=1`, {
+          signal: AbortSignal.timeout(8_000),
+        }).then(r => r.json()).catch(() => null),
+      ])
+
+      const scraperData = (scraperResult.status === 'fulfilled' ? scraperResult.value : null) as { ok?: boolean; stores?: unknown[]; version?: string } | null
+      const dbData = (dbResult.status === 'fulfilled' ? dbResult.value : null) as { ok?: boolean; stores?: unknown[] } | null
+
+      const scraperOnlineNow = Boolean(scraperData && scraperData.ok !== false)
+      setScraperOnline(scraperOnlineNow)
+      if (scraperData?.version) setScraperVersion(String(scraperData.version))
+
+      // Merge: DB stores là base (luôn hiện), scraper overlay status thực tế
+      const dbStores = normalizeStores(dbData?.stores)
+      const scraperStores = normalizeStores(scraperData?.stores)
+      const makeKey = (s: StoreStatus) =>
+        s.integrationId ? `id:${s.integrationId}` : `src:${s.source}|store:${String(s.storeId ?? '').toLowerCase()}`
+      const mergedMap = new Map<string, StoreStatus>()
+      for (const s of dbStores) mergedMap.set(makeKey(s), s)
+      for (const s of scraperStores) {
+        const key = makeKey(s)
+        const existing = mergedMap.get(key)
+        mergedMap.set(key, existing ? { ...existing, ...s, label: s.label || existing.label } : s)
+      }
+      const merged = Array.from(mergedMap.values())
+      if (merged.length > 0 || scraperOnlineNow) {
+        setStores(merged)
         setSelected(new Set())
       }
-      if (typeof data.scraperOnline === 'boolean') setScraperOnline(data.scraperOnline)
       setStatusMsg(
-        data.ok === false && data.message
-          ? data.message
-          : 'Cập nhật ' + new Date().toLocaleTimeString('vi-VN')
+        scraperOnlineNow
+          ? 'Cập nhật ' + new Date().toLocaleTimeString('vi-VN')
+          : 'Scraper offline · Hiển thị danh sách DB'
       )
     } catch {
-      setStatusMsg('Không tải được trạng thái pause từ server')
+      setStatusMsg('Không tải được trạng thái')
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => { void load() }, [])
+
+  // Real-time polling — tự refresh trạng thái mỗi 15 giây
+  useEffect(() => {
+    const timer = window.setInterval(() => void load(), 15_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   // Kiểm tra version scraper trực tiếp (port 3845) — refresh mỗi 30 giây
   useEffect(() => {
@@ -437,6 +469,8 @@ function PauseStoreSection() {
   }, [])
 
   const doAction = async (action: 'pause' | 'resume', storeList: StoreStatus[], dur?: string) => {
+    // Gọi scraper trực tiếp từ browser — Vercel không thể proxy đến localhost scraper
+    const scraperEndpoint = action === 'pause' ? '/pause-store' : '/resume-store'
     const isMultiBe = storeList.length > 1 && storeList.every(s => s.source === 'be')
 
     if (isMultiBe) {
@@ -446,10 +480,10 @@ function PauseStoreSection() {
         const s = storeList[i]
         setStatusMsg(`${action === 'pause' ? 'Đang dừng' : 'Đang mở lại'} ${i + 1}/${storeList.length}: ${s.label}…`)
         try {
-          const r = await fetch(PAUSE_STORE_API, {
+          const r = await fetch(`${SCRAPER_DIRECT}${scraperEndpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ integrationId: s.integrationId, source: s.source, action, ...(dur ? { duration: dur } : {}) }),
+            body: JSON.stringify({ integrationId: s.integrationId, source: s.source, ...(dur ? { duration: dur } : {}) }),
             signal: AbortSignal.timeout(60_000),
           })
           const data = await r.json() as { ok?: boolean }
@@ -465,10 +499,10 @@ function PauseStoreSection() {
     } else {
       // Grab hoặc single-store: parallel như cũ
       const results = await Promise.allSettled(storeList.map(s =>
-        fetch(PAUSE_STORE_API, {
+        fetch(`${SCRAPER_DIRECT}${scraperEndpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ integrationId: s.integrationId, source: s.source, action, ...(dur ? { duration: dur } : {}) }),
+          body: JSON.stringify({ integrationId: s.integrationId, source: s.source, ...(dur ? { duration: dur } : {}) }),
           signal: AbortSignal.timeout(35_000),
         }).then(r => r.json())
       ))

@@ -78,6 +78,32 @@ export async function GET(req: NextRequest) {
   const { res: authRes } = await requireAdmin(req)
   if (authRes) return authRes
 
+  // ?dbonly=1 — chỉ trả về danh sách DB, không gọi scraper (browser tự gọi trực tiếp)
+  const wantsDbOnly = req.nextUrl.searchParams.get('dbonly') === '1'
+  if (wantsDbOnly) {
+    try {
+      await connectDB()
+      const { default: Integration } = await import('@/models/Integration')
+      const integrations = await Integration
+        .find({ provider: { $in: ['grab', 'be'] }, isActive: true })
+        .select('_id provider externalStoreId externalStoreName loginUsername')
+        .lean()
+        .exec() as Array<{ _id: unknown; provider: string; externalStoreId?: string; externalStoreName?: string; loginUsername?: string }>
+      const stores = integrations.map(integ => ({
+        integrationId: String(integ._id),
+        source: integ.provider === 'be' ? 'be' : 'grab',
+        label: integ.externalStoreName || integ.externalStoreId || 'Unknown store',
+        storeId: integ.externalStoreId,
+        paused: false,
+        loggedIn: false,
+        username: integ.loginUsername || undefined,
+      }))
+      return NextResponse.json({ ok: true, stores })
+    } catch (err) {
+      return NextResponse.json({ ok: false, stores: [], message: String(err) }, { status: 500 })
+    }
+  }
+
   type PauseStoreRow = {
     integrationId?: string
     source: 'grab' | 'be'
