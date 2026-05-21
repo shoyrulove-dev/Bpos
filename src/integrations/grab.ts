@@ -674,7 +674,7 @@ export class GrabAdapter implements PlatformAdapter {
         continue
       }
 
-      current.note = current.note ? `${current.note} | ${compactLine}` : compactLine
+      current.note = current.note ? `${current.note}\n${compactLine}` : compactLine
     }
 
     pushCurrent()

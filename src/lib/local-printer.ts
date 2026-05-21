@@ -235,7 +235,7 @@ function buildThermalHtmlPage(renderedContent: string, paperWidth: '80mm' | '58m
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff!important;color:#000;height:fit-content;min-height:0;color-scheme:light}
-body{width:${paperWidth};${isLabel ? 'padding-left:3mm;' : ''}font-family:${fontFamily}}
+body{width:${paperWidth};font-family:${fontFamily};${isLabel ? 'text-align:center;' : ''}}
   .receipt-wrap{width:${wrapWidth};margin:0;padding:${isLabel ? '0 0.5mm 0 0' : '2mm 2mm 6mm'}}
   .receipt-template{font-family:${fontFamily};font-size:${isLabel ? '4mm' : '4.2mm'};line-height:${isLabel ? '1.25' : '1.35'};white-space:normal}
 .tpl-line{white-space:pre-wrap;word-break:break-word;margin:0}
@@ -245,7 +245,7 @@ body{width:${paperWidth};${isLabel ? 'padding-left:3mm;' : ''}font-family:${font
 .tpl-slot{text-align:center;font-size:${isLabel ? '5mm' : '4.6mm'};font-weight:700;line-height:1.1}
 .tpl-divider{border:none;border-top:.35mm dashed #000;margin:1.5mm 0}
 .tpl-indent{padding-left:3mm}
-${isLabel ? '.receipt-template,.tpl-line,.tpl-slot{background:transparent!important;color:#000!important;font-weight:600;letter-spacing:0;font-synthesis:none;margin:0;padding:0;forced-color-adjust:none!important}.label-sheet{background:#fff!important;width:100%;min-height:26mm;margin:0;padding:2mm 0 1mm;display:block;break-inside:avoid;page-break-inside:avoid;forced-color-adjust:none!important}.receipt-template{margin:0;padding:0}.label-sheet .tpl-empty{display:none}.label-sheet .tpl-line:not(.tpl-slot){font-size:3mm;font-weight:700;line-height:1.25;margin:0 0 0.4mm}.label-sheet .tpl-slot{font-size:4.5mm;font-weight:700;text-align:center;line-height:1.2;margin:0.4mm 0}' : ''}
+${isLabel ? '.receipt-template,.tpl-line,.tpl-slot{background:transparent!important;color:#000!important;font-weight:600;letter-spacing:0;font-synthesis:none;margin:0;padding:0;forced-color-adjust:none!important}.label-sheet{background:#fff!important;width:100%;min-height:26mm;margin:0;padding:2mm 0 1mm;display:block;break-inside:avoid;page-break-inside:avoid;forced-color-adjust:none!important}.receipt-template{margin:0;padding:0}.label-sheet .tpl-empty{display:none}.label-sheet .tpl-line:not(.tpl-slot){font-size:3mm;font-weight:700;line-height:1.25;margin:0 0 0.4mm;text-align:center}.label-sheet .tpl-slot{font-size:4.5mm;font-weight:700;text-align:center;line-height:1.2;margin:0.4mm 0}' : ''}
 </style></head><body>
 <div class="receipt-wrap receipt-template">${renderedContent}</div>
 </body></html>`

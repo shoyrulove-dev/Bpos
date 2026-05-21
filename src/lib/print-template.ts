@@ -225,10 +225,13 @@ function buildItemContext(item: OrderItem, orderCtx: TemplateContext): TemplateC
   // Normalize note for label display:
   // Old BE API format stores "* Option1, Option2" — strip the "* " prefix and
   // split comma-separated options into one-per-line so each prints on its own row.
+  // Grab portal DOM scraping uses " | " as separator — normalize that too.
   // Only applies to single-line notes (multi-line notes already have \n separators).
   let noteDisplay = item.note ?? ''
   if (!noteDisplay.includes('\n') && noteDisplay.startsWith('* ')) {
     noteDisplay = noteDisplay.slice(2).split(', ').map((s) => s.trim()).filter(Boolean).join('\n')
+  } else if (!noteDisplay.includes('\n') && noteDisplay.includes(' | ')) {
+    noteDisplay = noteDisplay.split(' | ').map((s) => s.trim()).filter(Boolean).join('\n')
   }
 
   return {
