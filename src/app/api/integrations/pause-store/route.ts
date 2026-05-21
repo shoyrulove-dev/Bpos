@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
         .find({ provider: { $in: ['grab', 'be'] }, isActive: true })
         .select('_id provider externalStoreId externalStoreName loginUsername')
         .lean()
-        .exec() as Array<{ _id: unknown; provider: string; externalStoreId?: string; externalStoreName?: string; loginUsername?: string }>
+        .exec() as unknown as Array<{ _id: unknown; provider: string; externalStoreId?: string; externalStoreName?: string; loginUsername?: string }>
       const stores = integrations.map(integ => ({
         integrationId: String(integ._id),
         source: integ.provider === 'be' ? 'be' : 'grab',

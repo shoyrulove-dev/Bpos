@@ -112,7 +112,7 @@ const DEFAULT_TEMPLATES: Record<EditablePrintTemplateType, string> = {
     '{{range .Items}}',
     '{{.Name}}',
     '{{.SlotLabel}}',
-    '{{if .Note}}{{.Note}}{{end}}',
+    '{{if .NoteDisplay}}{{.NoteDisplay}}{{end}}',
     '{{end}}',
   ].join('\n'),
 }
@@ -246,6 +246,7 @@ function buildItemContext(item: OrderItem, orderCtx: TemplateContext): TemplateC
     FinalPrice: formatCurrency(getItemTotal(item)),
     Total: formatCurrency(getItemTotal(item)),
     Note: noteDisplay,
+    NoteDisplay: noteDisplay ? noteDisplay.split('\n').map((l) => `  ${l.trim()}`).filter((s) => s.trim()).join('\n') : '',
     NoteLine: noteLine,
     Description: '',  // not in OrderItem model currently
     RawOptions: '',   // not in OrderItem model currently
