@@ -348,7 +348,8 @@ export function buildLabelUnitTemplateData(order: PrintableTemplateOrder, item: 
   // The stored item.note may use verbose group names or legacy pipe-format; rawPayload has the
   // canonical modifier structure with clean group titles and selected option names.
   if (order.source === 'grab' && order.rawPayload && typeof order.rawPayload === 'object') {
-    const rawNote = extractGrabItemNote(order.rawPayload as Record<string, unknown>, item.name)
+    const itemIdx = order.items.indexOf(item)
+    const rawNote = extractGrabItemNote(order.rawPayload as Record<string, unknown>, item.name, itemIdx >= 0 ? itemIdx : 0)
     if (rawNote) labelItem = { ...labelItem, note: rawNote }
   }
 
@@ -380,19 +381,34 @@ function cleanGrabGroupTitle(raw: string): string {
     .trim()
 }
 
-/** Extract modifier notes from Grab rawPayload for the item matching `itemName`.
+/** Extract modifier notes from Grab rawPayload for the item matching `itemName` (or at `itemIdx`).
+ *  Prioritises rawPayload.itemInfo.items — the Grab API canonical source that always carries
+ *  modifierGroups. rawPayload.items may be stale DOM-scraped placeholders without modifiers.
  *  Returns a "\n"-joined string "GroupTitle: OptionName" per selected modifier, or undefined.
  */
-function extractGrabItemNote(rawPayload: Record<string, unknown>, itemName: string): string | undefined {
-  const rawItems = (
-    Array.isArray(rawPayload.items)      ? rawPayload.items :
-    Array.isArray(rawPayload.orderItems) ? rawPayload.orderItems :
-    Array.isArray(rawPayload.lineItems)  ? rawPayload.lineItems : []
-  ) as Record<string, unknown>[]
+function extractGrabItemNote(rawPayload: Record<string, unknown>, itemName: string, itemIdx: number): string | undefined {
+  // 1. rawPayload.itemInfo.items — Grab API canonical (portal-preferred, has modifierGroups)
+  const itemInfoItems = (() => {
+    const ii = rawPayload.itemInfo
+    if (ii && typeof ii === 'object' && !Array.isArray(ii)) {
+      const its = (ii as Record<string, unknown>).items
+      if (Array.isArray(its) && its.length > 0) return its as Record<string, unknown>[]
+    }
+    return null
+  })()
 
-  const ri = rawItems.find((r) =>
-    String((r as Record<string, unknown>).name ?? (r as Record<string, unknown>).itemName ?? '').trim() === itemName.trim()
-  ) as Record<string, unknown> | undefined
+  // 2. Fallback to other top-level arrays (API-only orders without itemInfo wrapper)
+  const rawItems: Record<string, unknown>[] =
+    itemInfoItems ??
+    (Array.isArray(rawPayload.items)      ? rawPayload.items      as Record<string, unknown>[] : null) ??
+    (Array.isArray(rawPayload.orderItems) ? rawPayload.orderItems as Record<string, unknown>[] : null) ??
+    (Array.isArray(rawPayload.lineItems)  ? rawPayload.lineItems  as Record<string, unknown>[] : null) ??
+    []
+
+  // Match by name first; fall back to positional index (DOM-scraped names may differ slightly)
+  const ri: Record<string, unknown> | undefined =
+    rawItems.find((r) => String(r.name ?? r.itemName ?? '').trim() === itemName.trim()) ??
+    rawItems[itemIdx] as Record<string, unknown> | undefined
   if (!ri) return undefined
 
   const lines: string[] = []
