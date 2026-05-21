@@ -221,6 +221,16 @@ function processConditionals(template: string, context: Record<string, string>):
 
 function buildItemContext(item: OrderItem, orderCtx: TemplateContext): TemplateContext {
   const noteLine = item.note ? `  Ghi chú: ${item.note}` : ''
+
+  // Normalize note for label display:
+  // Old BE API format stores "* Option1, Option2" — strip the "* " prefix and
+  // split comma-separated options into one-per-line so each prints on its own row.
+  // Only applies to single-line notes (multi-line notes already have \n separators).
+  let noteDisplay = item.note ?? ''
+  if (!noteDisplay.includes('\n') && noteDisplay.startsWith('* ')) {
+    noteDisplay = noteDisplay.slice(2).split(', ').map((s) => s.trim()).filter(Boolean).join('\n')
+  }
+
   return {
     // Order-level vars available inside item blocks
     ...orderCtx,
@@ -232,7 +242,7 @@ function buildItemContext(item: OrderItem, orderCtx: TemplateContext): TemplateC
     DiscountPrice: formatCurrency(item.price), // same as Price (no per-item discount in current model)
     FinalPrice: formatCurrency(getItemTotal(item)),
     Total: formatCurrency(getItemTotal(item)),
-    Note: item.note ?? '',
+    Note: noteDisplay,
     NoteLine: noteLine,
     Description: '',  // not in OrderItem model currently
     RawOptions: '',   // not in OrderItem model currently

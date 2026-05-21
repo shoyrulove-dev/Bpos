@@ -441,8 +441,11 @@ export class BeAdapter implements PlatformAdapter {
         }
       }
 
+      const rawNote = String(i.note ?? i.item_note ?? '').trim()
       const noteParts = Array.from(new Set([
-        String(i.note ?? i.item_note ?? '').trim(),
+        // Skip raw BE API note when structured customization lines are available
+        // (the raw note is just a plain-text duplicate of the same customizations)
+        ...(customizationLines.length > 0 ? [] : [rawNote]),
         ...customizationLines,
       ].filter(Boolean)))
 
