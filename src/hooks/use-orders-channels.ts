@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ORDER_ALERT_POLL_INTERVAL_MS } from '@/lib/order-alerts'
 
 async function fetchJSON(url: string, opts?: RequestInit) {
@@ -21,6 +21,7 @@ export function useOrders(params?: { q?: string; status?: string; source?: strin
   return useQuery({
     queryKey: ['orders', params],
     queryFn:  () => fetchJSON(`/api/orders?${sp}`),
+    placeholderData: keepPreviousData,
     staleTime: ORDER_ALERT_POLL_INTERVAL_MS,
     refetchInterval: params?.pollingEnabled ? ORDER_ALERT_POLL_INTERVAL_MS : false,
     refetchIntervalInBackground: params?.pollingEnabled ?? false,

@@ -128,7 +128,7 @@ export default function OrdersPage() {
   const ordersTopRef = useRef<HTMLDivElement>(null)
   const dq = useDebounce(search)
   const pollingEnabled = page === 1 && !dq && !statusFilter && !sourceFilter
-  const { data, isLoading, refetch, isRefetching } = useOrders({
+  const { data, isLoading, isFetching, refetch, isRefetching } = useOrders({
     q: dq,
     status: statusFilter,
     source: sourceFilter,
@@ -147,9 +147,10 @@ export default function OrdersPage() {
   }, [dq, statusFilter, sourceFilter, fromDate, toDate, pageSize])
 
   useEffect(() => {
-    const nextTotalPages = Math.max(1, ordersData?.totalPages ?? 1)
+    if (ordersData === undefined) return
+    const nextTotalPages = Math.max(1, ordersData.totalPages ?? 1)
     if (page > nextTotalPages) setPage(nextTotalPages)
-  }, [ordersData?.totalPages, page])
+  }, [ordersData, page])
 
   const handleChangeStatus = async (orderId: string, newStatus: string) => {
     setStatusSaving(true)
@@ -251,7 +252,7 @@ export default function OrdersPage() {
               </div>
             )}
           </div>
-          <div ref={ordersTopRef} className="space-y-4">
+          <div ref={ordersTopRef} className={`space-y-4 transition-opacity duration-150 ${isFetching && !isLoading ? 'opacity-60 pointer-events-none' : ''}`}>
             {isLoading ? (
               <div className="flex min-h-[260px] items-center justify-center rounded-[28px] border border-gray-200 bg-white"><div className="flex items-center gap-3 text-gray-500"><Loader2 className="h-5 w-5 animate-spin" /> Đang tải đơn hàng...</div></div>
             ) : orders.length === 0 ? (
