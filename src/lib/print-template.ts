@@ -338,10 +338,18 @@ export function buildLabelUnitTemplateData(order: PrintableTemplateOrder, item: 
     ? Math.round(item.total / item.quantity)
     : item.price
 
-  const labelItem: OrderItem = {
+  let labelItem: OrderItem = {
     ...item,
     quantity: 1,
     total: unitTotal,
+  }
+
+  // For Grab orders: reconstruct note from rawPayload modifierGroups (authoritative API data).
+  // The stored item.note may use verbose group names or legacy pipe-format; rawPayload has the
+  // canonical modifier structure with clean group titles and selected option names.
+  if (order.source === 'grab' && order.rawPayload && typeof order.rawPayload === 'object') {
+    const rawNote = extractGrabItemNote(order.rawPayload as Record<string, unknown>, item.name)
+    if (rawNote) labelItem = { ...labelItem, note: rawNote }
   }
 
   return {
@@ -357,6 +365,73 @@ export function buildLabelUnitTemplateData(order: PrintableTemplateOrder, item: 
     }),
     items: [labelItem],
   }
+}
+
+/** Strip verbose Grab modifier-group title to a short label suitable for a 58mm thermal sticker.
+ *  "Tùy chọn Mức đường - M (Bắt buộc)" → "Mức đường"
+ *  "Tùy chọn Mức đá - L (Bắt buộc)"    → "Mức đá"
+ */
+function cleanGrabGroupTitle(raw: string): string {
+  return raw
+    .trim()
+    .replace(/\s*\([^)]*\)\s*$/, '')           // strip trailing "(Bắt buộc)", "(Optional)" …
+    .replace(/\s*-\s*[A-Za-z0-9]{1,3}\s*$/, '') // strip trailing " - M", " - L", " - XL" …
+    .replace(/^Tùy chọn\s+/i, '')              // strip leading "Tùy chọn "
+    .trim()
+}
+
+/** Extract modifier notes from Grab rawPayload for the item matching `itemName`.
+ *  Returns a "\n"-joined string "GroupTitle: OptionName" per selected modifier, or undefined.
+ */
+function extractGrabItemNote(rawPayload: Record<string, unknown>, itemName: string): string | undefined {
+  const rawItems = (
+    Array.isArray(rawPayload.items)      ? rawPayload.items :
+    Array.isArray(rawPayload.orderItems) ? rawPayload.orderItems :
+    Array.isArray(rawPayload.lineItems)  ? rawPayload.lineItems : []
+  ) as Record<string, unknown>[]
+
+  const ri = rawItems.find((r) =>
+    String((r as Record<string, unknown>).name ?? (r as Record<string, unknown>).itemName ?? '').trim() === itemName.trim()
+  ) as Record<string, unknown> | undefined
+  if (!ri) return undefined
+
+  const lines: string[] = []
+
+  // New Grab API format: modifierGroups[].modifiers[].modifierName
+  const modifierGroups = Array.isArray(ri.modifierGroups) ? ri.modifierGroups as Record<string, unknown>[] : []
+  for (const mg of modifierGroups) {
+    const title = cleanGrabGroupTitle(String(mg.modifierGroupName ?? mg.name ?? mg.title ?? ''))
+    const mods = Array.isArray(mg.modifiers) ? mg.modifiers as Record<string, unknown>[] : []
+    for (const m of mods) {
+      const qty = Number(m.quantity ?? 1)
+      const name = String(m.modifierName ?? m.name ?? '').trim()
+      if (!name) continue
+      const qtyPrefix = qty > 1 ? `${qty}× ` : ''
+      lines.push(title ? `${title}: ${qtyPrefix}${name}` : `${qtyPrefix}${name}`)
+    }
+  }
+
+  // Legacy format: modifiers[] / addons[] with nested items[]
+  if (lines.length === 0) {
+    const legacyGroups = [
+      ...(Array.isArray(ri.modifiers) ? ri.modifiers as Record<string, unknown>[] : []),
+      ...(Array.isArray(ri.addons)    ? ri.addons    as Record<string, unknown>[] : []),
+    ]
+    for (const m of legacyGroups) {
+      const title = cleanGrabGroupTitle(String(m.name ?? m.groupName ?? ''))
+      const items = (
+        Array.isArray(m.modifierItems) ? m.modifierItems :
+        Array.isArray(m.items)         ? m.items : []
+      ) as Record<string, unknown>[]
+      for (const it of items) {
+        const name = String(it.name ?? it.itemName ?? '').trim()
+        if (name) lines.push(title ? `${title}: ${name}` : name)
+      }
+      if (items.length === 0 && title) lines.push(title)
+    }
+  }
+
+  return lines.length > 0 ? lines.join('\n') : undefined
 }
 
 export function buildDemoPrintTemplateContext(type: EditablePrintTemplateType = 'receipt') {
