@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/api-helpers'
 import { connectDB } from '@/lib/db'
+import {
+  canonicalizePauseStoreState,
+  getStoreIdentityKey,
+  normalizeStoreId,
+  normalizeStoreSource,
+  type PauseStoreState,
+} from '@/lib/store-pause-status'
 
 const SCRAPER_URL = process.env.SCRAPER_CONTROL_URL ?? 'http://127.0.0.1:3845'
 
@@ -55,7 +62,9 @@ export async function POST(req: NextRequest) {
 
     return proxyToScraper('/pause-store', {
       integrationId: body.integrationId,
+      storeId: normalizeStoreId(body.storeId),
       source: body.source,
+      username: typeof body.username === 'string' ? body.username : undefined,
       duration: normalizedDuration,
     })
   }
@@ -63,7 +72,9 @@ export async function POST(req: NextRequest) {
   if (body.action === 'resume') {
     return proxyToScraper('/resume-store', {
       integrationId: body.integrationId,
+      storeId: normalizeStoreId(body.storeId),
       source: body.source,
+      username: typeof body.username === 'string' ? body.username : undefined,
     })
   }
 
@@ -104,42 +115,20 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  type PauseStoreRow = {
-    integrationId?: string
-    source: 'grab' | 'be'
-    label: string
-    storeId?: string
-    paused: boolean
-    loggedIn: boolean
-    pausedUntil?: string | null
-    pauseMode?: 'tomorrow' | 'until-reopen' | null
-    pauseLabel?: string | null
-    username?: string
-    isUnknown?: boolean
-    platformStatus?: string | null
-  }
-
-  const normalizeSource = (value: unknown): 'grab' | 'be' | null => {
-    const normalized = String(value ?? '').trim().toLowerCase()
-    if (normalized === 'grab' || normalized === 'grabfood') return 'grab'
-    if (normalized === 'be' || normalized === 'befood') return 'be'
-    return null
-  }
-
-  const toPauseStoreRow = (value: unknown): PauseStoreRow | null => {
+  const toPauseStoreRow = (value: unknown): PauseStoreState | null => {
     const record = value && typeof value === 'object' && !Array.isArray(value)
       ? value as Record<string, unknown>
       : null
     if (!record) return null
 
-    const source = normalizeSource(record.source)
+    const source = normalizeStoreSource(record.source)
     if (!source) return null
 
-    return {
-      integrationId: typeof record.integrationId === 'string' ? record.integrationId : undefined,
+    return canonicalizePauseStoreState({
+        integrationId: typeof record.integrationId === 'string' ? record.integrationId : undefined,
       source,
       label: String(record.label ?? record.storeName ?? record.storeId ?? 'Unknown store'),
-      storeId: typeof record.storeId === 'string' ? record.storeId : undefined,
+      storeId: normalizeStoreId(record.storeId),
       paused: Boolean(record.paused),
       loggedIn: Boolean(record.loggedIn),
       pausedUntil: typeof record.pausedUntil === 'string' ? record.pausedUntil : null,
@@ -148,7 +137,7 @@ export async function GET(req: NextRequest) {
       username: typeof record.username === 'string' ? record.username : undefined,
       isUnknown: Boolean(record.isUnknown),
       platformStatus: typeof record.platformStatus === 'string' ? record.platformStatus : null,
-    }
+    })
   }
 
   const wantsLive = req.nextUrl.searchParams.get('live') === '1'
@@ -170,20 +159,20 @@ export async function GET(req: NextRequest) {
     })(),
   ])
 
-  let scraperStores: PauseStoreRow[] = []
+  let scraperStores: PauseStoreState[] = []
   if (scraperResult.status === 'fulfilled' && scraperResult.value) {
     const data = scraperResult.value
     if (data && data.ok !== false && Array.isArray(data.stores)) {
       scraperStores = data.stores
         .map((store: unknown) => toPauseStoreRow(store))
-        .filter((store: PauseStoreRow | null): store is PauseStoreRow => Boolean(store))
+        .filter((store: PauseStoreState | null): store is PauseStoreState => Boolean(store))
     }
   }
 
   try {
     const integrations = dbResult.status === 'fulfilled' ? dbResult.value as unknown as Array<{ _id: { toString(): string }; provider: string; externalStoreId?: string; externalStoreName?: string; loginUsername?: string }> : []
 
-    const dbStores: PauseStoreRow[] = integrations.map((integ) => ({
+    const dbStores: PauseStoreState[] = integrations.map((integ) => canonicalizePauseStoreState({
       integrationId: integ._id.toString(),
       source: integ.provider === 'be' ? 'be' : 'grab',
       label: integ.externalStoreName || integ.externalStoreId || 'Unknown store',
@@ -202,27 +191,23 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    const mergedByKey = new Map<string, PauseStoreRow>()
-    const makeKey = (store: PauseStoreRow) => {
-      if (store.integrationId) return `id:${store.integrationId}`
-      return `src:${store.source}|store:${String(store.storeId ?? '').trim().toLowerCase()}`
-    }
+    const mergedByKey = new Map<string, PauseStoreState>()
 
     for (const store of dbStores) {
-      mergedByKey.set(makeKey(store), store)
+      mergedByKey.set(getStoreIdentityKey(store), store)
     }
 
     for (const scraperStore of scraperStores) {
-      const key = makeKey(scraperStore)
+      const key = getStoreIdentityKey(scraperStore)
       const existing = mergedByKey.get(key)
       if (existing) {
-        mergedByKey.set(key, {
+        mergedByKey.set(key, canonicalizePauseStoreState({
           ...existing,
           ...scraperStore,
           label: scraperStore.label || existing.label,
           storeId: scraperStore.storeId || existing.storeId,
           username: scraperStore.username || existing.username,
-        })
+        }))
       } else {
         mergedByKey.set(key, scraperStore)
       }

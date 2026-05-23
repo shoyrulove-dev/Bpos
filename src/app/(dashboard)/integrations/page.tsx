@@ -1,16 +1,17 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   ShoppingBag, Plus, Trash2, Settings, PlayCircle, Loader2, Lock,
-  CheckCircle, XCircle, Zap, Info, RefreshCw, KeyRound, Wifi, Pencil,
+  CheckCircle, XCircle, Zap, Info, RefreshCw, KeyRound, Wifi, Pencil, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { useIntegrations, useCreateIntegration, useDeleteIntegration, useUpdateIntegration } from '@/hooks/use-data'
 import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
 import { getDefaultSessionRefreshMode } from '@/lib/session-refresh-mode'
+import { canonicalizePauseStoreState, getStoreIdentityKey, normalizeStoreId, normalizeStoreSource } from '@/lib/store-pause-status'
 import { cn } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 
@@ -22,6 +23,7 @@ const PROVIDERS = [
 ]
 
 const PROVIDER_TAB_STORAGE_KEY = 'bpos-integ-tab'
+const PAGE_SIZE = 20
 
 type CredField = { key: string; label: string; type?: string; placeholder?: string }
 
@@ -110,15 +112,40 @@ const TARGET_PROVIDER_COUNTS: Partial<Record<string, number>> = {
   be: 5,
 }
 
-const PROVIDER_NOTES: Partial<Record<string, string>> = {
-  grab: 'Grab có thể relog từng account trong cột này. Chỉ bật Browser relog cho các account cần xử lý tay hoặc gặp captcha.',
-  be: 'Be ưu tiên relog qua browser. Có thể login lại từng account ngay trong cột này.',
-  shopee: 'Shopee dùng flow số điện thoại + SMS OTP. Không lưu mật khẩu cho nhánh session này nữa.',
-  xanh_sm: 'Giữ riêng một cột cho Xanh SM để sau này thêm account không bị trộn với Grab hoặc Be.',
-}
-
 function providerUsesSmsOtp(provider?: string | null) {
   return provider === 'shopee' || provider === 'xanh_sm'
+}
+
+function PaginationControls({
+  page,
+  totalPages,
+  totalItems,
+  label,
+  onPageChange,
+}: {
+  page: number
+  totalPages: number
+  totalItems: number
+  label: string
+  onPageChange: (page: number) => void
+}) {
+  if (totalPages <= 1) return null
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3">
+      <p className="text-sm text-gray-500">
+        {totalItems} {label} · Trang {page} / {totalPages}
+      </p>
+      <div className="flex items-center gap-2">
+        <button onClick={() => onPageChange(page - 1)} disabled={page === 1} className="btn-outline btn-sm disabled:opacity-50">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <button onClick={() => onPageChange(page + 1)} disabled={page === totalPages} className="btn-outline btn-sm disabled:opacity-50">
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function usesBrowserRelog(integ?: Pick<Integ, 'sessionRefreshMode'> | null) {
@@ -233,7 +260,9 @@ const PLATFORM_ACCOUNTS: {
 function PlatformAccountsSection() {
   const [revealed, setRevealed] = useState<Set<number>>(new Set())
   const [showSection, setShowSection] = useState(false)
-  const [filterProvider, setFilterProvider] = useState('')
+  const [activeProvider, setActiveProvider] = useState(PROVIDERS[0].value)
+  const [accountPage, setAccountPage] = useState(1)
+  const listRef = useRef<HTMLDivElement | null>(null)
 
   const toggle = (idx: number) =>
     setRevealed(prev => {
@@ -242,11 +271,36 @@ function PlatformAccountsSection() {
       return next
     })
 
-  const filtered = PLATFORM_ACCOUNTS.filter(a =>
-    (!filterProvider || a.provider === filterProvider)
+  const groupedAccounts = useMemo(
+    () => PLATFORM_ACCOUNTS.reduce((acc, account) => {
+      if (!acc[account.provider]) acc[account.provider] = []
+      acc[account.provider].push(account)
+      return acc
+    }, {} as Record<string, typeof PLATFORM_ACCOUNTS>),
+    []
   )
+  const filterProvider = activeProvider
+  const setFilterProvider = (provider: string) => setActiveProvider(provider || PROVIDERS[0].value)
+  const providers = Object.keys(groupedAccounts)
+  const visibleAccounts = groupedAccounts[activeProvider] ?? []
+  const filtered = visibleAccounts
+  const totalPages = Math.max(1, Math.ceil(visibleAccounts.length / PAGE_SIZE))
+  const paginatedAccounts = visibleAccounts.slice((accountPage - 1) * PAGE_SIZE, accountPage * PAGE_SIZE)
 
-  const providers = Array.from(new Set(PLATFORM_ACCOUNTS.map(a => a.provider)))
+  useEffect(() => {
+    setAccountPage(1)
+  }, [activeProvider, showSection])
+
+  useEffect(() => {
+    if (accountPage > totalPages) setAccountPage(totalPages)
+  }, [accountPage, totalPages])
+
+  const handlePageChange = (nextPage: number) => {
+    const boundedPage = Math.min(Math.max(nextPage, 1), totalPages)
+    if (boundedPage === accountPage) return
+    setAccountPage(boundedPage)
+    window.requestAnimationFrame(() => listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
 
   return (
     <div className="rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -262,15 +316,40 @@ function PlatformAccountsSection() {
               {PLATFORM_ACCOUNTS.length} tài khoản · Grab, Be, Shopee, Xanh SM · Click để xem
             </p>
           </div>
+          <PaginationControls
+            page={accountPage}
+            totalPages={totalPages}
+            totalItems={visibleAccounts.length}
+            label="tài khoản"
+            onPageChange={handlePageChange}
+          />
         </div>
         <span className="text-xs text-gray-400">{showSection ? '▲ Thu gọn' : '▼ Mở rộng'}</span>
       </button>
 
       {showSection && (
-        <div className="px-5 pb-5 space-y-3 border-t border-gray-100">
+        <div ref={listRef} className="px-5 pb-5 space-y-3 border-t border-gray-100">
           {/* Filter bar */}
           <div className="flex gap-2 pt-3 flex-wrap">
-            <select className="input text-sm w-36 h-8" value={filterProvider} onChange={e => setFilterProvider(e.target.value)}>
+            {PROVIDERS.map((provider) => (
+              <button
+                key={provider.value}
+                onClick={() => setActiveProvider(provider.value)}
+                className={cn(
+                  'flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-all',
+                  activeProvider === provider.value
+                    ? 'border-gray-900 bg-gray-900 text-white'
+                    : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                )}
+              >
+                <PlatformIcon source={provider.value} size="sm" />
+                <span>{provider.label}</span>
+                <span className={cn('text-xs', activeProvider === provider.value ? 'text-white/70' : 'text-gray-400')}>
+                  {groupedAccounts[provider.value]?.length ?? 0}
+                </span>
+              </button>
+            ))}
+            <select className="hidden input text-sm w-36 h-8" value={filterProvider} onChange={e => setFilterProvider(e.target.value)}>
               <option value="">Tất cả sàn</option>
               {providers.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
@@ -281,19 +360,26 @@ function PlatformAccountsSection() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-            {filtered.map((acc) => {
+          <PaginationControls
+            page={accountPage}
+            totalPages={totalPages}
+            totalItems={visibleAccounts.length}
+            label="tài khoản"
+            onPageChange={handlePageChange}
+          />
+
+          <div className="overflow-hidden rounded-2xl border border-gray-100">
+            {paginatedAccounts.map((acc) => {
               const idx = PLATFORM_ACCOUNTS.indexOf(acc)
               const show = revealed.has(idx)
               return (
-                <div key={idx} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                <div key={idx} className="flex items-center gap-3 border-b border-gray-100 bg-gray-50 px-3 py-3 last:border-b-0">
                   <PlatformIcon source={acc.provider} size="sm" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <span className="text-xs font-bold text-gray-700">{acc.brand}</span>
                       <span className="text-xs text-gray-400">·</span>
                       <span className="text-xs text-gray-500">{acc.hub}</span>
-                      {acc.note && <span className="text-[10px] text-amber-600 bg-amber-50 rounded px-1">{acc.note}</span>}
                     </div>
                     <p className="text-xs font-mono text-gray-700 truncate">{acc.username}</p>
                     <p className="text-xs font-mono text-gray-500 tracking-widest">
@@ -357,26 +443,19 @@ function PauseStoreSection() {
   const [scraperOnline, setScraperOnline] = useState<boolean | null>(null)
   const [scraperVersion, setScraperVersion] = useState<string | null>(null)
 
-  const getKey = (s: StoreStatus) => s.integrationId ?? String(s.storeId ?? '') ?? s.label
-
-  const normalizeSource = (value: unknown): 'grab' | 'be' | null => {
-    const source = String(value ?? '').trim().toLowerCase()
-    if (source === 'grab' || source === 'grabfood') return 'grab'
-    if (source === 'be' || source === 'befood') return 'be'
-    return null
-  }
+  const getKey = (s: StoreStatus) => getStoreIdentityKey(s)
 
   const normalizeStores = (input: unknown): StoreStatus[] => {
     if (!Array.isArray(input)) return []
     const next: StoreStatus[] = []
     for (const entry of input) {
-      const source = normalizeSource((entry as Record<string, unknown>)?.source)
+      const source = normalizeStoreSource((entry as Record<string, unknown>)?.source)
       if (!source) continue
 
       const store = entry as Record<string, unknown>
-      next.push({
+      next.push(canonicalizePauseStoreState({
         integrationId: typeof store.integrationId === 'string' ? store.integrationId : undefined,
-        storeId: typeof store.storeId === 'string' ? store.storeId : undefined,
+        storeId: normalizeStoreId(store.storeId),
         label: String(store.label ?? store.storeName ?? store.storeId ?? 'Unknown store'),
         source,
         username: typeof store.username === 'string' ? store.username : undefined,
@@ -387,7 +466,7 @@ function PauseStoreSection() {
         pauseLabel: typeof store.pauseLabel === 'string' ? store.pauseLabel : null,
         isUnknown: Boolean(store.isUnknown),
         platformStatus: typeof store.platformStatus === 'string' ? store.platformStatus : null,
-      })
+      }))
     }
     return next
   }
@@ -417,14 +496,12 @@ function PauseStoreSection() {
       // Merge: DB stores là base (luôn hiện), scraper overlay status thực tế
       const dbStores = normalizeStores(dbData?.stores)
       const scraperStores = normalizeStores(scraperData?.stores)
-      const makeKey = (s: StoreStatus) =>
-        s.integrationId ? `id:${s.integrationId}` : `src:${s.source}|store:${String(s.storeId ?? '').toLowerCase()}`
       const mergedMap = new Map<string, StoreStatus>()
-      for (const s of dbStores) mergedMap.set(makeKey(s), s)
+      for (const s of dbStores) mergedMap.set(getKey(s), s)
       for (const s of scraperStores) {
-        const key = makeKey(s)
+        const key = getKey(s)
         const existing = mergedMap.get(key)
-        mergedMap.set(key, existing ? { ...existing, ...s, label: s.label || existing.label } : s)
+        mergedMap.set(key, existing ? canonicalizePauseStoreState({ ...existing, ...s, label: s.label || existing.label }) : s)
       }
       const merged = Array.from(mergedMap.values())
       if (merged.length > 0 || scraperOnlineNow) {
@@ -472,6 +549,13 @@ function PauseStoreSection() {
     // Gọi scraper trực tiếp từ browser — Vercel không thể proxy đến localhost scraper
     const scraperEndpoint = action === 'pause' ? '/pause-store' : '/resume-store'
     const isMultiBe = storeList.length > 1 && storeList.every(s => s.source === 'be')
+    const buildPayload = (store: StoreStatus) => ({
+      integrationId: store.integrationId,
+      storeId: store.storeId,
+      source: store.source,
+      username: store.username,
+      ...(dur ? { duration: dur } : {}),
+    })
 
     if (isMultiBe) {
       // Be: xử lý nối tiếp vì scraper thực hiện automation Be portal theo từng store
@@ -483,7 +567,7 @@ function PauseStoreSection() {
           const r = await fetch(`${SCRAPER_DIRECT}${scraperEndpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ integrationId: s.integrationId, source: s.source, ...(dur ? { duration: dur } : {}) }),
+            body: JSON.stringify(buildPayload(s)),
             signal: AbortSignal.timeout(60_000),
           })
           const data = await r.json() as { ok?: boolean }
@@ -494,7 +578,7 @@ function PauseStoreSection() {
       // Be scraper cập nhật async — poll 2 lần để bắt trạng thái mới nhất
       for (let p = 0; p < 2; p++) {
         await new Promise<void>(resolve => setTimeout(resolve, 5_000))
-        await load()
+        await load(true)
       }
     } else {
       // Grab hoặc single-store: parallel như cũ
@@ -502,13 +586,13 @@ function PauseStoreSection() {
         fetch(`${SCRAPER_DIRECT}${scraperEndpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ integrationId: s.integrationId, source: s.source, ...(dur ? { duration: dur } : {}) }),
+          body: JSON.stringify(buildPayload(s)),
           signal: AbortSignal.timeout(35_000),
         }).then(r => r.json())
       ))
       const ok = results.filter((result) => result.status === 'fulfilled' && result.value?.ok !== false).length
       setStatusMsg(`${action === 'pause' ? 'Đã dừng' : 'Đã mở lại'} ${ok}/${storeList.length} cửa hàng`)
-      setTimeout(() => void load(), 3000)
+      setTimeout(() => void load(action === 'resume' || storeList.some(s => s.source === 'be')), 3000)
     }
   }
 
@@ -1205,6 +1289,8 @@ export default function IntegrationsPage() {
     }
     return PROVIDERS[0].value
   })
+  const [providerPage, setProviderPage] = useState(1)
+  const providerListRef = useRef<HTMLDivElement | null>(null)
 
   // Inline name edit
   const [editingNameId, setEditingNameId]   = useState<string | null>(null)
@@ -1241,6 +1327,10 @@ export default function IntegrationsPage() {
     window.localStorage.setItem(PROVIDER_TAB_STORAGE_KEY, activeProviderTab)
   }, [activeProviderTab])
 
+  useEffect(() => {
+    setProviderPage(1)
+  }, [activeProviderTab])
+
   // ─── Helpers ─────────────────────────────────────────────────────────────
   const provInfo  = (v: string) => PROVIDERS.find(p => p.value === v)
   const filteredHubs = hubs
@@ -1256,10 +1346,22 @@ export default function IntegrationsPage() {
       ...provider,
       integrations: provIntegrations,
       target: TARGET_PROVIDER_COUNTS[provider.value],
-      note: PROVIDER_NOTES[provider.value],
     }
   })
   const activeProviderSection = providerSections.find((section) => section.value === activeProviderTab) ?? providerSections[0]
+  const providerTotalPages = Math.max(1, Math.ceil(activeProviderSection.integrations.length / PAGE_SIZE))
+  const paginatedProviderIntegrations = activeProviderSection.integrations.slice((providerPage - 1) * PAGE_SIZE, providerPage * PAGE_SIZE)
+
+  useEffect(() => {
+    if (providerPage > providerTotalPages) setProviderPage(providerTotalPages)
+  }, [providerPage, providerTotalPages])
+
+  const handleProviderPageChange = (nextPage: number) => {
+    const boundedPage = Math.min(Math.max(nextPage, 1), providerTotalPages)
+    if (boundedPage === providerPage) return
+    setProviderPage(boundedPage)
+    window.requestAnimationFrame(() => providerListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
 
   const getBrandName = (integ: Integ) =>
     typeof integ.brandId === 'object' && integ.brandId ? integ.brandId.name : String(integ.brandId ?? '—')
@@ -1347,7 +1449,7 @@ export default function IntegrationsPage() {
     const isSavingName  = savingNameId === integ._id
 
     return (
-      <div key={integ._id} className={cn('rounded-2xl border border-gray-200 bg-white p-3 flex flex-col gap-2 shadow-sm', isPendingSetup && 'opacity-60')}>
+      <div key={integ._id} className={cn('border-b border-gray-100 px-4 py-4 last:border-b-0', isPendingSetup && 'opacity-60')}>
         {/* Row 1: icon + name + meta + delete */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -1426,7 +1528,7 @@ export default function IntegrationsPage() {
         )}
 
         {/* Actions */}
-        <div className="flex gap-1.5 pt-1 border-t border-gray-100">
+        <div className="flex flex-wrap gap-1.5 pt-2 border-t border-gray-100">
           <button onClick={() => openSettings(integ)} className="btn-outline btn-sm flex items-center gap-1 px-2 text-xs">
             <Settings className="w-3 h-3" /> Cài đặt
           </button>
@@ -1840,7 +1942,7 @@ export default function IntegrationsPage() {
         {activeProviderTab === 'pause' ? (
           <PauseStoreSection />
         ) : (
-        <section key={activeProviderSection.value} className="flex flex-col gap-4">
+        <section key={activeProviderSection.value} ref={providerListRef} className="flex flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <PlatformIcon source={activeProviderSection.value} size="xl" />
@@ -1848,7 +1950,6 @@ export default function IntegrationsPage() {
                 <h2 className="text-lg font-semibold text-gray-900">
                   {activeProviderSection.label} &middot; {activeProviderSection.integrations.length} kết nối{activeProviderSection.target ? ` / ${activeProviderSection.target}` : ''}
                 </h2>
-                <p className="mt-1 text-sm text-gray-500">{activeProviderSection.note}</p>
               </div>
             </div>
             <button onClick={() => openCreateModal(activeProviderSection.value)} className="btn-outline btn-sm shrink-0">
@@ -1856,7 +1957,7 @@ export default function IntegrationsPage() {
             </button>
           </div>
 
-          {(activeProviderSection.value === 'shopee' || activeProviderSection.value === 'xanh_sm') && (
+          {false && (activeProviderSection.value === 'shopee' || activeProviderSection.value === 'xanh_sm') && (
             <div className={cn(
               'rounded-2xl border px-4 py-3 text-sm',
               activeProviderSection.value === 'shopee'
@@ -1879,11 +1980,18 @@ export default function IntegrationsPage() {
             </div>
           )}
 
-          <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+          <PaginationControls
+            page={providerPage}
+            totalPages={providerTotalPages}
+            totalItems={activeProviderSection.integrations.length}
+            label="tích hợp"
+            onPageChange={handleProviderPageChange}
+          />
+          <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white">
             {activeProviderSection.integrations.length > 0 ? (
-              activeProviderSection.integrations.map((integration) => renderIntegrationCard(integration))
+              paginatedProviderIntegrations.map((integration) => renderIntegrationCard(integration))
             ) : (
-              <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500 lg:col-span-2 2xl:col-span-3">
+              <div className="rounded-2xl bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
                 <ShoppingBag className="w-8 h-8 mx-auto mb-3 text-gray-300" />
                 {activeProviderSection.value === 'shopee'
                   ? 'Chưa tạo bản ghi Shopee nào. Khi có OTP, có thể thêm hoặc cập nhật account ngay trong tab này.'
@@ -1893,6 +2001,13 @@ export default function IntegrationsPage() {
               </div>
             )}
           </div>
+          <PaginationControls
+            page={providerPage}
+            totalPages={providerTotalPages}
+            totalItems={activeProviderSection.integrations.length}
+            label="tích hợp"
+            onPageChange={handleProviderPageChange}
+          />
         </section>
         )}
       </div>

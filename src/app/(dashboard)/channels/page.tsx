@@ -1,7 +1,7 @@
 ﻿'use client'
 
-import { useMemo, useState } from 'react'
-import { Plus, Search, ToggleLeft, ToggleRight, Edit, Trash2, Loader2, Link2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Plus, Search, Edit, Trash2, Loader2, Link2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useChannels, useCreateChannel, useUpdateChannel, useDeleteChannel } from '@/hooks/use-orders-channels'
 import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
@@ -24,15 +24,48 @@ const SOURCES = [
   { value: 'other',    label: 'Khác' },
 ]
 
+const PAGE_SIZE = 20
 const emptyForm = { name: '', source: 'grab', brandId: '', hubId: '', externalStoreId: '' }
+
+function PaginationControls({
+  page,
+  totalPages,
+  totalItems,
+  onPageChange,
+}: {
+  page: number
+  totalPages: number
+  totalItems: number
+  onPageChange: (page: number) => void
+}) {
+  if (totalPages <= 1) return null
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3">
+      <p className="text-sm text-gray-500">
+        {totalItems} kênh · Trang {page} / {totalPages}
+      </p>
+      <div className="flex items-center gap-2">
+        <button onClick={() => onPageChange(page - 1)} disabled={page === 1} className="btn-outline btn-sm disabled:opacity-50">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <button onClick={() => onPageChange(page + 1)} disabled={page === totalPages} className="btn-outline btn-sm disabled:opacity-50">
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export default function ChannelsPage() {
   const [search, setSearch]   = useState('')
   const [activeSourceTab, setActiveSourceTab] = useState(MARKETPLACE_TABS[0].value)
+  const [channelPage, setChannelPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId]   = useState<string | null>(null)
   const [form, setForm]       = useState(emptyForm)
   const [saveError, setSaveError] = useState('')
+  const listRef = useRef<HTMLDivElement | null>(null)
 
   const dq = useDebounce(search)
   const { data: rawChannels = [], isLoading } = useChannels({ q: dq })
@@ -62,8 +95,21 @@ export default function ChannelsPage() {
     () => channels.filter((channel) => !tabSourceSet.has(channel.source)),
     [channels, tabSourceSet]
   )
+  const totalPages = Math.max(1, Math.ceil(activeChannels.length / PAGE_SIZE))
+  const paginatedChannels = useMemo(
+    () => activeChannels.slice((channelPage - 1) * PAGE_SIZE, channelPage * PAGE_SIZE),
+    [activeChannels, channelPage]
+  )
 
   const filteredHubs = hubs
+
+  useEffect(() => {
+    setChannelPage(1)
+  }, [activeSourceTab, dq])
+
+  useEffect(() => {
+    if (channelPage > totalPages) setChannelPage(totalPages)
+  }, [channelPage, totalPages])
 
   const openCreate = () => {
     setEditId(null)
@@ -106,8 +152,13 @@ export default function ChannelsPage() {
     }
   }
 
-  const toggle = async (id: string, field: string, current: boolean) => {
-    await updateMutation.mutateAsync({ id, [field]: !current })
+  const scrollToList = () => listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+  const handlePageChange = (nextPage: number) => {
+    const boundedPage = Math.min(Math.max(nextPage, 1), totalPages)
+    if (boundedPage === channelPage) return
+    setChannelPage(boundedPage)
+    window.requestAnimationFrame(scrollToList)
   }
 
   const handleDelete = (id: string) => {
@@ -161,63 +212,68 @@ export default function ChannelsPage() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
-        {activeChannels.map((channel: Channel) => (
-          <div key={channel._id} className="card p-3">
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <PlatformIcon source={channel.source} size="sm" />
-                <div className="min-w-0">
-                  <h3 className="font-semibold text-sm text-gray-900 truncate leading-tight">{channel.name}</h3>
-                  <p className="text-[11px] text-gray-400 truncate">
-                    {[channel.brandName, channel.hubName, (() => {
-                      const integ = integrations.find(i =>
-                        i.provider === channel.source &&
-                        i.externalStoreId && i.externalStoreId === (channel as unknown as Record<string, unknown>).externalStoreId
-                      )
-                      return integ?.loginUsername || null
-                    })()].filter(Boolean).join(' · ')}
-                  </p>
+      <div ref={listRef} className="space-y-3">
+        <PaginationControls
+          page={channelPage}
+          totalPages={totalPages}
+          totalItems={activeChannels.length}
+          onPageChange={handlePageChange}
+        />
+
+        <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+          {paginatedChannels.length > 0 ? (
+            paginatedChannels.map((channel: Channel) => (
+              <div key={channel._id} className="flex flex-col gap-3 border-b border-gray-100 px-4 py-4 last:border-b-0 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <PlatformIcon source={channel.source} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-sm text-gray-900 truncate">{channel.name}</h3>
+                      <span className={cn('badge badge-sm', channel.status === 'active' ? 'badge-green' : 'badge-red')}>
+                        {channel.status === 'active' ? 'Hoạt động' : 'Ngừng'}
+                      </span>
+                      {channel.scraperPaused && (
+                        <span className="badge badge-sm bg-amber-100 text-amber-700 border-amber-200">Pause</span>
+                      )}
+                      {channel.scraperLastSeen && !channel.scraperLoggedIn && (
+                        <span className="badge badge-sm bg-red-100 text-red-700 border-red-200">Offline</span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500 truncate">
+                      {[channel.brandName, channel.hubName, (() => {
+                        const integ = integrations.find(i =>
+                          i.provider === channel.source &&
+                          i.externalStoreId && i.externalStoreId === (channel as unknown as Record<string, unknown>).externalStoreId
+                        )
+                        return integ?.loginUsername || null
+                      })(), (channel as unknown as Record<string, unknown>).externalStoreId as string | undefined].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => openEdit(channel)} className="btn-outline btn-sm">
+                    <Edit className="w-3.5 h-3.5" /> Sửa
+                  </button>
+                  <button onClick={() => handleDelete(channel._id)} className="btn-outline btn-sm border-red-200 text-red-500 hover:bg-red-50">
+                    <Trash2 className="w-3.5 h-3.5" /> Xóa
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {channel.scraperPaused && (
-                  <span className="badge badge-sm bg-amber-100 text-amber-700 border-amber-200">
-                    ⏸ Pause{channel.scraperPausedUntil ? ` đến ${new Date(channel.scraperPausedUntil).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ''}
-                  </span>
-                )}
-                {channel.scraperLastSeen && !channel.scraperLoggedIn && (
-                  <span className="badge badge-sm bg-red-100 text-red-700 border-red-200">Offline</span>
-                )}
-                <span className={cn('badge badge-sm', channel.status === 'active' ? 'badge-green' : 'badge-red')}>
-                  {channel.status === 'active' ? 'Hoạt động' : 'Ngừng'}
-                </span>
-                <button onClick={() => openEdit(channel)} className="btn-ghost p-1 rounded-lg"><Edit className="w-3.5 h-3.5" /></button>
-                <button onClick={() => handleDelete(channel._id)} className="btn-ghost p-1 text-red-400 hover:text-red-600 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>
-              </div>
+            ))
+          ) : (
+            <div className="text-center py-12 text-gray-400">
+              <Link2 className="w-10 h-10 mx-auto mb-3 text-gray-200" />
+              <p>Chưa có kênh bán nào cho {MARKETPLACE_TABS.find((tab) => tab.value === activeSourceTab)?.label}.</p>
             </div>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 border-t border-gray-100 pt-2">
-              {([
-                { key: 'isPageActive',    label: 'Trang bán hàng' },
-                { key: 'isStoreOpen',     label: 'Cửa hàng mở cửa' },
-                { key: 'isManualConfirm', label: 'Xác nhận thủ công' },
-                { key: 'autoInvoice',     label: 'Tự động HĐĐT' },
-              ] as { key: keyof Channel; label: string }[]).map(({ key, label }) => (
-                <button key={key} onClick={() => toggle(channel._id, key, channel[key] as boolean)}
-                  className="flex items-center justify-between gap-1 text-left hover:bg-gray-50 rounded-lg px-1 py-0.5">
-                  <span className="text-[11px] text-gray-500 truncate">{label}</span>
-                  {channel[key] ? <ToggleRight className="w-4 h-4 text-primary-500 shrink-0" /> : <ToggleLeft className="w-4 h-4 text-gray-300 shrink-0" />}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-        {!isLoading && activeChannels.length === 0 && (
-          <div className="col-span-2 text-center py-12 text-gray-400">
-            <Link2 className="w-10 h-10 mx-auto mb-3 text-gray-200" />
-            <p>Chưa có kênh bán nào cho {MARKETPLACE_TABS.find((tab) => tab.value === activeSourceTab)?.label}.</p>
-          </div>
-        )}
+          )}
+        </div>
+
+        <PaginationControls
+          page={channelPage}
+          totalPages={totalPages}
+          totalItems={activeChannels.length}
+          onPageChange={handlePageChange}
+        />
       </div>
 
       {otherChannels.length > 0 && (
