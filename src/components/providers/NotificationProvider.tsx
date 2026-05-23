@@ -1,10 +1,9 @@
-'use client'
+﻿'use client'
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Bell, X, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
-import { cn } from '@/lib/utils'
 import {
   DEFAULT_ORDER_ALERT_SETTINGS,
   getRecentPrintedOrderIds,
@@ -58,14 +57,14 @@ function getLatestOrder(orderList: AlertOrder[]) {
   })[0] ?? null
 }
 
-/** Ưu tiên displayID của nền tảng (GF-723), fallback về shortId BPOS, rồi 6 ký tự cuối _id */
+/** Æ¯u tiÃªn displayID cá»§a ná»n táº£ng (GF-723), fallback vá» shortId BPOS, rá»“i 6 kÃ½ tá»± cuá»‘i _id */
 function getDisplayId(order: AlertOrder | null) {
   if (!order) return ''
   return String(order.rawPayload?.displayID ?? '').trim() || ''
 }
 
 function getOrderLabel(order: AlertOrder | null) {
-  if (!order) return 'đơn mới nhất'
+  if (!order) return 'Ä‘Æ¡n má»›i nháº¥t'
   const displayId = getDisplayId(order)
   const shortId = order.shortId?.trim() || order._id.slice(-6)
   // Show both: "GF-723 (LWB4AX06)" so staff can look up by either ID
@@ -78,11 +77,11 @@ function showSystemOrderNotification(order: AlertOrder | null, href: string) {
 
   const displayId = getDisplayId(order)
   const shortId = order?.shortId?.trim() || order?._id?.slice(-6) || ''
-  const idLine = displayId ? `${displayId} · ${shortId}` : shortId
+  const idLine = displayId ? `${displayId} Â· ${shortId}` : shortId
   const exId = order?.externalOrderId ? `\nRef: ${order.externalOrderId}` : ''
 
-  const notification = new Notification('BPOS có đơn hàng mới', {
-    body: `Đơn: ${idLine}${order?.customerName ? ` • ${order.customerName}` : ''}${exId}`,
+  const notification = new Notification('BPOS cÃ³ Ä‘Æ¡n hÃ ng má»›i', {
+    body: `ÄÆ¡n: ${idLine}${order?.customerName ? ` â€¢ ${order.customerName}` : ''}${exId}`,
     tag: 'bpos-new-order',
   })
 
@@ -114,8 +113,8 @@ export default function NotificationProvider({ children }: { children: React.Rea
     const notif: Notification = {
       id: Date.now().toString(),
       message: newOrders.length > 1
-        ? `${newOrders.length} đơn mới, đơn mới nhất là ${getOrderLabel(latestOrder)}.`
-        : `Có đơn mới ${getOrderLabel(latestOrder)} vừa đến.`,
+        ? `${newOrders.length} Ä‘Æ¡n má»›i, Ä‘Æ¡n má»›i nháº¥t lÃ  ${getOrderLabel(latestOrder)}.`
+        : `CÃ³ Ä‘Æ¡n má»›i ${getOrderLabel(latestOrder)} vá»«a Ä‘áº¿n.`,
       count: newOrders.length,
       timestamp: new Date(),
       dismissed: false,
@@ -197,7 +196,7 @@ export default function NotificationProvider({ children }: { children: React.Rea
             }
           }
         } else {
-          // First poll — seed seen IDs without notification
+          // First poll â€” seed seen IDs without notification
           orders.forEach(o => seenIds.current.add(o._id))
           initialized.current = true
         }
@@ -205,7 +204,7 @@ export default function NotificationProvider({ children }: { children: React.Rea
         orders.forEach(o => seenIds.current.add(o._id))
         initialized.current = true
       }
-    } catch { /* network error — ignore */ }
+    } catch { /* network error â€” ignore */ }
   }, [addNotification, queryClient, settings.autoPrintEnabled])
 
   useEffect(() => {

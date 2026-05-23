@@ -1,9 +1,9 @@
-import { NextRequest } from 'next/server'
+﻿import { NextRequest } from 'next/server'
 import { connectDB } from '@/lib/db'
 import OrderModel from '@/models/Order'
 import '@/models/Brand'
 import '@/models/Hub'
-import { ok, err, requireAuth } from '@/lib/api-helpers'
+import { ok, requireAuth } from '@/lib/api-helpers'
 import { buildOrderFilterFromSearchParams } from '@/lib/order-query'
 
 const ORDER_STATUS_KEYS = ['draft', 'pre_order', 'waiting_confirm', 'waiting_pickup', 'delivering', 'completed', 'cancelled'] as const
@@ -27,7 +27,6 @@ export async function GET(req: NextRequest) {
   if (res) return res
   await connectDB()
   const { searchParams } = new URL(req.url)
-  const q = searchParams.get('q') || ''
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
   const requestedLimit = parseInt(searchParams.get('limit') || '10', 10) || 10
   const limit = Math.min(500, Math.max(1, requestedLimit))

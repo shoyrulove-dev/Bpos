@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import Link from 'next/link'
@@ -15,7 +15,7 @@ function openPrintWindow(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer,width=430,height=900')
 }
 
-// Inline receipt preview panel — shows exactly what the bridge will print
+// Inline receipt preview panel â€” shows exactly what the bridge will print
 function PrintPreviewPanel({ orderId }: { orderId: string }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -34,7 +34,7 @@ function PrintPreviewPanel({ orderId }: { orderId: string }) {
       setHtml(result.html)
       setPaperSize(result.paperSize)
     } catch (err) {
-      setHtml(`<div style="color:red;padding:12px">Lỗi tải mẫu: ${err instanceof Error ? err.message : String(err)}</div>`)
+      setHtml(`<div style="color:red;padding:12px">Lá»—i táº£i máº«u: ${err instanceof Error ? err.message : String(err)}</div>`)
     } finally {
       setLoading(false)
     }
@@ -47,11 +47,11 @@ function PrintPreviewPanel({ orderId }: { orderId: string }) {
     try {
       const ok = await printOrderWithHtmlTemplate(orderId, 'receipt')
       setPrintStatus(ok ? 'ok' : 'error')
-      if (!ok) setPrintError('Máy in không phản hồi')
+      if (!ok) setPrintError('MÃ¡y in khÃ´ng pháº£n há»“i')
       else window.setTimeout(() => setPrintStatus('idle'), 4000)
     } catch (err) {
       setPrintStatus('error')
-      setPrintError(err instanceof Error ? err.message : 'Lỗi không xác định')
+      setPrintError(err instanceof Error ? err.message : 'Lá»—i khÃ´ng xÃ¡c Ä‘á»‹nh')
     }
   }
 
@@ -64,21 +64,21 @@ function PrintPreviewPanel({ orderId }: { orderId: string }) {
         onClick={() => void openPreview()}
         className={cn('btn-outline h-9 text-sm', open && 'border-orange-400 text-orange-600')}
       >
-        <Printer className="h-4 w-4" />{open ? 'Đóng preview' : 'Xem mẫu in'}
+        <Printer className="h-4 w-4" />{open ? 'ÄÃ³ng preview' : 'Xem máº«u in'}
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/55 p-4 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false) }}>
           <div className="my-auto bg-white rounded-[24px] shadow-2xl w-full max-w-lg overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <p className="font-semibold text-gray-900">Preview mẫu in ({paperSize})</p>
-                <p className="text-xs text-gray-500 mt-0.5">Đây là HTML sẽ được gửi tới máy in bridge. Điều chỉnh tại <a href="/bill-templates" className="underline text-orange-600" target="_blank">Hóa đơn mẫu</a>.</p>
+                <p className="font-semibold text-gray-900">Preview máº«u in ({paperSize})</p>
+                <p className="text-xs text-gray-500 mt-0.5">ÄÃ¢y lÃ  HTML sáº½ Ä‘Æ°á»£c gá»­i tá»›i mÃ¡y in bridge. Äiá»u chá»‰nh táº¡i <a href="/bill-templates" className="underline text-orange-600" target="_blank">HÃ³a Ä‘Æ¡n máº«u</a>.</p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
             </div>
             <div className="bg-[#f0ece4] p-5 flex flex-col items-center min-h-[300px]">
               {loading
-                ? <div className="flex items-center gap-2 text-gray-500 py-16"><Loader2 className="h-5 w-5 animate-spin" /> Đang tải mẫu...</div>
+                ? <div className="flex items-center gap-2 text-gray-500 py-16"><Loader2 className="h-5 w-5 animate-spin" /> Äang táº£i máº«u...</div>
                 : <iframe
                     srcDoc={html}
                     title="Receipt preview"
@@ -102,9 +102,9 @@ function PrintPreviewPanel({ orderId }: { orderId: string }) {
                     printStatus === 'error' && 'bg-red-600 hover:bg-red-700',
                   )}
                 >
-                  {printStatus === 'printing' ? <><Loader2 className="h-4 w-4 animate-spin" /> Đang in...</>
-                    : printStatus === 'ok' ? '✓ Đã gửi in'
-                    : printStatus === 'error' ? '✗ Lỗi in'
+                  {printStatus === 'printing' ? <><Loader2 className="h-4 w-4 animate-spin" /> Äang in...</>
+                    : printStatus === 'ok' ? 'âœ“ ÄÃ£ gá»­i in'
+                    : printStatus === 'error' ? 'âœ— Lá»—i in'
                     : <><Printer className="h-4 w-4" /> In ngay</>}
                 </button>
                 <button
@@ -112,7 +112,7 @@ function PrintPreviewPanel({ orderId }: { orderId: string }) {
                   onClick={() => openPrintWindow(buildReceiptPrintUrl(orderId, { autoprint: false, paperSize }))}
                   className="btn-outline h-9 text-sm"
                 >
-                  Mở popup
+                  Má»Ÿ popup
                 </button>
               </div>
               {printStatus === 'error' && printError && (
@@ -146,19 +146,19 @@ function PrintButton({ orderId, type = 'receipt', label, className }: { orderId:
       } else {
         failed = true
         setStatus('error')
-        setErrorMsg('Máy in không phản hồi')
+        setErrorMsg('MÃ¡y in khÃ´ng pháº£n há»“i')
       }
     } catch (err) {
       failed = true
       setStatus('error')
-      setErrorMsg(err instanceof Error ? err.message : 'Lỗi không xác định')
+      setErrorMsg(err instanceof Error ? err.message : 'Lá»—i khÃ´ng xÃ¡c Ä‘á»‹nh')
     }
     // Success auto-resets after 4s; error stays until user closes
     if (!failed) window.setTimeout(() => { setStatus('idle'); setErrorMsg('') }, 4000)
   }
 
-  const defaultLabel = type === 'receipt' ? 'In đơn' : 'In phiếu tem'
-  const displayLabel = status === 'printing' ? 'Đang in...' : status === 'ok' ? '✓ Đã in' : status === 'error' ? '✗ Lỗi in' : (label ?? defaultLabel)
+  const defaultLabel = type === 'receipt' ? 'In Ä‘Æ¡n' : 'In phiáº¿u tem'
+  const displayLabel = status === 'printing' ? 'Äang in...' : status === 'ok' ? 'âœ“ ÄÃ£ in' : status === 'error' ? 'âœ— Lá»—i in' : (label ?? defaultLabel)
 
   return (
     <div className="flex flex-col gap-1">
@@ -182,17 +182,17 @@ function PrintButton({ orderId, type = 'receipt', label, className }: { orderId:
             type="button"
             onClick={() => { setStatus('idle'); setErrorMsg('') }}
             className="text-xs text-gray-400 hover:text-gray-600"
-            title="Đóng thông báo lỗi"
+            title="ÄÃ³ng thÃ´ng bÃ¡o lá»—i"
           >
-            ✕
+            âœ•
           </button>
         )}
       </div>
       {status === 'printing' && (
-        <p className="text-xs text-blue-600">Đang gửi đến máy in...</p>
+        <p className="text-xs text-blue-600">Äang gá»­i Ä‘áº¿n mÃ¡y in...</p>
       )}
       {status === 'ok' && (
-        <p className="text-xs text-green-600">Đã gửi lệnh in thành công</p>
+        <p className="text-xs text-green-600">ÄÃ£ gá»­i lá»‡nh in thÃ nh cÃ´ng</p>
       )}
       {status === 'error' && errorMsg && (
         <p className="text-xs text-red-500 max-w-xs break-words">{errorMsg}</p>
@@ -232,35 +232,35 @@ function getGrabTimeline(order: Order) {
 
   if (order.status === 'completed') {
     return {
-      label: 'Đã giao',
+      label: 'ÄÃ£ giao',
       at: String(times?.deliveredAt ?? order.deliveredAt ?? ''),
     }
   }
 
   if (deliveryTaskpoolStatus === 'DRIVER_AT_STORE') {
     return {
-      label: 'Tài xế đã đến',
+      label: 'TÃ i xáº¿ Ä‘Ã£ Ä‘áº¿n',
       at: String(times?.driverArriveRestoAt ?? ''),
     }
   }
 
   if (deliveryTaskpoolStatus === 'PICKING_UP') {
     return {
-      label: 'Đang lấy hàng',
+      label: 'Äang láº¥y hÃ ng',
       at: String(times?.driverArriveRestoAt ?? times?.readyAt ?? ''),
     }
   }
 
   if (order.status === 'waiting_pickup') {
     return {
-      label: 'Đang chuẩn bị',
+      label: 'Äang chuáº©n bá»‹',
       at: String(times?.acceptedAt ?? order.placedAt ?? ''),
     }
   }
 
   if (order.status === 'delivering') {
     return {
-      label: 'Đang giao',
+      label: 'Äang giao',
       at: String(times?.driverArriveRestoAt ?? times?.readyAt ?? ''),
     }
   }
@@ -276,12 +276,12 @@ function getGrabDetailItems(order: Order) {
   const itemInfo = getRecord(raw?.itemInfo)
 
   // itemInfo.items = Grab API canonical source (correct). raw.items may be stale
-  // DOM-extracted placeholders (e.g. "HOÁ ĐƠN / No data") — skip those.
+  // DOM-extracted placeholders (e.g. "HOÃ ÄÆ N / No data") â€” skip those.
   const isPlaceholder = (i: unknown) => {
     const r = getRecord(i)
     const name = String(r?.name ?? '').toUpperCase()
     const note = String(r?.note ?? '').toLowerCase()
-    return name.includes('HOÁ ĐƠN') || name.includes('HOA DON') || note === 'no data'
+    return name.includes('HOÃ ÄÆ N') || name.includes('HOA DON') || note === 'no data'
   }
 
   const itemInfoCandidates = Array.isArray(itemInfo?.items)
@@ -350,7 +350,7 @@ function getGrabDetailItems(order: Order) {
         : Array.isArray(groupRecord?.items)
         ? groupRecord.items
         : []
-      const title = String(groupRecord?.modifierGroupName ?? groupRecord?.name ?? groupRecord?.title ?? '').trim() || 'Tùy chọn'
+      const title = String(groupRecord?.modifierGroupName ?? groupRecord?.name ?? groupRecord?.title ?? '').trim() || 'TÃ¹y chá»n'
 
       const lines = modifiers.map((modifier) => {
         const modifierRecord = getRecord(modifier)
@@ -378,7 +378,7 @@ function getGrabDetailItems(order: Order) {
 }
 
 function getGrabCustomerName(order: Order) {
-  return getDisplayCustomerName(order) ?? 'Khách hàng'
+  return getDisplayCustomerName(order) ?? 'KhÃ¡ch hÃ ng'
 }
 
 function getGrabCustomerNote(order: Order) {
@@ -392,9 +392,9 @@ function getGrabPaymentMethodLabel(order: Order) {
   const paymentMethod = String(raw?.paymentMethod ?? order.paymentMethod ?? '').trim()
   const normalized = paymentMethod.toLowerCase()
 
-  if (!normalized) return 'Khác'
-  if (normalized === 'cashless') return 'Không tiền mặt'
-  if (normalized === 'cash') return 'Tiền mặt'
+  if (!normalized) return 'KhÃ¡c'
+  if (normalized === 'cashless') return 'KhÃ´ng tiá»n máº·t'
+  if (normalized === 'cash') return 'Tiá»n máº·t'
 
   return PAYMENT_METHOD_LABEL[normalized] ?? paymentMethod
 }
@@ -428,7 +428,7 @@ function getBeDetailItems(order: Order) {
     const unitPriceRaw = Number(record?.unit_price ?? record?.uint_price ?? record?.item_price ?? 0)
     const sellingAmountRaw = Number(record?.amount ?? 0)
     const originalAmountRaw = Number(record?.original_amount ?? 0)
-    // Fallback: nếu amount=0 (list API cũ không có), dùng unit_price * quantity
+    // Fallback: náº¿u amount=0 (list API cÅ© khÃ´ng cÃ³), dÃ¹ng unit_price * quantity
     const sellingAmount = sellingAmountRaw > 0 ? sellingAmountRaw : (originalAmountRaw > 0 ? originalAmountRaw : unitPriceRaw * quantity)
     const originalAmount = originalAmountRaw > 0 ? originalAmountRaw : sellingAmount
     const originalPrice = Math.round(originalAmount / quantity)
@@ -475,9 +475,9 @@ function getBeDetailItems(order: Order) {
 function getBePaymentMethodLabel(order: Order) {
   const raw = getRecord(order.rawPayload)
   const paymentMode = String(raw?.payment_mode ?? order.paymentMethod ?? '').trim().toLowerCase()
-  if (paymentMode === '1') return 'Không tiền mặt'
-  if (paymentMode === '2') return 'Tiền mặt'
-  return PAYMENT_METHOD_LABEL[paymentMode] ?? order.paymentMethod ?? 'Khác'
+  if (paymentMode === '1') return 'KhÃ´ng tiá»n máº·t'
+  if (paymentMode === '2') return 'Tiá»n máº·t'
+  return PAYMENT_METHOD_LABEL[paymentMode] ?? order.paymentMethod ?? 'KhÃ¡c'
 }
 
 type BeVoucherLine = {
@@ -536,7 +536,7 @@ function buildGrabVoucherLine(value: unknown, scopeLabel: string): GrabVoucherLi
   if (!title && typeof discountValue !== 'number') return null
 
   return {
-    title: title || 'Ưu đãi Grab',
+    title: title || 'Æ¯u Ä‘Ã£i Grab',
     discountValue,
     scopeLabel,
   }
@@ -567,12 +567,12 @@ function getGrabVoucherLines(order: Order) {
   const lines: GrabVoucherLine[] = []
 
   for (const discount of orderLevelDiscounts) {
-    const line = buildGrabVoucherLine(discount, 'Voucher đơn hàng')
+    const line = buildGrabVoucherLine(discount, 'Voucher Ä‘Æ¡n hÃ ng')
     if (line) lines.push(line)
   }
 
   for (const voucher of voucherCandidates) {
-    const line = buildGrabVoucherLine(voucher, 'Voucher đơn hàng')
+    const line = buildGrabVoucherLine(voucher, 'Voucher Ä‘Æ¡n hÃ ng')
     if (line) lines.push(line)
   }
 
@@ -581,7 +581,7 @@ function getGrabVoucherLines(order: Order) {
     const discountInfo = Array.isArray(itemRecord?.discountInfo) ? itemRecord.discountInfo : []
 
     for (const discount of discountInfo) {
-      const line = buildGrabVoucherLine(discount, 'Voucher món')
+      const line = buildGrabVoucherLine(discount, 'Voucher mÃ³n')
       if (line) lines.push(line)
     }
   }
@@ -595,9 +595,9 @@ function getGrabVoucherLines(order: Order) {
 
     if (typeof genericDiscount === 'number' && genericDiscount > 0) {
       lines.push({
-        title: 'Ưu đãi Grab',
+        title: 'Æ¯u Ä‘Ã£i Grab',
         discountValue: genericDiscount,
-        scopeLabel: 'Voucher đơn hàng',
+        scopeLabel: 'Voucher Ä‘Æ¡n hÃ ng',
       })
     }
   }
@@ -624,20 +624,20 @@ function getGrabUtensilRequest(order: Order) {
   ]
 
   for (const value of candidateValues) {
-    if (typeof value === 'boolean') return value ? 'Có' : 'Không'
+    if (typeof value === 'boolean') return value ? 'CÃ³' : 'KhÃ´ng'
     if (typeof value === 'number') {
       // Grab encodes cutlery as integer enum:
-      // 0 = không cần dụng cụ, 1 = cần dụng cụ, 2 = không cần (eco/no plastic)
-      if (value === 0) return 'Không'
-      if (value === 2) return 'Không (eco)'
-      if (value === 1) return 'Có'
-      return value > 0 ? `Có (${value})` : 'Không'
+      // 0 = khÃ´ng cáº§n dá»¥ng cá»¥, 1 = cáº§n dá»¥ng cá»¥, 2 = khÃ´ng cáº§n (eco/no plastic)
+      if (value === 0) return 'KhÃ´ng'
+      if (value === 2) return 'KhÃ´ng (eco)'
+      if (value === 1) return 'CÃ³'
+      return value > 0 ? `CÃ³ (${value})` : 'KhÃ´ng'
     }
 
     const normalized = String(value ?? '').trim().toLowerCase()
     if (!normalized) continue
-    if (['true', 'yes', 'co', 'có', '1'].includes(normalized)) return 'Có'
-    if (['false', 'no', 'khong', 'không', '0'].includes(normalized)) return 'Không'
+    if (['true', 'yes', 'co', 'cÃ³', '1'].includes(normalized)) return 'CÃ³'
+    if (['false', 'no', 'khong', 'khÃ´ng', '0'].includes(normalized)) return 'KhÃ´ng'
     return String(value).trim()
   }
 
@@ -657,12 +657,12 @@ function getBeVoucherLines(order: Order) {
       const title = String(record?.title ?? '').trim()
       const discountValue = parseAmount(record?.discount_value)
       const type = String(record?.type ?? '').trim().toLowerCase()
-      const scopeLabel = type === 'delivery' ? 'Ưu đãi giao hàng' : 'Voucher món'
+      const scopeLabel = type === 'delivery' ? 'Æ¯u Ä‘Ã£i giao hÃ ng' : 'Voucher mÃ³n'
 
       if (!title && typeof discountValue !== 'number') return null
 
       return {
-        title: title || 'Ưu đãi từ Be',
+        title: title || 'Æ¯u Ä‘Ã£i tá»« Be',
         discountValue,
         scopeLabel,
       }
@@ -679,9 +679,9 @@ function getBeVoucherLines(order: Order) {
 
     if (typeof discountValue === 'number' && discountValue > 0) {
       lines.push({
-        title: String(orderDiscount.title ?? orderDiscount.voucher_title ?? orderDiscount.voucher_name ?? orderDiscount.promotion_name ?? 'Ưu đãi từ Be').trim() || 'Ưu đãi từ Be',
+        title: String(orderDiscount.title ?? orderDiscount.voucher_title ?? orderDiscount.voucher_name ?? orderDiscount.promotion_name ?? 'Æ¯u Ä‘Ã£i tá»« Be').trim() || 'Æ¯u Ä‘Ã£i tá»« Be',
         discountValue,
-        scopeLabel: 'Voucher đơn hàng',
+        scopeLabel: 'Voucher Ä‘Æ¡n hÃ ng',
       })
     }
   }
@@ -702,13 +702,13 @@ function getBeUtensilRequest(order: Order) {
   ]
 
   for (const value of candidateValues) {
-    if (typeof value === 'boolean') return value ? 'Có' : 'Không'
-    if (typeof value === 'number') return value > 0 ? `Có (${value})` : 'Không'
+    if (typeof value === 'boolean') return value ? 'CÃ³' : 'KhÃ´ng'
+    if (typeof value === 'number') return value > 0 ? `CÃ³ (${value})` : 'KhÃ´ng'
 
     const normalized = String(value ?? '').trim().toLowerCase()
     if (!normalized) continue
-    if (['true', 'yes', 'co', 'có', '1'].includes(normalized)) return 'Có'
-    if (['false', 'no', 'khong', 'không', '0'].includes(normalized)) return 'Không'
+    if (['true', 'yes', 'co', 'cÃ³', '1'].includes(normalized)) return 'CÃ³'
+    if (['false', 'no', 'khong', 'khÃ´ng', '0'].includes(normalized)) return 'KhÃ´ng'
     return String(value).trim()
   }
 
@@ -760,7 +760,7 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={onRefresh} className="btn-outline h-9 text-sm" disabled={isRefreshing}><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /> Làm mới</button>
+          <button type="button" onClick={onRefresh} className="btn-outline h-9 text-sm" disabled={isRefreshing}><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /> LÃ m má»›i</button>
           <PrintButton orderId={order._id} />
           <PrintButton orderId={order._id} type="label" />
           <PrintPreviewPanel orderId={order._id} />
@@ -770,28 +770,28 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
       <div className="rounded-[28px] border border-gray-200 bg-white px-4 py-3">
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 lg:grid-cols-4">
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Tài xế</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">TÃ i xáº¿</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{driverName || '-'}</p>
             <p className="text-xs text-gray-500">{driverPhone || '-'}</p>
-            <p className="mt-0.5 text-[11px] text-emerald-600">{timeline.label} · {formatMaybeDate(timeline.at)}</p>
-            <p className="mt-0.5 text-[11px] text-gray-400">Mã đặt: <span className="font-mono text-gray-500 break-all">{bookingCode}</span></p>
+            <p className="mt-0.5 text-[11px] text-emerald-600">{timeline.label} Â· {formatMaybeDate(timeline.at)}</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">MÃ£ Ä‘áº·t: <span className="font-mono text-gray-500 break-all">{bookingCode}</span></p>
           </div>
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">KhÃ¡ch hÃ ng</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{customerName}</p>
             <p className="text-xs text-gray-500">{customerPhone}</p>
             {customerNote && <p className="mt-0.5 text-[11px] text-gray-500 whitespace-pre-line">{customerNote}</p>}
-            <p className="mt-0.5 text-[11px] text-gray-400">Dụng cụ: <span className="text-gray-700">{utensilRequest}</span></p>
+            <p className="mt-0.5 text-[11px] text-gray-400">Dá»¥ng cá»¥: <span className="text-gray-700">{utensilRequest}</span></p>
           </div>
           <div>
-            <p className="text-[10px] text-gray-400">Thương hiệu & Hub</p>
+            <p className="text-[10px] text-gray-400">ThÆ°Æ¡ng hiá»‡u & Hub</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.brandName || '-'}</p>
             <p className="text-xs text-gray-500">{order.hubName || '-'}</p>
           </div>
           <div>
-            <p className="text-[10px] text-gray-400">Đặt lúc · Số món</p>
+            <p className="text-[10px] text-gray-400">Äáº·t lÃºc Â· Sá»‘ mÃ³n</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(String(times?.createdAt ?? order.placedAt ?? ''))}</p>
-            <p className="text-xs text-gray-500">{itemCount} món</p>
+            <p className="text-xs text-gray-500">{itemCount} mÃ³n</p>
           </div>
         </div>
       </div>
@@ -799,20 +799,20 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
 <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_260px]">
         <div className="rounded-[28px] border border-gray-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-gray-950">Tóm tắt đơn hàng</h2>
-            <span className="text-sm text-gray-500">{itemCount} món</span>
+            <h2 className="text-base font-semibold text-gray-950">TÃ³m táº¯t Ä‘Æ¡n hÃ ng</h2>
+            <span className="text-sm text-gray-500">{itemCount} mÃ³n</span>
           </div>
 
           <div className="mt-3 overflow-hidden rounded-2xl border border-gray-200">
             <table className="w-full text-left">
               <thead className="bg-gray-100 text-gray-500 text-xs">
                 <tr>
-                  <th className="px-3 py-2.5 font-medium">Món</th>
+                  <th className="px-3 py-2.5 font-medium">MÃ³n</th>
                   <th className="px-3 py-2.5 text-center font-medium">SL</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Giá gốc</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Gạch giá</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Giá bán</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Thành tiền</th>
+                  <th className="px-3 py-2.5 text-right font-medium">GiÃ¡ gá»‘c</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Gáº¡ch giÃ¡</th>
+                  <th className="px-3 py-2.5 text-right font-medium">GiÃ¡ bÃ¡n</th>
+                  <th className="px-3 py-2.5 text-right font-medium">ThÃ nh tiá»n</th>
                 </tr>
               </thead>
               <tbody>
@@ -827,7 +827,7 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
                             <div key={`${group.title}-${groupIndex}`}>
                               <p className="font-medium text-gray-600">{group.title}</p>
                               <div className="space-y-0.5">
-                                {group.lines.map((addon, addonIndex) => <p key={`${addon}-${addonIndex}`}>• {addon}</p>)}
+                                {group.lines.map((addon, addonIndex) => <p key={`${addon}-${addonIndex}`}>â€¢ {addon}</p>)}
                               </div>
                             </div>
                           ))}
@@ -881,29 +881,29 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
 
         <div className="rounded-[28px] border border-gray-200 bg-white p-4">
           <div className="space-y-2 text-sm text-gray-500">
-            <div className="flex items-center justify-between gap-3"><span>Tiền hàng</span><span className="font-medium text-gray-900">{formatCurrency(financialBreakdown.subtotal)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Giảm giá sản phẩm</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.productDiscount)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Giảm giá tổng đơn (ĐH + VC)</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.orderDiscount)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Chiết khấu (CK) sàn</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.platformFee)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Tiá»n hÃ ng</span><span className="font-medium text-gray-900">{formatCurrency(financialBreakdown.subtotal)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Giáº£m giÃ¡ sáº£n pháº©m</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.productDiscount)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Giáº£m giÃ¡ tá»•ng Ä‘Æ¡n (ÄH + VC)</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.orderDiscount)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Chiáº¿t kháº¥u (CK) sÃ n</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.platformFee)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>Doanh thu sau KM</span><span className="font-medium text-gray-900">{formatCurrency(financialBreakdown.revenueAfterPromotion || order.total)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Khấu trừ thuế</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.taxWithheld)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Kháº¥u trá»« thuáº¿</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.taxWithheld)}</span></div>
           </div>
 
           <div className="mt-3 border-t border-gray-200 pt-3">
             <div className="flex items-center justify-between gap-3 text-xl font-semibold text-gray-950">
-              <span>Thực nhận từ sàn</span>
+              <span>Thá»±c nháº­n tá»« sÃ n</span>
               <span>{formatCurrency(actualReceived)}</span>
             </div>
           </div>
 
           <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
-            <p className="font-medium text-gray-900">Phương thức thanh toán</p>
+            <p className="font-medium text-gray-900">PhÆ°Æ¡ng thá»©c thanh toÃ¡n</p>
             <p className="mt-1">{paymentMethodLabel}</p>
           </div>
 
           <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
-            <div className="flex items-start gap-2"><Phone className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">Liên hệ giao nhận</p><p className="mt-0.5">{driverPhone || order.customerPhone || '-'}</p></div></div>
-            <div className="mt-2 flex items-start gap-2"><Truck className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">Tài xế</p><p className="mt-0.5">{driverName || '-'}</p></div></div>
+            <div className="flex items-start gap-2"><Phone className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">LiÃªn há»‡ giao nháº­n</p><p className="mt-0.5">{driverPhone || order.customerPhone || '-'}</p></div></div>
+            <div className="mt-2 flex items-start gap-2"><Truck className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">TÃ i xáº¿</p><p className="mt-0.5">{driverName || '-'}</p></div></div>
           </div>
         </div>
       </div>
@@ -945,7 +945,7 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={onRefresh} className="btn-outline h-9 text-sm" disabled={isRefreshing}><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /> Làm mới</button>
+          <button type="button" onClick={onRefresh} className="btn-outline h-9 text-sm" disabled={isRefreshing}><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /> LÃ m má»›i</button>
           <PrintButton orderId={order._id} />
           <PrintButton orderId={order._id} type="label" />
           <PrintPreviewPanel orderId={order._id} />
@@ -957,42 +957,42 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
           <div>
             <p className="text-[10px] text-gray-400">Site & Hub</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.brandName || '-'}</p>
-            <p className="text-xs text-gray-500">{order.channelName || CHANNEL_SOURCE_LABEL[order.source]} · {order.hubName || '-'}</p>
+            <p className="text-xs text-gray-500">{order.channelName || CHANNEL_SOURCE_LABEL[order.source]} Â· {order.hubName || '-'}</p>
           </div>
           <div>
-            <p className="text-[10px] text-gray-400">Thời gian</p>
+            <p className="text-[10px] text-gray-400">Thá»i gian</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(order.placedAt)}</p>
-            <p className="text-xs text-gray-500">Lấy: {formatMaybeDate(order.deliveryInfo?.estimatedTime || order.deliveredAt)}</p>
+            <p className="text-xs text-gray-500">Láº¥y: {formatMaybeDate(order.deliveryInfo?.estimatedTime || order.deliveredAt)}</p>
           </div>
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">KhÃ¡ch hÃ ng</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.customerName}</p>
             <p className="text-xs text-gray-500">{customerPhone}</p>
             {order.deliveryInfo?.address && <p className="mt-0.5 text-[11px] text-gray-500 line-clamp-1">{order.deliveryInfo.address}</p>}
           </div>
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Tài xế</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">TÃ i xáº¿</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{driverName}</p>
             <p className="text-xs text-gray-500">{driverPhone}</p>
-            {order.driverInfo?.vehiclePlate && <p className="mt-0.5 text-[11px] text-gray-400">Biển số: <span className="text-gray-700">{order.driverInfo.vehiclePlate}</span></p>}
-            {utensilRequest !== '-' && <p className="mt-0.5 text-[11px] text-gray-400">Dụng cụ: <span className="text-gray-700">{utensilRequest}</span></p>}
+            {order.driverInfo?.vehiclePlate && <p className="mt-0.5 text-[11px] text-gray-400">Biá»ƒn sá»‘: <span className="text-gray-700">{order.driverInfo.vehiclePlate}</span></p>}
+            {utensilRequest !== '-' && <p className="mt-0.5 text-[11px] text-gray-400">Dá»¥ng cá»¥: <span className="text-gray-700">{utensilRequest}</span></p>}
           </div>
         </div>
         {(order.deliveryInfo?.note || order.note) && (
-          <p className="mt-2.5 border-t border-gray-100 pt-2.5 text-xs text-gray-500">Ghi chú: {order.deliveryInfo?.note || order.note}</p>
+          <p className="mt-2.5 border-t border-gray-100 pt-2.5 text-xs text-gray-500">Ghi chÃº: {order.deliveryInfo?.note || order.note}</p>
         )}
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_260px]">
         <div className="rounded-[28px] border border-gray-200 bg-white p-4">
-          <div className="flex items-center justify-between gap-3"><h2 className="text-base font-semibold text-gray-950">Thông tin đơn hàng</h2><span className="text-sm text-gray-500">{totalItems} món</span></div>
+          <div className="flex items-center justify-between gap-3"><h2 className="text-base font-semibold text-gray-950">ThÃ´ng tin Ä‘Æ¡n hÃ ng</h2><span className="text-sm text-gray-500">{totalItems} mÃ³n</span></div>
           <div className="mt-3 overflow-hidden rounded-2xl border border-gray-200">
             <table className="w-full text-left">
-              <thead className="bg-gray-100 text-gray-500 text-xs"><tr><th className="px-3 py-2.5 font-medium">Sản phẩm</th><th className="px-3 py-2.5 text-center font-medium">SL</th><th className="px-3 py-2.5 text-right font-medium">Giá gốc</th><th className="px-3 py-2.5 text-right font-medium">Gạch</th><th className="px-3 py-2.5 text-right font-medium">Bán</th><th className="px-3 py-2.5 text-right font-medium">Thành tiền</th></tr></thead>
+              <thead className="bg-gray-100 text-gray-500 text-xs"><tr><th className="px-3 py-2.5 font-medium">Sáº£n pháº©m</th><th className="px-3 py-2.5 text-center font-medium">SL</th><th className="px-3 py-2.5 text-right font-medium">GiÃ¡ gá»‘c</th><th className="px-3 py-2.5 text-right font-medium">Gáº¡ch</th><th className="px-3 py-2.5 text-right font-medium">BÃ¡n</th><th className="px-3 py-2.5 text-right font-medium">ThÃ nh tiá»n</th></tr></thead>
               <tbody>
                 {items.map((item, index) => (
                   <tr key={`${item.name}-${index}`} className="border-t border-gray-100 align-top">
-                    <td className="px-3 py-2.5"><p className="text-base font-semibold text-gray-950">{item.name}</p>{item.note && <p className="mt-0.5 whitespace-pre-line text-xs text-gray-500">{item.note}</p>}{item.addonGroups.length > 0 && <div className="mt-1 space-y-1 text-xs text-gray-500">{item.addonGroups.map((group, gi) => (<div key={`grp-${gi}`}>{group.title && <p className="font-medium text-gray-600">{group.title}:</p>}<div className="space-y-0.5">{group.lines.map((line, li) => <p key={`${gi}-${li}`}>• {line}</p>)}</div></div>))}</div>}</td>
+                    <td className="px-3 py-2.5"><p className="text-base font-semibold text-gray-950">{item.name}</p>{item.note && <p className="mt-0.5 whitespace-pre-line text-xs text-gray-500">{item.note}</p>}{item.addonGroups.length > 0 && <div className="mt-1 space-y-1 text-xs text-gray-500">{item.addonGroups.map((group, gi) => (<div key={`grp-${gi}`}>{group.title && <p className="font-medium text-gray-600">{group.title}:</p>}<div className="space-y-0.5">{group.lines.map((line, li) => <p key={`${gi}-${li}`}>â€¢ {line}</p>)}</div></div>))}</div>}</td>
                     <td className="px-3 py-2.5 text-center text-sm font-medium text-gray-900">{item.quantity}</td>
                     <td className="px-3 py-2.5 text-right text-sm text-gray-700">{formatCurrency(item.originalPrice)}</td>
                     <td className="px-3 py-2.5 text-right text-sm text-gray-700">{formatCurrency(item.strikePrice)}</td>
@@ -1030,19 +1030,19 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
 
         <div className="rounded-[28px] border border-gray-200 bg-white p-4">
           <div className="space-y-2 text-sm text-gray-500">
-            <div className="flex items-center justify-between gap-3"><span>Tiền hàng</span><span className="font-medium text-gray-900">{formatCurrency(financialBreakdown.subtotal)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Giảm giá sản phẩm</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.productDiscount)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Giảm giá tổng đơn (ĐH + VC)</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.orderDiscount)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Chiết khấu (CK) sàn</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.platformFee)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Tiá»n hÃ ng</span><span className="font-medium text-gray-900">{formatCurrency(financialBreakdown.subtotal)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Giáº£m giÃ¡ sáº£n pháº©m</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.productDiscount)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Giáº£m giÃ¡ tá»•ng Ä‘Æ¡n (ÄH + VC)</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.orderDiscount)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Chiáº¿t kháº¥u (CK) sÃ n</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.platformFee)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>Doanh thu sau KM</span><span className="font-medium text-gray-900">{formatCurrency(financialBreakdown.revenueAfterPromotion)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Khấu trừ thuế</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.taxWithheld)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Kháº¥u trá»« thuáº¿</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.taxWithheld)}</span></div>
           </div>
 
-          <div className="mt-3 border-t border-gray-200 pt-3"><div className="flex items-center justify-between gap-3 text-xl font-semibold text-gray-950"><span>Thực nhận từ sàn</span><span>{formatCurrency(actualReceived)}</span></div></div>
-          <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600"><p className="font-medium text-gray-900">Phương thức thanh toán</p><p className="mt-1">{paymentMethodLabel}</p></div>
+          <div className="mt-3 border-t border-gray-200 pt-3"><div className="flex items-center justify-between gap-3 text-xl font-semibold text-gray-950"><span>Thá»±c nháº­n tá»« sÃ n</span><span>{formatCurrency(actualReceived)}</span></div></div>
+          <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600"><p className="font-medium text-gray-900">PhÆ°Æ¡ng thá»©c thanh toÃ¡n</p><p className="mt-1">{paymentMethodLabel}</p></div>
           <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
-            <div className="flex items-start gap-2"><Phone className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">Liên hệ giao nhận</p><p className="mt-0.5">{driverPhone || customerPhone || '-'}</p></div></div>
-            <div className="mt-2 flex items-start gap-2"><Truck className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">Tài xế</p><p className="mt-0.5">{driverName || 'Chưa có thông tin'}</p></div></div>
+            <div className="flex items-start gap-2"><Phone className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">LiÃªn há»‡ giao nháº­n</p><p className="mt-0.5">{driverPhone || customerPhone || '-'}</p></div></div>
+            <div className="mt-2 flex items-start gap-2"><Truck className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">TÃ i xáº¿</p><p className="mt-0.5">{driverName || 'ChÆ°a cÃ³ thÃ´ng tin'}</p></div></div>
           </div>
         </div>
       </div>
@@ -1055,18 +1055,17 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
   const order = (data as Order | undefined) ?? null
 
   if (isLoading) {
-    return <div className="flex min-h-[50vh] items-center justify-center rounded-[28px] border border-gray-200 bg-white"><div className="flex items-center gap-3 text-gray-500"><Loader2 className="h-5 w-5 animate-spin" /> Đang tải chi tiết đơn hàng...</div></div>
+    return <div className="flex min-h-[50vh] items-center justify-center rounded-[28px] border border-gray-200 bg-white"><div className="flex items-center gap-3 text-gray-500"><Loader2 className="h-5 w-5 animate-spin" /> Äang táº£i chi tiáº¿t Ä‘Æ¡n hÃ ng...</div></div>
   }
 
   if (!order) {
-    return <div className="rounded-[28px] border border-red-200 bg-red-50 px-6 py-10 text-red-700">{error instanceof Error ? error.message : 'Không tìm thấy đơn hàng.'}</div>
+    return <div className="rounded-[28px] border border-red-200 bg-red-50 px-6 py-10 text-red-700">{error instanceof Error ? error.message : 'KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n hÃ ng.'}</div>
   }
 
   const actualReceived = getSettlementActualReceived(order)
   const totalItems = order.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
   const displayOrderCode = getOrderDisplayCode(order)
   const financialBreakdown = getSettlementFinancialBreakdown(order)
-  const grabMoneyBreakdown = getSettlementGrabMoneyBreakdown(order)
   const showExternalReference = Boolean(order.externalOrderId && order.externalOrderId !== displayOrderCode)
 
   if (order.source === 'grab') {
@@ -1093,7 +1092,7 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => refetch()} className="btn-outline h-9 text-sm" disabled={isRefetching}><RefreshCw className={cn('h-4 w-4', isRefetching && 'animate-spin')} /> Làm mới</button>
+          <button type="button" onClick={() => refetch()} className="btn-outline h-9 text-sm" disabled={isRefetching}><RefreshCw className={cn('h-4 w-4', isRefetching && 'animate-spin')} /> LÃ m má»›i</button>
           <PrintButton orderId={order._id} />
           <PrintButton orderId={order._id} type="label" />
           <PrintPreviewPanel orderId={order._id} />
@@ -1105,38 +1104,38 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
           <div>
             <p className="text-[10px] text-gray-400">Site & Hub</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.brandName || '-'}</p>
-            <p className="text-xs text-gray-500">{order.channelName || CHANNEL_SOURCE_LABEL[order.source]} · {order.hubName || '-'}</p>
+            <p className="text-xs text-gray-500">{order.channelName || CHANNEL_SOURCE_LABEL[order.source]} Â· {order.hubName || '-'}</p>
           </div>
           <div>
-            <p className="text-[10px] text-gray-400">Thời gian</p>
+            <p className="text-[10px] text-gray-400">Thá»i gian</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(order.placedAt)}</p>
-            <p className="text-xs text-gray-500">Lấy: {formatMaybeDate(order.deliveredAt || order.deliveryInfo?.estimatedTime)}</p>
+            <p className="text-xs text-gray-500">Láº¥y: {formatMaybeDate(order.deliveredAt || order.deliveryInfo?.estimatedTime)}</p>
           </div>
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">KhÃ¡ch hÃ ng</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.customerName || '-'}</p>
             <p className="text-xs text-gray-500">{getDisplayCustomerPhone(order) || '-'}</p>
             {order.deliveryInfo?.address && <p className="mt-0.5 text-[11px] text-gray-500 line-clamp-1">{order.deliveryInfo.address}</p>}
           </div>
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Tài xế</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">TÃ i xáº¿</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.driverInfo?.name || '-'}</p>
             <p className="text-xs text-gray-500">{getDisplayDriverPhone(order) || '-'}</p>
-            {order.driverInfo?.vehiclePlate && <p className="mt-0.5 text-[11px] text-gray-400">Biển số: <span className="text-gray-700">{order.driverInfo.vehiclePlate}</span></p>}
-            <p className="mt-0.5 text-[11px] text-emerald-600">Thực nhận: {formatCurrency(actualReceived)}</p>
+            {order.driverInfo?.vehiclePlate && <p className="mt-0.5 text-[11px] text-gray-400">Biá»ƒn sá»‘: <span className="text-gray-700">{order.driverInfo.vehiclePlate}</span></p>}
+            <p className="mt-0.5 text-[11px] text-emerald-600">Thá»±c nháº­n: {formatCurrency(actualReceived)}</p>
           </div>
         </div>
         {(order.deliveryInfo?.note || order.note) && (
-          <p className="mt-2.5 border-t border-gray-100 pt-2.5 text-xs text-gray-500">Ghi chú: {order.deliveryInfo?.note || order.note}</p>
+          <p className="mt-2.5 border-t border-gray-100 pt-2.5 text-xs text-gray-500">Ghi chÃº: {order.deliveryInfo?.note || order.note}</p>
         )}
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_260px]">
         <div className="rounded-[28px] border border-gray-200 bg-white p-4">
-          <div className="flex items-center justify-between gap-3"><h2 className="text-base font-semibold text-gray-950">Thông tin đơn hàng</h2><span className="text-sm text-gray-500">{totalItems} món</span></div>
+          <div className="flex items-center justify-between gap-3"><h2 className="text-base font-semibold text-gray-950">ThÃ´ng tin Ä‘Æ¡n hÃ ng</h2><span className="text-sm text-gray-500">{totalItems} mÃ³n</span></div>
           <div className="mt-3 overflow-hidden rounded-2xl border border-gray-200">
             <table className="w-full text-left">
-              <thead className="bg-gray-100 text-gray-500 text-xs"><tr><th className="px-3 py-2.5 font-medium">Sản phẩm</th><th className="px-3 py-2.5 text-center font-medium">SL</th><th className="px-3 py-2.5 text-right font-medium">Giá gốc</th><th className="px-3 py-2.5 text-right font-medium">Thành tiền</th></tr></thead>
+              <thead className="bg-gray-100 text-gray-500 text-xs"><tr><th className="px-3 py-2.5 font-medium">Sáº£n pháº©m</th><th className="px-3 py-2.5 text-center font-medium">SL</th><th className="px-3 py-2.5 text-right font-medium">GiÃ¡ gá»‘c</th><th className="px-3 py-2.5 text-right font-medium">ThÃ nh tiá»n</th></tr></thead>
               <tbody>
                 {order.items.map((item, index) => (
                   <tr key={`${item.name}-${index}`} className="border-t border-gray-100 align-top">
@@ -1157,19 +1156,19 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
 
         <div className="rounded-[28px] border border-gray-200 bg-white p-4">
           <div className="space-y-2 text-sm text-gray-500">
-            <div className="flex items-center justify-between gap-3"><span>Tiền hàng</span><span className="font-medium text-gray-900">{formatCurrency(financialBreakdown.subtotal)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Giảm giá sản phẩm</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.productDiscount)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Giảm giá tổng đơn (ĐH + VC)</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.orderDiscount)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Chiết khấu (CK) sàn</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.platformFee)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Tiá»n hÃ ng</span><span className="font-medium text-gray-900">{formatCurrency(financialBreakdown.subtotal)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Giáº£m giÃ¡ sáº£n pháº©m</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.productDiscount)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Giáº£m giÃ¡ tá»•ng Ä‘Æ¡n (ÄH + VC)</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.orderDiscount)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Chiáº¿t kháº¥u (CK) sÃ n</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.platformFee)}</span></div>
             <div className="flex items-center justify-between gap-3"><span>Doanh thu sau KM</span><span className="font-medium text-gray-900">{formatCurrency(financialBreakdown.revenueAfterPromotion)}</span></div>
-            <div className="flex items-center justify-between gap-3"><span>Khấu trừ thuế</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.taxWithheld)}</span></div>
+            <div className="flex items-center justify-between gap-3"><span>Kháº¥u trá»« thuáº¿</span><span className="font-medium text-gray-900">-{formatCurrency(financialBreakdown.taxWithheld)}</span></div>
           </div>
 
-          <div className="mt-3 border-t border-gray-200 pt-3"><div className="flex items-center justify-between gap-3 text-xl font-semibold text-gray-950"><span>Thực nhận từ sàn</span><span>{formatCurrency(actualReceived)}</span></div></div>
-          <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600"><p className="font-medium text-gray-900">Phương thức thanh toán</p><p className="mt-1">{PAYMENT_METHOD_LABEL[order.paymentMethod || 'other'] || order.paymentMethod || 'Khác'}</p></div>
+          <div className="mt-3 border-t border-gray-200 pt-3"><div className="flex items-center justify-between gap-3 text-xl font-semibold text-gray-950"><span>Thá»±c nháº­n tá»« sÃ n</span><span>{formatCurrency(actualReceived)}</span></div></div>
+          <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600"><p className="font-medium text-gray-900">PhÆ°Æ¡ng thá»©c thanh toÃ¡n</p><p className="mt-1">{PAYMENT_METHOD_LABEL[order.paymentMethod || 'other'] || order.paymentMethod || 'KhÃ¡c'}</p></div>
           <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
-            <div className="flex items-start gap-2"><Phone className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">Liên hệ giao nhận</p><p className="mt-0.5">{getDisplayDriverPhone(order) || getDisplayCustomerPhone(order) || '-'}</p></div></div>
-            <div className="mt-2 flex items-start gap-2"><Truck className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">Tài xế</p><p className="mt-0.5">{order.driverInfo?.name || 'Chưa có thông tin'}</p></div></div>
+            <div className="flex items-start gap-2"><Phone className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">LiÃªn há»‡ giao nháº­n</p><p className="mt-0.5">{getDisplayDriverPhone(order) || getDisplayCustomerPhone(order) || '-'}</p></div></div>
+            <div className="mt-2 flex items-start gap-2"><Truck className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">TÃ i xáº¿</p><p className="mt-0.5">{order.driverInfo?.name || 'ChÆ°a cÃ³ thÃ´ng tin'}</p></div></div>
           </div>
         </div>
       </div>
