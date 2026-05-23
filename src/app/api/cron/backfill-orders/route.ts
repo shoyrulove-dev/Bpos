@@ -13,6 +13,8 @@ import type { SessionData } from '@/integrations/types'
 
 const CRON_SECRET = process.env.CRON_SECRET
 
+export const maxDuration = 60
+
 async function upsertOrders(intg: {
   _id: string
   provider: string
