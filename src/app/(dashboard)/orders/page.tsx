@@ -5,7 +5,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Download, Loader2, Plus, Printer, RefreshCw, Search, ArrowLeftRight } from 'lucide-react'
 import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
-import { useOrders } from '@/hooks/use-orders-channels'
+import { useOrders, useOrderTodayStatusCounts } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { getActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverPhone } from '@/lib/order-financials'
 import { resolveOrderDeliveredAtValue, resolveOrderPlacedAtValue } from '@/lib/order-recovery'
@@ -22,8 +22,6 @@ type OrdersResponse = {
   page: number
   limit: number
   totalPages: number
-  statusCounts?: Record<string, number>
-  todayStatusCounts?: Record<string, number>
 }
 
 type OrderListItem = Order & {
@@ -52,34 +50,6 @@ const SOURCES = [
 
 function getTotalItems(order: Order) {
   return order.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
-}
-
-function getGrabPortalOrderStage(order: Order) {
-  const raw = order.rawPayload as Record<string, unknown> | undefined
-  const rawStatus = String(raw?.deliveryStatus ?? raw?.orderState ?? raw?.status ?? raw?.orderStatus ?? raw?.state ?? '').toLowerCase()
-
-  if (rawStatus.includes('ready')) return 'ready'
-  if (rawStatus.includes('upcoming') || rawStatus.includes('schedule')) return 'upcoming'
-  if (rawStatus.includes('cancel')) return 'cancelled'
-  if (rawStatus.includes('complete') || rawStatus.includes('deliver') || rawStatus.includes('history') || rawStatus.includes('past')) return 'history'
-
-  return 'preparing'
-}
-
-function buildGrabPortalOrderUrl(order: Order) {
-  if (order.source !== 'grab') return null
-
-  const raw = order.rawPayload as Record<string, unknown> | undefined
-  const merchant = raw?.merchant as Record<string, unknown> | undefined
-  const merchantId = String(merchant?.ID ?? raw?.merchantID ?? raw?.merchantId ?? '').trim()
-  const orderId = String(order.externalOrderId ?? raw?.orderID ?? raw?.ID ?? '').trim()
-  const shortOrderId = String(raw?.displayID ?? raw?.shortOrderID ?? raw?.shortOrderId ?? '').trim()
-
-  if (!merchantId || !orderId) return null
-
-  const url = new URL(`https://merchant.grab.com/order/${encodeURIComponent(merchantId)}/${getGrabPortalOrderStage(order)}/${encodeURIComponent(orderId)}`)
-  if (shortOrderId) url.searchParams.set('shortOrderID', shortOrderId)
-  return url.toString()
 }
 
 function openWindow(url: string) {
@@ -166,6 +136,10 @@ export default function OrdersPage() {
   })
   const ordersData = data as OrdersResponse | undefined
   const orders: OrderListItem[] = (ordersData?.orders as OrderListItem[] | undefined) ?? []
+  const { data: todayCountsData } = useOrderTodayStatusCounts({
+    source: sourceFilter,
+    pollingEnabled,
+  })
 
 
   useEffect(() => {
@@ -194,12 +168,12 @@ export default function OrdersPage() {
   }
 
   const todayCountByStatus = useMemo(() => {
-    const counts = { ...(ordersData?.todayStatusCounts ?? {}) }
+    const counts = { ...(((todayCountsData as { todayStatusCounts?: Record<string, number> } | undefined)?.todayStatusCounts) ?? {}) }
     if (statusFilter && statusFilter !== '' && typeof counts[statusFilter] !== 'number') {
       counts[statusFilter] = 0
     }
     return counts
-  }, [ordersData?.todayStatusCounts, statusFilter])
+  }, [todayCountsData, statusFilter])
 
   const totalPages = Math.max(1, ordersData?.totalPages ?? 1)
   const currentFrom = ordersData?.total ? (page - 1) * pageSize + 1 : 0

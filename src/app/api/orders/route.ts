@@ -8,7 +8,6 @@ import { buildOrderFilterFromSearchParams } from '@/lib/order-query'
 import { serializeOrderResponse } from '@/lib/order-response'
 import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
 
-const ORDER_STATUS_KEYS = ['draft', 'pre_order', 'waiting_confirm', 'waiting_pickup', 'delivering', 'completed', 'cancelled'] as const
 const ORDER_LIST_RAW_SELECT = [
   'rawPayload.displayID',
   'rawPayload.shortOrderID',
@@ -62,13 +61,8 @@ export async function GET(req: NextRequest) {
   const vnDayStartMs = Math.floor(vnNowMs / (24 * 60 * 60 * 1000)) * (24 * 60 * 60 * 1000)
   const todayStart = new Date(vnDayStartMs - VN_OFFSET_MS)
   const tomorrowStart = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000)
-  const todayStatusFilter = {
-    ...(searchParams.get('source') ? { source: searchParams.get('source') as string } : {}),
-    ...(searchParams.get('brandId') ? { brandId: searchParams.get('brandId') as string } : {}),
-    placedAt: { $gte: todayStart, $lt: tomorrowStart },
-  }
   const skip = (page - 1) * limit
-  const [orderRows, total, todayStatusRows] = await Promise.all([
+  const [orderRows, total] = await Promise.all([
     OrderModel.find(filter)
       .select(ORDER_LIST_SELECT)
       .populate('brandId', 'name')
@@ -76,33 +70,13 @@ export async function GET(req: NextRequest) {
       .sort({ placedAt: -1 })
       .skip(skip).limit(limit).lean(),
     OrderModel.countDocuments(filter),
-    OrderModel.aggregate([
-      { $match: todayStatusFilter },
-      { $group: { _id: '$status', count: { $sum: 1 } } },
-    ]),
   ])
-
-  const statusCounts = ORDER_STATUS_KEYS.reduce((acc, key) => {
-    acc[key] = 0
-    return acc
-  }, {} as Record<(typeof ORDER_STATUS_KEYS)[number], number>)
-
-  const todayStatusCounts = ORDER_STATUS_KEYS.reduce((acc, key) => {
-    acc[key] = 0
-    return acc
-  }, {} as Record<(typeof ORDER_STATUS_KEYS)[number], number>)
-
-  todayStatusRows.forEach((row) => {
-    if (typeof row._id === 'string' && row._id in todayStatusCounts) {
-      todayStatusCounts[row._id as keyof typeof todayStatusCounts] = Number(row.count || 0)
-    }
-  })
 
   const orders = orderRows.map((order) => serializeOrderResponse(order as Record<string, unknown>, { includeRawPayload: false }))
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
-  return ok({ orders, total, page, limit, totalPages, statusCounts, todayStatusCounts })
+  return ok({ orders, total, page, limit, totalPages })
 }
 
 export async function POST(req: NextRequest) {

@@ -37,6 +37,21 @@ export function useOrder(id: string) {
   return useQuery({ queryKey: ['order', id], queryFn: () => fetchJSON(`/api/orders/${encodeURIComponent(id)}`, undefined, false), enabled: !!id })
 }
 
+export function useOrderTodayStatusCounts(params?: { source?: string; brandId?: string; pollingEnabled?: boolean }) {
+  const sp = new URLSearchParams()
+  if (params?.source) sp.set('source', params.source)
+  if (params?.brandId) sp.set('brandId', params.brandId)
+
+  return useQuery({
+    queryKey: ['orders-today-status', params],
+    queryFn: () => fetchJSON(`/api/orders/today-status?${sp}`, undefined, false),
+    staleTime: ORDER_ALERT_POLL_INTERVAL_MS,
+    refetchInterval: params?.pollingEnabled ? ORDER_ALERT_POLL_INTERVAL_MS : false,
+    refetchIntervalInBackground: params?.pollingEnabled ?? false,
+    refetchOnWindowFocus: false,
+  })
+}
+
 export function useUpdateOrder() {
   const qc = useQueryClient()
   return useMutation({
