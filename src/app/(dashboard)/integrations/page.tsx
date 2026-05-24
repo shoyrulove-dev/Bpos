@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   ShoppingBag, Plus, Trash2, Settings, PlayCircle, Loader2, Lock,
-  CheckCircle, XCircle, Zap, Info, RefreshCw, KeyRound, Wifi, Pencil, ChevronLeft, ChevronRight,
+  CheckCircle, XCircle, Zap, Info, RefreshCw, KeyRound, Wifi, Pencil, ChevronLeft, ChevronRight, Search,
 } from 'lucide-react'
 import { useIntegrations, useCreateIntegration, useDeleteIntegration, useUpdateIntegration } from '@/hooks/use-data'
 import { useBrands } from '@/hooks/use-brands'
@@ -1310,6 +1310,7 @@ export default function IntegrationsPage() {
   const [qtCreds, setQtCreds]       = useState<Record<string, string>>({})
   const [qtResult, setQtResult]     = useState<QtResult | null>(null)
   const [actionStatus, setActionStatus] = useState<ActionStatus>(null)
+  const [integrationSearch, setIntegrationSearch] = useState('')
   const [activeProviderTab, setActiveProviderTab] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = window.localStorage.getItem(PROVIDER_TAB_STORAGE_KEY)
@@ -1369,8 +1370,22 @@ export default function IntegrationsPage() {
     acc[provider.value] = integrations.filter((integration) => integration.provider === provider.value).length
     return acc
   }, {} as Record<string, number>)
+  const normalizedIntegrationSearch = integrationSearch.trim().toLowerCase()
   const providerSections = PROVIDERS.map((provider) => {
-    const provIntegrations = [...integrations.filter((i) => i.provider === provider.value)]
+    const provIntegrations = [...integrations.filter((i) => {
+      if (i.provider !== provider.value) return false
+      if (!normalizedIntegrationSearch) return true
+      const haystack = [
+        i.loginUsername,
+        i.externalStoreName,
+        i.externalStoreId,
+        typeof i.brandId === 'object' && i.brandId ? i.brandId.name : '',
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(normalizedIntegrationSearch)
+    })]
     // Group by loginUsername so shared-account entries (e.g. 1ketoan × 3 stores) appear together
     provIntegrations.sort((a, b) => (a.loginUsername ?? '').localeCompare(b.loginUsername ?? ''))
     return {
@@ -1945,6 +1960,18 @@ export default function IntegrationsPage() {
           <Loader2 className="w-8 h-8 animate-spin text-primary-400" />
         </div>
       )}
+
+      <div className="card card-body">
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            className="input w-full pl-9"
+            placeholder="Tìm theo username / email / store..."
+            value={integrationSearch}
+            onChange={(event) => setIntegrationSearch(event.target.value)}
+          />
+        </div>
+      </div>
 
       <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm space-y-4">
         <div className="flex flex-wrap gap-2 border-b border-gray-100 pb-4">

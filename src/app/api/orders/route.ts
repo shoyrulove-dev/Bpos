@@ -56,8 +56,6 @@ export async function GET(req: NextRequest) {
   const requestedLimit = parseInt(searchParams.get('limit') || '10', 10) || 10
   const limit = Math.min(500, Math.max(1, requestedLimit))
   const filter = buildOrderFilterFromSearchParams(searchParams)
-  const countFilter = { ...filter }
-  delete countFilter.status
   // Use Vietnam timezone (UTC+7) for day boundaries
   const VN_OFFSET_MS = 7 * 60 * 60 * 1000
   const vnNowMs = Date.now() + VN_OFFSET_MS
@@ -70,7 +68,7 @@ export async function GET(req: NextRequest) {
     placedAt: { $gte: todayStart, $lt: tomorrowStart },
   }
   const skip = (page - 1) * limit
-  const [orderRows, total, statusRows, todayStatusRows] = await Promise.all([
+  const [orderRows, total, todayStatusRows] = await Promise.all([
     OrderModel.find(filter)
       .select(ORDER_LIST_SELECT)
       .populate('brandId', 'name')
@@ -78,10 +76,6 @@ export async function GET(req: NextRequest) {
       .sort({ placedAt: -1 })
       .skip(skip).limit(limit).lean(),
     OrderModel.countDocuments(filter),
-    OrderModel.aggregate([
-      { $match: countFilter },
-      { $group: { _id: '$status', count: { $sum: 1 } } },
-    ]),
     OrderModel.aggregate([
       { $match: todayStatusFilter },
       { $group: { _id: '$status', count: { $sum: 1 } } },
@@ -92,12 +86,6 @@ export async function GET(req: NextRequest) {
     acc[key] = 0
     return acc
   }, {} as Record<(typeof ORDER_STATUS_KEYS)[number], number>)
-
-  statusRows.forEach((row) => {
-    if (typeof row._id === 'string' && row._id in statusCounts) {
-      statusCounts[row._id as keyof typeof statusCounts] = Number(row.count || 0)
-    }
-  })
 
   const todayStatusCounts = ORDER_STATUS_KEYS.reduce((acc, key) => {
     acc[key] = 0
