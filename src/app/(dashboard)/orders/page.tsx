@@ -26,6 +26,10 @@ type OrdersResponse = {
   todayStatusCounts?: Record<string, number>
 }
 
+type OrderListItem = Order & {
+  displayCode?: string
+}
+
 const STATUS_ITEMS = [
   { value: '', label: 'Tất cả', dot: 'bg-teal-500' },
   { value: 'draft', label: ORDER_STATUS_LABEL.draft, dot: 'bg-gray-300' },
@@ -161,7 +165,7 @@ export default function OrdersPage() {
     pollingEnabled,
   })
   const ordersData = data as OrdersResponse | undefined
-  const orders: Order[] = ordersData?.orders ?? []
+  const orders: OrderListItem[] = (ordersData?.orders as OrderListItem[] | undefined) ?? []
 
 
   useEffect(() => {
@@ -284,6 +288,7 @@ export default function OrdersPage() {
               const actualReceived = getActualReceived(order)
               const locationLabel = [order.brandName, order.hubName].filter(Boolean).join(' - ')
               const showNewBadge = isOrderNew(order)
+              const displayCode = order.displayCode || getOrderDisplayCode(order)
               return (
                 <article key={order._id} className="rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm">
                   {/* Header row */}
@@ -293,7 +298,7 @@ export default function OrdersPage() {
                       <span className="shrink-0" aria-label={CHANNEL_SOURCE_LABEL[order.source]}>
                         <SourceIcon source={order.source} />
                       </span>
-                      <span className="font-mono text-base font-semibold text-sky-600">#{getOrderDisplayCode(order)}</span>
+                      <span className="font-mono text-base font-semibold text-sky-600">#{displayCode}</span>
                       {locationLabel && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">{locationLabel}</span>}
                     </div>
                     <span className={cn('badge shrink-0', ORDER_STATUS_COLOR[order.status])}>{ORDER_STATUS_LABEL[order.status]}</span>
@@ -302,8 +307,8 @@ export default function OrdersPage() {
                   <div className="rounded-2xl bg-gray-50 px-2.5 py-2.5">
                     <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                       <InfoGroup title="Khách hàng">
-                        <InfoRow label="Tên" value={getDisplayCustomerName(order) || '–'} />
-                        <InfoRow label="SĐT" value={getDisplayCustomerPhone(order) || '–'} />
+                        <InfoRow label="Tên" value={order.customerName || getDisplayCustomerName(order) || '–'} />
+                        <InfoRow label="SĐT" value={order.customerPhone || getDisplayCustomerPhone(order) || '–'} />
                       </InfoGroup>
                       <InfoGroup title="Thanh toán">
                         <InfoRow label="Số lượng" value={`${totalItems} sản phẩm`} />
@@ -315,7 +320,7 @@ export default function OrdersPage() {
                       </InfoGroup>
                       <InfoGroup title="Vận chuyển">
                         <InfoRow label="Tài xế" value={order.driverInfo?.name || '–'} />
-                        <InfoRow label="SĐT" value={getDisplayDriverPhone(order) || '–'} />
+                        <InfoRow label="SĐT" value={order.driverInfo?.phone || getDisplayDriverPhone(order) || '–'} />
                         {order.deliveryInfo?.address && <InfoRow label="Địa chỉ" value={order.deliveryInfo.address} valueClassName="text-xs" />}
                       </InfoGroup>
                     </div>

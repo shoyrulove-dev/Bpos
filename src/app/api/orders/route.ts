@@ -9,7 +9,43 @@ import { serializeOrderResponse } from '@/lib/order-response'
 import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
 
 const ORDER_STATUS_KEYS = ['draft', 'pre_order', 'waiting_confirm', 'waiting_pickup', 'delivering', 'completed', 'cancelled'] as const
-const ORDER_LIST_SELECT = 'shortId source externalOrderId brandId hubId channelId customerName customerPhone items.name items.quantity discount subtotal total platformFee paymentMethod deliveryInfo driverInfo note status placedAt deliveredAt createdAt updatedAt rawPayload'
+const ORDER_LIST_RAW_SELECT = [
+  'rawPayload.displayID',
+  'rawPayload.shortOrderID',
+  'rawPayload.shortOrderId',
+  'rawPayload.bookingCode',
+  'rawPayload.times',
+  'rawPayload.customer',
+  'rawPayload.receiver',
+  'rawPayload.consumer',
+  'rawPayload.eater',
+  'rawPayload.delivery',
+  'rawPayload.driver',
+  'rawPayload.rider',
+  'rawPayload.courier',
+  'rawPayload.driverDetails',
+  'rawPayload.driverInfo',
+  'rawPayload.customer_name',
+  'rawPayload.receiver_name',
+  'rawPayload.customer_phone',
+  'rawPayload.customer_phone_no',
+  'rawPayload.receiver_phone',
+  'rawPayload.receiver_phone_no',
+  'rawPayload.placedAt',
+  'rawPayload.placed_at',
+  'rawPayload.createdAt',
+  'rawPayload.created_at',
+  'rawPayload.deliveredAt',
+  'rawPayload.delivered_at',
+  'rawPayload.completedAt',
+  'rawPayload.completed_at',
+  'rawPayload.deliveryCompletedAt',
+  'rawPayload.updatedAt',
+  'rawPayload.updated_at',
+  'rawPayload.delivered_time',
+  'rawPayload.finished_at',
+].join(' ')
+const ORDER_LIST_SELECT = `shortId source externalOrderId brandId hubId channelId customerName customerPhone items.name items.quantity discount subtotal total platformFee paymentMethod deliveryInfo.address deliveryInfo.estimatedTime driverInfo note status placedAt deliveredAt createdAt updatedAt ${ORDER_LIST_RAW_SELECT}`
 
 export async function GET(req: NextRequest) {
   const { res } = await requireAuth(req)
@@ -74,7 +110,7 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  const orders = orderRows.map((order) => serializeOrderResponse(order as Record<string, unknown>))
+  const orders = orderRows.map((order) => serializeOrderResponse(order as Record<string, unknown>, { includeRawPayload: false }))
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
 

@@ -1,5 +1,6 @@
 import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
 import { recoverOrderDisplayFields } from '@/lib/order-recovery'
+import { getOrderDisplayCode } from '@/lib/utils'
 
 type PopulatedRef = { _id?: { toString(): string } | string; name?: string } | string | null | undefined
 type OrderLike = Record<string, unknown> & {
@@ -7,6 +8,10 @@ type OrderLike = Record<string, unknown> & {
   brandId?: PopulatedRef
   hubId?: PopulatedRef
   channelId?: PopulatedRef
+}
+
+type SerializeOrderResponseOptions = {
+  includeRawPayload?: boolean
 }
 
 function getRefId(value: PopulatedRef) {
@@ -20,7 +25,7 @@ function getRefName(value: PopulatedRef) {
   return typeof value.name === 'string' ? value.name : undefined
 }
 
-export function serializeOrderResponse<T extends OrderLike>(order: T) {
+export function serializeOrderResponse<T extends OrderLike>(order: T, options: SerializeOrderResponseOptions = {}) {
   const recovered = recoverOrderDisplayFields(order as {
     rawPayload?: unknown
     customerName?: unknown
@@ -31,9 +36,18 @@ export function serializeOrderResponse<T extends OrderLike>(order: T) {
     updatedAt?: unknown
     status?: unknown
   })
+  const includeRawPayload = options.includeRawPayload !== false
+  const displayCode = getOrderDisplayCode({
+    source: typeof order.source === 'string' ? order.source : undefined,
+    shortId: typeof order.shortId === 'string' ? order.shortId : undefined,
+    externalOrderId: typeof order.externalOrderId === 'string' ? order.externalOrderId : undefined,
+    rawPayload: recovered.rawPayload as Record<string, unknown> | undefined,
+  })
 
   return repairVietnameseTextDeep({
     ...recovered,
+    ...(includeRawPayload ? {} : { rawPayload: undefined }),
+    displayCode,
     _id: typeof order._id === 'string' ? order._id : order._id?.toString?.(),
     brandId: getRefId(order.brandId),
     brandName: getRefName(order.brandId),
