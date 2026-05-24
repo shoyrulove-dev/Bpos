@@ -25,7 +25,6 @@ const PROVIDERS = [
 
 const PROVIDER_TAB_STORAGE_KEY = 'bpos-integ-tab'
 const PAGE_SIZE = 20
-const COLUMN_SIZE = 10
 
 type CredField = { key: string; label: string; type?: string; placeholder?: string }
 
@@ -291,7 +290,6 @@ function PlatformAccountsSection() {
   const visibleAccounts = groupedAccounts[activeProvider] ?? []
   const totalPages = Math.max(1, Math.ceil(visibleAccounts.length / PAGE_SIZE))
   const paginatedAccounts = visibleAccounts.slice((accountPage - 1) * PAGE_SIZE, accountPage * PAGE_SIZE)
-  const accountColumns = [paginatedAccounts.slice(0, COLUMN_SIZE), paginatedAccounts.slice(COLUMN_SIZE, PAGE_SIZE)]
 
   useEffect(() => {
     setAccountPage(1)
@@ -367,39 +365,39 @@ function PlatformAccountsSection() {
             onPageChange={handlePageChange}
           />
 
-          <div className="grid gap-4 md:grid-cols-2">
-            {accountColumns.map((column, columnIndex) => (
-              <div key={columnIndex} className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
-                {column.length > 0 ? column.map((acc) => {
-                  const idx = PLATFORM_ACCOUNTS.indexOf(acc)
-                  const show = revealed.has(idx)
-                  return (
-                    <div key={idx} className="flex items-center gap-3 border-b border-gray-100 px-3 py-3 last:border-b-0">
+          {paginatedAccounts.length > 0 ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {paginatedAccounts.map((acc) => {
+                const idx = PLATFORM_ACCOUNTS.indexOf(acc)
+                const show = revealed.has(idx)
+                return (
+                  <div key={idx} className="rounded-2xl border border-gray-100 bg-white">
+                    <div className="flex items-center gap-3 px-3 py-3">
                       <PlatformIcon source={acc.provider} size="sm" />
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-sm">
-                          <span className="shrink-0 text-xs font-semibold text-gray-700">{acc.brand}</span>
-                          <span className="shrink-0 text-xs text-gray-400">·</span>
-                          <span className="truncate text-xs text-gray-500">{acc.hub}</span>
-                          <span className="truncate font-mono text-xs text-gray-700">{acc.username}</span>
-                          <span className="font-mono text-xs tracking-widest text-gray-500">{show ? acc.password : '••••••••'}</span>
-                        </div>
+                        <p className="truncate font-mono text-sm font-semibold text-gray-800">{acc.username}</p>
                       </div>
                       <button
                         onClick={() => toggle(idx)}
-                        className="shrink-0 rounded px-1.5 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
-                        title={show ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                        className="shrink-0 rounded px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                        title={show ? 'Ẩn chi tiết' : 'Hiện chi tiết'}
                       >
-                        {show ? 'Ẩn' : 'Hiện'}
+                        {show ? 'Ẩn' : 'Chi tiết'}
                       </button>
                     </div>
-                  )
-                }) : (
-                  columnIndex === 0 && <div className="px-4 py-8 text-center text-sm text-gray-400">Chưa có tài khoản cho sàn này.</div>
-                )}
-              </div>
-            ))}
-          </div>
+                    {show && (
+                      <div className="border-t border-gray-100 px-3 py-2 text-xs text-gray-500">
+                        <p>{[acc.brand, acc.hub, acc.note].filter(Boolean).join(' · ')}</p>
+                        <p className="pt-1 font-mono tracking-wide text-gray-700">{acc.password}</p>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="px-4 py-8 text-center text-sm text-gray-400">Chưa có tài khoản cho sàn này.</div>
+          )}
         </div>
       )}
     </div>
@@ -1345,7 +1343,6 @@ export default function IntegrationsPage() {
   const activeProviderSection = providerSections.find((section) => section.value === activeProviderTab) ?? providerSections[0]
   const providerTotalPages = Math.max(1, Math.ceil(activeProviderSection.integrations.length / PAGE_SIZE))
   const paginatedProviderIntegrations = activeProviderSection.integrations.slice((providerPage - 1) * PAGE_SIZE, providerPage * PAGE_SIZE)
-  const providerColumns = [paginatedProviderIntegrations.slice(0, COLUMN_SIZE), paginatedProviderIntegrations.slice(COLUMN_SIZE, PAGE_SIZE)]
 
   useEffect(() => {
     if (providerPage > providerTotalPages) setProviderPage(providerTotalPages)
@@ -1439,114 +1436,119 @@ export default function IntegrationsPage() {
 
     const brandName = getBrandName(integ)
     const hubName = getHubName(integ)
-    const meta = [brandName !== '—' ? brandName : '', hubName !== '—' ? hubName : '', integ.loginUsername ?? ''].filter(Boolean).join(' · ')
+    const primaryLabel = integ.loginUsername || integ.externalStoreName || integ.externalStoreId || 'Chưa cấu hình'
+    const detailMeta = [
+      integ.externalStoreName && integ.externalStoreName !== primaryLabel ? integ.externalStoreName : '',
+      integ.externalStoreId && integ.externalStoreId !== primaryLabel ? integ.externalStoreId : '',
+      brandName !== '—' ? brandName : '',
+      hubName !== '—' ? hubName : '',
+    ].filter(Boolean).join(' · ')
 
     const isEditingName = editingNameId === integ._id
     const isSavingName  = savingNameId === integ._id
 
     return (
-      <div key={integ._id} className={cn('break-inside-avoid-column border-b border-gray-100 px-4 py-3 last:border-b-0', isPendingSetup && 'opacity-60')}>
-        {/* Row 1: icon + name + meta + delete */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <PlatformIcon source={integ.provider} size="sm" />
-            <div className="min-w-0 flex-1">
-              {isEditingName ? (
-                <div className="flex items-center gap-1">
-                  <input
-                    autoFocus
-                    className="input text-sm h-7 flex-1 min-w-0"
-                    value={editingNameVal}
-                    onChange={e => setEditingNameVal(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') void saveEditName(integ._id); if (e.key === 'Escape') setEditingNameId(null) }}
-                    placeholder="Tên cửa hàng..."
-                  />
-                  <button onClick={() => void saveEditName(integ._id)} disabled={isSavingName}
-                    className="shrink-0 px-2 py-1 rounded-lg bg-green-500 hover:bg-green-600 text-white text-[11px] font-semibold disabled:opacity-50">
-                    {isSavingName ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Lưu'}
-                  </button>
-                  <button onClick={() => setEditingNameId(null)}
-                    className="shrink-0 px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 text-[11px]">
-                    Huỷ
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1 group">
-                  <p className="text-sm font-semibold text-gray-900 truncate leading-tight">
-                    {integ.externalStoreName || integ.externalStoreId || 'Chưa cấu hình'}
-                  </p>
-                  <button
-                    onClick={() => startEditName(integ)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 shrink-0"
-                    title="Đổi tên cửa hàng"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                </div>
+      <div key={integ._id} className={cn('rounded-3xl border border-gray-200 bg-white shadow-sm', isPendingSetup && 'opacity-60')}>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <PlatformIcon source={integ.provider} size="sm" />
+          <div className="min-w-0 flex-1">
+            {isEditingName ? (
+              <div className="flex items-center gap-1">
+                <input
+                  autoFocus
+                  className="input h-7 min-w-0 flex-1 text-sm"
+                  value={editingNameVal}
+                  onChange={e => setEditingNameVal(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') void saveEditName(integ._id); if (e.key === 'Escape') setEditingNameId(null) }}
+                  placeholder="Username / email / tên cửa hàng"
+                />
+                <button onClick={() => void saveEditName(integ._id)} disabled={isSavingName}
+                  className="shrink-0 rounded-lg bg-green-500 px-2 py-1 text-[11px] font-semibold text-white hover:bg-green-600 disabled:opacity-50">
+                  {isSavingName ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Lưu'}
+                </button>
+                <button onClick={() => setEditingNameId(null)}
+                  className="shrink-0 rounded-lg bg-gray-100 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-200">
+                  Huỷ
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <p className="truncate font-mono text-sm font-semibold text-gray-900">{primaryLabel}</p>
+                {sessionBadge}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => startEditName(integ)}
+              className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              title="Đổi tên hiển thị"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+            <button onClick={() => void handleDelete(integ._id)} className="rounded-lg p-1 text-red-400 hover:bg-red-50 hover:text-red-600">
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+
+        <details className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
+          <summary className="cursor-pointer select-none font-medium text-gray-600">Chi tiết</summary>
+          <div className="space-y-2 pt-2">
+            {detailMeta && <p className="break-words">{detailMeta}</p>}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className={cn('badge badge-sm', syncBadgeClass)}>{syncLabel}</span>
+              {safeTimeAgo(displayedSyncAt) && <span title={formatDateNative(displayedSyncAt)}>{safeTimeAgo(displayedSyncAt)}</span>}
+              {isExternalScraperManaged && integ.scraperSyncMessage && (
+                <span className="truncate text-sky-600">{integ.scraperSyncMessage}</span>
               )}
-              {meta && <p className="text-[11px] text-gray-400 truncate">{meta}</p>}
+            </div>
+
+            {isExternalScraperManaged && integ.provider === 'be' && integ.appLastSyncAt && (
+              <p title={formatDateNative(integ.appLastSyncAt)}>
+                API nền: {integ.appSyncStatus === 'success' ? 'OK' : integ.appSyncStatus === 'error' ? 'lỗi' : integ.appSyncStatus ?? 'n/a'} · {safeTimeAgo(integ.appLastSyncAt)}
+              </p>
+            )}
+
+            {sr && !sr.loading && (
+              <div className={cn('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5', sr.ok ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-600')}>
+                {sr.ok ? <RefreshCw className="h-3 w-3 shrink-0" /> : <XCircle className="h-3 w-3 shrink-0" />}
+                <span>{sr.ok ? `+${sr.upserted ?? 0} mới · ${sr.updated ?? 0} cập nhật` : sr.message}</span>
+              </div>
+            )}
+
+            {tr && !tr.loading && (
+              <div className={cn('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5', tr.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>
+                {tr.ok ? <CheckCircle className="h-3 w-3 shrink-0" /> : <XCircle className="h-3 w-3 shrink-0" />}
+                <span>{tr.ok ? `${tr.message ?? 'Kết nối thành công'}${tr.count !== undefined ? ` — ${tr.count} đơn` : ''}` : tr.message}</span>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              <button onClick={() => openSettings(integ)} className="btn-outline btn-sm flex items-center gap-1 px-2 text-xs">
+                <Settings className="h-3 w-3" /> Cài đặt
+              </button>
+              {supportsSessionLogin ? (
+                <button onClick={() => openAutoLogin(integ)} className="btn-outline btn-sm flex items-center gap-1 px-2 text-xs text-violet-600 border-violet-200 hover:bg-violet-50">
+                  <KeyRound className="h-3 w-3" /> Login
+                </button>
+              ) : (
+                <button onClick={() => handleTest(integ._id)} disabled={isPendingSetup || !!tr?.loading}
+                  className="btn-outline btn-sm flex items-center gap-1 px-2 text-xs text-primary-600 border-primary-200 hover:bg-primary-50 disabled:opacity-50">
+                  {tr?.loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlayCircle className="h-3 w-3" />}
+                  Test
+                </button>
+              )}
+              {!isExternalScraperManaged && (
+                <button onClick={() => handleSync(integ._id)} disabled={isPendingSetup || !!sr?.loading}
+                  className="btn-primary btn-sm flex items-center justify-center gap-1 text-xs disabled:opacity-50">
+                  {sr?.loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                  {isPendingSetup ? 'Chờ bật' : 'Sync'}
+                </button>
+              )}
             </div>
           </div>
-          <button onClick={() => void handleDelete(integ._id)} className="btn-ghost p-1 text-red-400 hover:bg-red-50 hover:text-red-600 shrink-0 rounded-lg">
-            <Trash2 className="w-3 h-3" />
-          </button>
-        </div>
-
-        {/* Row 2: sync status + session */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className={cn('badge badge-sm', syncBadgeClass)}>{syncLabel}</span>
-          {safeTimeAgo(displayedSyncAt) && <span className="text-[11px] text-gray-400" title={formatDateNative(displayedSyncAt)}>{safeTimeAgo(displayedSyncAt)}</span>}
-          {sessionBadge && <span className="text-gray-300">·</span>}
-          {sessionBadge}
-          {isExternalScraperManaged && integ.scraperSyncMessage && (
-            <span className="text-[11px] text-sky-600 truncate max-w-full">{integ.scraperSyncMessage}</span>
-          )}
-        </div>
-
-        {isExternalScraperManaged && integ.provider === 'be' && integ.appLastSyncAt && (
-          <p className="text-[11px] text-gray-400" title={formatDateNative(integ.appLastSyncAt)}>
-            API nền: {integ.appSyncStatus === 'success' ? 'OK' : integ.appSyncStatus === 'error' ? 'lỗi' : integ.appSyncStatus ?? 'n/a'} · {safeTimeAgo(integ.appLastSyncAt)}
-          </p>
-        )}
-
-        {sr && !sr.loading && (
-          <div className={cn('flex items-center gap-1.5 text-[11px] rounded-lg px-2.5 py-1.5', sr.ok ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-600')}>
-            {sr.ok ? <RefreshCw className="w-3 h-3 shrink-0" /> : <XCircle className="w-3 h-3 shrink-0" />}
-            <span>{sr.ok ? `+${sr.upserted ?? 0} mới · ${sr.updated ?? 0} cập nhật` : sr.message}</span>
-          </div>
-        )}
-
-        {tr && !tr.loading && (
-          <div className={cn('flex items-center gap-1.5 text-[11px] rounded-lg px-2.5 py-1.5', tr.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600')}>
-            {tr.ok ? <CheckCircle className="w-3 h-3 shrink-0" /> : <XCircle className="w-3 h-3 shrink-0" />}
-            <span>{tr.ok ? `${tr.message ?? 'Kết nối thành công'}${tr.count !== undefined ? ` — ${tr.count} đơn` : ''}` : tr.message}</span>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex flex-wrap gap-1.5 pt-2 border-t border-gray-100">
-          <button onClick={() => openSettings(integ)} className="btn-outline btn-sm flex items-center gap-1 px-2 text-xs">
-            <Settings className="w-3 h-3" /> Cài đặt
-          </button>
-          {supportsSessionLogin ? (
-            <button onClick={() => openAutoLogin(integ)} className="btn-outline btn-sm flex items-center gap-1 px-2 text-xs text-violet-600 border-violet-200 hover:bg-violet-50">
-              <KeyRound className="w-3 h-3" /> Login
-            </button>
-          ) : (
-            <button onClick={() => handleTest(integ._id)} disabled={isPendingSetup || !!tr?.loading}
-              className="btn-outline btn-sm flex items-center gap-1 px-2 text-xs text-primary-600 border-primary-200 hover:bg-primary-50 disabled:opacity-50">
-              {tr?.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <PlayCircle className="w-3 h-3" />}
-              Test
-            </button>
-          )}
-          {!isExternalScraperManaged && (
-            <button onClick={() => handleSync(integ._id)} disabled={isPendingSetup || !!sr?.loading}
-              className="btn-primary btn-sm flex-1 flex items-center gap-1 justify-center text-xs disabled:opacity-50">
-              {sr?.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-              {isPendingSetup ? 'Chờ bật' : 'Sync'}
-            </button>
-          )}
-        </div>
+        </details>
       </div>
     )
   }
@@ -1983,31 +1985,20 @@ export default function IntegrationsPage() {
             label="tích hợp"
             onPageChange={handleProviderPageChange}
           />
-          <div className="grid gap-4 md:grid-cols-2">
-            {activeProviderSection.integrations.length > 0 ? (
-              providerColumns.map((column, columnIndex) => (
-                <div key={columnIndex} className="overflow-hidden rounded-3xl border border-gray-200 bg-white">
-                  {column.length > 0 ? column.map((integration) => renderIntegrationCard(integration)) : (
-                    columnIndex === 0 && (
-                      <div className="rounded-2xl bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
-                        <ShoppingBag className="w-8 h-8 mx-auto mb-3 text-gray-300" />
-                        Chưa có tích hợp nào trong tab này.
-                      </div>
-                    )
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="rounded-2xl bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
-                <ShoppingBag className="w-8 h-8 mx-auto mb-3 text-gray-300" />
-                {activeProviderSection.value === 'shopee'
-                  ? 'Chưa tạo bản ghi Shopee nào. Khi có OTP, có thể thêm hoặc cập nhật account ngay trong tab này.'
-                  : activeProviderSection.value === 'xanh_sm'
-                  ? 'Chưa tạo bản ghi Xanh SM nào. Có thể lưu account chờ OTP ngay trong tab này.'
-                  : 'Chưa có tích hợp nào trong tab này.'}
-              </div>
-            )}
-          </div>
+          {paginatedProviderIntegrations.length > 0 ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {paginatedProviderIntegrations.map((integration) => renderIntegrationCard(integration))}
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+              <ShoppingBag className="mx-auto mb-3 h-8 w-8 text-gray-300" />
+              {activeProviderSection.value === 'shopee'
+                ? 'Chưa tạo bản ghi Shopee nào. Khi có OTP, có thể thêm hoặc cập nhật account ngay trong tab này.'
+                : activeProviderSection.value === 'xanh_sm'
+                ? 'Chưa tạo bản ghi Xanh SM nào. Có thể lưu account chờ OTP ngay trong tab này.'
+                : 'Chưa có tích hợp nào trong tab này.'}
+            </div>
+          )}
           <PaginationControls
             page={providerPage}
             totalPages={providerTotalPages}

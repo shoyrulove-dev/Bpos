@@ -27,7 +27,6 @@ const SOURCES = [
 ]
 
 const PAGE_SIZE = 20
-const COLUMN_SIZE = 10
 const emptyForm = { name: '', source: 'grab', brandId: '', hubId: '', externalStoreId: '' }
 
 type PauseStoreStatus = {
@@ -116,10 +115,6 @@ export default function ChannelsPage() {
   const paginatedChannels = useMemo(
     () => activeChannels.slice((channelPage - 1) * PAGE_SIZE, channelPage * PAGE_SIZE),
     [activeChannels, channelPage]
-  )
-  const channelColumns = useMemo(
-    () => [paginatedChannels.slice(0, COLUMN_SIZE), paginatedChannels.slice(COLUMN_SIZE, PAGE_SIZE)],
-    [paginatedChannels]
   )
 
   const filteredHubs = hubs
@@ -280,50 +275,54 @@ export default function ChannelsPage() {
           onPageChange={handlePageChange}
         />
 
-        <div className="grid gap-4 md:grid-cols-2">
-          {channelColumns.map((column, columnIndex) => (
-            <div key={columnIndex} className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
-              {column.length > 0 ? column.map((channel: Channel) => {
-                const integ = integrations.find(i =>
-                  i.provider === channel.source &&
-                  i.externalStoreId && i.externalStoreId === (channel as unknown as Record<string, unknown>).externalStoreId
-                )
-                const liveStatus = pauseStatuses[getStoreIdentityKey({
-                  source: normalizeStoreSource(channel.source) ?? 'grab',
-                  integrationId: integ?._id,
-                  storeId: normalizeStoreId((channel as unknown as Record<string, unknown>).externalStoreId),
-                  username: integ?.loginUsername,
-                  label: channel.name,
-                })]
-                const statusTone = liveStatus
-                  ? (!liveStatus.loggedIn ? 'offline' : liveStatus.isUnknown ? 'unknown' : liveStatus.paused ? 'paused' : 'active')
-                  : channel.scraperLastSeen && !channel.scraperLoggedIn
-                    ? 'offline'
-                    : channel.scraperPaused
-                      ? 'paused'
-                      : channel.status === 'active'
-                        ? 'active'
-                        : 'inactive'
-                const statusTitle = liveStatus
-                  ? (!liveStatus.loggedIn ? 'Offline' : liveStatus.isUnknown ? (liveStatus.platformStatus ?? 'Unknown') : liveStatus.paused ? (liveStatus.pauseLabel ?? 'Paused') : 'Active')
-                  : channel.scraperLastSeen && !channel.scraperLoggedIn
-                    ? 'Offline'
-                    : channel.scraperPaused
-                      ? 'Paused'
-                      : channel.status === 'active'
-                        ? 'Active'
-                        : 'Inactive'
+        {paginatedChannels.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {paginatedChannels.map((channel: Channel) => {
+              const integ = integrations.find(i =>
+                i.provider === channel.source &&
+                i.externalStoreId && i.externalStoreId === (channel as unknown as Record<string, unknown>).externalStoreId
+              )
+              const liveStatus = pauseStatuses[getStoreIdentityKey({
+                source: normalizeStoreSource(channel.source) ?? 'grab',
+                integrationId: integ?._id,
+                storeId: normalizeStoreId((channel as unknown as Record<string, unknown>).externalStoreId),
+                username: integ?.loginUsername,
+                label: channel.name,
+              })]
+              const statusTone = liveStatus
+                ? (!liveStatus.loggedIn ? 'offline' : liveStatus.isUnknown ? 'unknown' : liveStatus.paused ? 'paused' : 'active')
+                : channel.scraperLastSeen && !channel.scraperLoggedIn
+                  ? 'offline'
+                  : channel.scraperPaused
+                    ? 'paused'
+                    : channel.status === 'active'
+                      ? 'active'
+                      : 'inactive'
+              const statusTitle = liveStatus
+                ? (!liveStatus.loggedIn ? 'Offline' : liveStatus.isUnknown ? (liveStatus.platformStatus ?? 'Unknown') : liveStatus.paused ? (liveStatus.pauseLabel ?? 'Paused') : 'Active')
+                : channel.scraperLastSeen && !channel.scraperLoggedIn
+                  ? 'Offline'
+                  : channel.scraperPaused
+                    ? 'Paused'
+                    : channel.status === 'active'
+                      ? 'Active'
+                      : 'Inactive'
+              const primaryLabel = integ?.loginUsername || channel.name
+              const detailParts = [
+                channel.name !== primaryLabel ? channel.name : '',
+                channel.brandName,
+                channel.hubName,
+                (channel as unknown as Record<string, unknown>).externalStoreId as string | undefined,
+              ].filter(Boolean)
 
-                return (
-                  <div key={channel._id} className="flex items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0">
+              return (
+                <div key={channel._id} className="rounded-3xl border border-gray-200 bg-white shadow-sm">
+                  <div className="flex items-center gap-3 px-4 py-3">
                     <PlatformIcon source={channel.source} size="sm" />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap text-sm">
-                        <span className="truncate font-semibold text-gray-900">{channel.name}</span>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="truncate font-mono font-semibold text-gray-900">{primaryLabel}</span>
                         <PlatformStatusIcon status={statusTone} title={statusTitle} />
-                        <span className="truncate text-xs text-gray-500">
-                          {[channel.brandName, channel.hubName, integ?.loginUsername, (channel as unknown as Record<string, unknown>).externalStoreId as string | undefined].filter(Boolean).join(' · ')}
-                        </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -335,18 +334,22 @@ export default function ChannelsPage() {
                       </button>
                     </div>
                   </div>
-                )
-              }) : (
-                columnIndex === 0 && (
-                  <div className="text-center py-12 text-gray-400">
-                    <Link2 className="w-10 h-10 mx-auto mb-3 text-gray-200" />
-                    <p>Chưa có kênh bán nào cho {MARKETPLACE_TABS.find((tab) => tab.value === activeSourceTab)?.label}.</p>
-                  </div>
-                )
-              )}
-            </div>
-          ))}
-        </div>
+                  {detailParts.length > 0 && (
+                    <details className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
+                      <summary className="cursor-pointer select-none font-medium text-gray-600">Chi tiết</summary>
+                      <p className="pt-2 break-words">{detailParts.join(' · ')}</p>
+                    </details>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="rounded-3xl border border-gray-200 bg-white py-12 text-center text-gray-400 shadow-sm">
+            <Link2 className="mx-auto mb-3 h-10 w-10 text-gray-200" />
+            <p>Chưa có kênh bán nào cho {MARKETPLACE_TABS.find((tab) => tab.value === activeSourceTab)?.label}.</p>
+          </div>
+        )}
 
         <PaginationControls
           page={channelPage}
