@@ -2,14 +2,14 @@ import { useQuery, keepPreviousData, useMutation, useQueryClient } from '@tansta
 import { ORDER_ALERT_POLL_INTERVAL_MS } from '@/lib/order-alerts'
 import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
 
-async function fetchJSON(url: string, opts?: RequestInit) {
+async function fetchJSON(url: string, opts?: RequestInit, normalizeResponse = true) {
   const res = await fetch(url, opts)
   if (!res.ok) {
     const e = await res.json().catch(() => ({}))
     throw new Error(repairVietnameseTextDeep(String((e as { error?: string }).error ?? 'Lỗi server')))
   }
   const payload = await res.json()
-  return repairVietnameseTextDeep(payload)
+  return normalizeResponse ? repairVietnameseTextDeep(payload) : payload
 }
 
 export function useOrders(params?: { q?: string; status?: string; source?: string; brandId?: string; page?: number; limit?: number; fromDate?: string; toDate?: string; pollingEnabled?: boolean }) {
@@ -24,7 +24,7 @@ export function useOrders(params?: { q?: string; status?: string; source?: strin
   if (params?.toDate) sp.set('toDate', params.toDate)
   return useQuery({
     queryKey: ['orders', params],
-    queryFn: () => fetchJSON(`/api/orders?${sp}`),
+    queryFn: () => fetchJSON(`/api/orders?${sp}`, undefined, false),
     placeholderData: keepPreviousData,
     staleTime: ORDER_ALERT_POLL_INTERVAL_MS,
     refetchInterval: params?.pollingEnabled ? ORDER_ALERT_POLL_INTERVAL_MS : false,
@@ -34,7 +34,7 @@ export function useOrders(params?: { q?: string; status?: string; source?: strin
 }
 
 export function useOrder(id: string) {
-  return useQuery({ queryKey: ['order', id], queryFn: () => fetchJSON(`/api/orders/${encodeURIComponent(id)}`), enabled: !!id })
+  return useQuery({ queryKey: ['order', id], queryFn: () => fetchJSON(`/api/orders/${encodeURIComponent(id)}`, undefined, false), enabled: !!id })
 }
 
 export function useUpdateOrder() {

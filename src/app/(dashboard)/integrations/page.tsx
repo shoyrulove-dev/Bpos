@@ -25,6 +25,8 @@ const PROVIDERS = [
 
 const PROVIDER_TAB_STORAGE_KEY = 'bpos-integ-tab'
 const PAGE_SIZE = 20
+const ACCOUNTS_PAGE_SIZE = 10
+const PAUSE_PAGE_SIZE = 10
 
 type CredField = { key: string; label: string; type?: string; placeholder?: string }
 
@@ -288,8 +290,8 @@ function PlatformAccountsSection() {
     [sortedAccounts]
   )
   const visibleAccounts = groupedAccounts[activeProvider] ?? []
-  const totalPages = Math.max(1, Math.ceil(visibleAccounts.length / PAGE_SIZE))
-  const paginatedAccounts = visibleAccounts.slice((accountPage - 1) * PAGE_SIZE, accountPage * PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(visibleAccounts.length / ACCOUNTS_PAGE_SIZE))
+  const paginatedAccounts = visibleAccounts.slice((accountPage - 1) * ACCOUNTS_PAGE_SIZE, accountPage * ACCOUNTS_PAGE_SIZE)
 
   useEffect(() => {
     setAccountPage(1)
@@ -379,10 +381,10 @@ function PlatformAccountsSection() {
                       </div>
                       <button
                         onClick={() => toggle(idx)}
-                        className="shrink-0 rounded px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                        className="shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
                         title={show ? 'Ẩn chi tiết' : 'Hiện chi tiết'}
                       >
-                        {show ? 'Ẩn' : 'Chi tiết'}
+                        <Info className="h-3 w-3" />
                       </button>
                     </div>
                     {show && (
@@ -443,6 +445,7 @@ function PauseStoreSection() {
   const [bulkBusy, setBulkBusy]     = useState(false)
   const [scraperOnline, setScraperOnline] = useState<boolean | null>(null)
   const [scraperVersion, setScraperVersion] = useState<string | null>(null)
+  const [pausePage, setPausePage] = useState(1)
 
   const getKey = (s: StoreStatus) => getStoreIdentityKey(s)
 
@@ -674,12 +677,28 @@ function PauseStoreSection() {
   }
 
   const tabStores = stores.filter(s => s.source === activeTab)
+  const pauseTotalPages = Math.max(1, Math.ceil(tabStores.length / PAUSE_PAGE_SIZE))
+  const paginatedTabStores = tabStores.slice((pausePage - 1) * PAUSE_PAGE_SIZE, pausePage * PAUSE_PAGE_SIZE)
   const grabCount = stores.filter(s => s.source === 'grab').length
   const beCount   = stores.filter(s => s.source === 'be').length
 
   // Group by username
   const uCount: Record<string, number> = {}
   for (const s of tabStores) if (s.username) uCount[s.username] = (uCount[s.username] ?? 0) + 1
+
+  useEffect(() => {
+    setPausePage(1)
+  }, [activeTab])
+
+  useEffect(() => {
+    if (pausePage > pauseTotalPages) setPausePage(pauseTotalPages)
+  }, [pausePage, pauseTotalPages])
+
+  const handlePausePageChange = (nextPage: number) => {
+    const boundedPage = Math.min(Math.max(nextPage, 1), pauseTotalPages)
+    if (boundedPage === pausePage) return
+    setPausePage(boundedPage)
+  }
 
   return (
     <div className="rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -837,6 +856,16 @@ function PauseStoreSection() {
         )}
       </div>
 
+      <div className="px-4 py-3">
+        <PaginationControls
+          page={pausePage}
+          totalPages={pauseTotalPages}
+          totalItems={tabStores.length}
+          label="cửa hàng"
+          onPageChange={handlePausePageChange}
+        />
+      </div>
+
       {/* Store list */}
       <div className="divide-y divide-gray-100">
         {loading && tabStores.length === 0 ? (
@@ -849,7 +878,7 @@ function PauseStoreSection() {
           </div>
         ) : (() => {
           let lastUsername = ''
-          return tabStores.map((store, idx) => {
+          return paginatedTabStores.map((store, idx) => {
             const key = getKey(store)
             const isBusy = busyKey === key
             const isGrouped = (uCount[store.username ?? ''] ?? 0) > 1
@@ -932,6 +961,16 @@ function PauseStoreSection() {
             )
           })
         })()}
+      </div>
+
+      <div className="px-4 py-3 border-t border-gray-100">
+        <PaginationControls
+          page={pausePage}
+          totalPages={pauseTotalPages}
+          totalItems={tabStores.length}
+          label="cửa hàng"
+          onPageChange={handlePausePageChange}
+        />
       </div>
     </div>
   )
