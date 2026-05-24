@@ -1,4 +1,4 @@
-import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
+import { repairVietnameseText, repairVietnameseTextDeep } from '@/lib/text-normalizer'
 import { recoverOrderDisplayFields } from '@/lib/order-recovery'
 import { getOrderDisplayCode } from '@/lib/utils'
 
@@ -25,7 +25,7 @@ function getRefName(value: PopulatedRef) {
   return typeof value.name === 'string' ? value.name : undefined
 }
 
-export function serializeOrderResponse<T extends OrderLike>(order: T, options: SerializeOrderResponseOptions = {}) {
+function buildRecoveredOrderBase<T extends OrderLike>(order: T, options: SerializeOrderResponseOptions = {}) {
   const recovered = recoverOrderDisplayFields(order as {
     rawPayload?: unknown
     customerName?: unknown
@@ -44,7 +44,7 @@ export function serializeOrderResponse<T extends OrderLike>(order: T, options: S
     rawPayload: recovered.rawPayload as Record<string, unknown> | undefined,
   })
 
-  return repairVietnameseTextDeep({
+  return {
     ...recovered,
     ...(includeRawPayload ? {} : { rawPayload: undefined }),
     displayCode,
@@ -55,5 +55,48 @@ export function serializeOrderResponse<T extends OrderLike>(order: T, options: S
     hubName: getRefName(order.hubId),
     channelId: getRefId(order.channelId),
     channelName: getRefName(order.channelId),
-  })
+  }
+}
+
+export function serializeOrderResponse<T extends OrderLike>(order: T, options: SerializeOrderResponseOptions = {}) {
+  return repairVietnameseTextDeep(buildRecoveredOrderBase(order, options))
+}
+
+export function serializeOrderListResponse<T extends OrderLike>(order: T, options: SerializeOrderResponseOptions = {}) {
+  const base = buildRecoveredOrderBase(order, options) as Record<string, unknown>
+  const deliveryInfo = base.deliveryInfo && typeof base.deliveryInfo === 'object' && !Array.isArray(base.deliveryInfo)
+    ? (base.deliveryInfo as Record<string, unknown>)
+    : undefined
+  const driverInfo = base.driverInfo && typeof base.driverInfo === 'object' && !Array.isArray(base.driverInfo)
+    ? (base.driverInfo as Record<string, unknown>)
+    : undefined
+  const items = Array.isArray(base.items)
+    ? base.items.map((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return item
+        const record = item as Record<string, unknown>
+        return {
+          ...record,
+          ...(typeof record.name === 'string' ? { name: repairVietnameseText(record.name) } : {}),
+        }
+      })
+    : base.items
+
+  return {
+    ...base,
+    customerName: typeof base.customerName === 'string' ? repairVietnameseText(base.customerName) : base.customerName,
+    customerPhone: typeof base.customerPhone === 'string' ? repairVietnameseText(base.customerPhone) : base.customerPhone,
+    brandName: typeof base.brandName === 'string' ? repairVietnameseText(base.brandName) : base.brandName,
+    hubName: typeof base.hubName === 'string' ? repairVietnameseText(base.hubName) : base.hubName,
+    deliveryInfo: deliveryInfo ? {
+      ...deliveryInfo,
+      ...(typeof deliveryInfo.address === 'string' ? { address: repairVietnameseText(deliveryInfo.address) } : {}),
+      ...(typeof deliveryInfo.note === 'string' ? { note: repairVietnameseText(deliveryInfo.note) } : {}),
+    } : base.deliveryInfo,
+    driverInfo: driverInfo ? {
+      ...driverInfo,
+      ...(typeof driverInfo.name === 'string' ? { name: repairVietnameseText(driverInfo.name) } : {}),
+      ...(typeof driverInfo.phone === 'string' ? { phone: repairVietnameseText(driverInfo.phone) } : {}),
+    } : base.driverInfo,
+    items,
+  }
 }

@@ -5,7 +5,7 @@ import '@/models/Brand'
 import '@/models/Hub'
 import { ok, requireAuth } from '@/lib/api-helpers'
 import { buildOrderFilterFromSearchParams } from '@/lib/order-query'
-import { serializeOrderResponse } from '@/lib/order-response'
+import { serializeOrderListResponse } from '@/lib/order-response'
 import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
 
 const ORDER_LIST_RAW_SELECT = [
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
     OrderModel.countDocuments(filter),
   ])
 
-  const orders = orderRows.map((order) => serializeOrderResponse(order as Record<string, unknown>, { includeRawPayload: false }))
+  const orders = orderRows.map((order) => serializeOrderListResponse(order as Record<string, unknown>, { includeRawPayload: false }))
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
