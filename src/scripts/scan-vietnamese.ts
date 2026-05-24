@@ -1,7 +1,7 @@
 import { connectDB } from '../lib/db'
 import OrderModel from '@/models/Order'
 
-const MOJIBAKE_PATTERN = /[ÃÂÆÄÐáºâ€œž™¢£¤¥¦§¨©ª«¬®¯°±²³´µ¶·¸¹º»¼½¾¿]/
+const MOJIBAKE_PATTERN = /(?:Ã[\x80-\xFF]|Â[\x80-\xFF]|Ä[\x80-\xFF]|Å[\x80-\xFF]|Æ[\x80-\xFF]|Ð[\x80-\xFF]|â[€“”‘’–—]|œ|ž|™|¢|£|¤|¥|¦|§|¨|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|º|»|¼|½|¾|¿)/
 const REPLACEMENT_CHAR_PATTERN = /\uFFFD/
 
 function findMojibakeValues(value: unknown, path: string[] = [], hits: Array<{ path: string; value: string }> = []) {

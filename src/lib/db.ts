@@ -1,4 +1,9 @@
+import dns from 'dns'
+import dotenv from 'dotenv'
 import mongoose from 'mongoose'
+
+dotenv.config({ path: '.env.local' })
+dns.setServers(['8.8.8.8', '1.1.1.1'])
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/bpos'
 
