@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
-import { runOrderRepair } from '@/lib/order-repair'
+import { getOrderRepairReport, runOrderRepair } from '@/lib/order-repair'
 
 export const maxDuration = 60
 
@@ -32,6 +32,8 @@ export async function GET(req: NextRequest) {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean)
+  const changedOnly = req.nextUrl.searchParams.get('changedOnly') === 'true'
+  const changedLimit = Math.max(1, Math.min(50, Number(req.nextUrl.searchParams.get('limit') ?? 20) || 20))
   const driverPhone = (req.nextUrl.searchParams.get('driverPhone') ?? '').trim()
   const forceCancelledOrderIds = (req.nextUrl.searchParams.get('forceCancelledOrderIds') ?? '')
     .split(',')
@@ -46,6 +48,47 @@ export async function GET(req: NextRequest) {
   const staleActiveMax = Math.max(1, Math.min(30, Number(req.nextUrl.searchParams.get('staleMax') ?? 10) || 10))
 
   await connectDB()
-  const result = await runOrderRepair({ days, providers, includeHistorical, externalOrderIds, shortIds, externalStoreIds, driverPhone, forceCancelledOrderIds, forceCompletedShortIds, forceAll, staleActiveHours, staleActiveMax })
+  let scopedExternalOrderIds = externalOrderIds
+
+  if (
+    changedOnly
+    && !scopedExternalOrderIds.length
+    && !shortIds.length
+    && !externalStoreIds.length
+    && !driverPhone
+    && !forceCancelledOrderIds.length
+    && !forceCompletedShortIds.length
+  ) {
+    const report = await getOrderRepairReport({ providers, limit: changedLimit })
+    scopedExternalOrderIds = report.samples
+      .map((sample) => String((sample as { externalOrderId?: unknown }).externalOrderId ?? '').trim())
+      .filter(Boolean)
+
+    if (!scopedExternalOrderIds.length) {
+      return NextResponse.json({
+        ok: true,
+        providers,
+        changedOnly: true,
+        limit: changedLimit,
+        message: 'No changed orders found for scoped repair.',
+        externalOrderIds: [],
+      })
+    }
+  }
+
+  const result = await runOrderRepair({
+    days,
+    providers,
+    includeHistorical,
+    externalOrderIds: scopedExternalOrderIds,
+    shortIds,
+    externalStoreIds,
+    driverPhone,
+    forceCancelledOrderIds,
+    forceCompletedShortIds,
+    forceAll,
+    staleActiveHours,
+    staleActiveMax,
+  })
   return NextResponse.json(result)
 }
