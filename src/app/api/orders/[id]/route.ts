@@ -5,6 +5,7 @@ import '@/models/Brand'
 import '@/models/Hub'
 import '@/models/Channel'
 import { ok, err, requireAuth } from '@/lib/api-helpers'
+import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
 
 type PopulatedRef = { _id?: { toString(): string } | string; name?: string } | string | null | undefined
 type OrderDetailDoc = Record<string, unknown> & {
@@ -46,7 +47,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   }
 
   if (!order) return err('Không tìm thấy', 404)
-  return ok({
+  return ok(repairVietnameseTextDeep({
     ...order,
     brandId: getRefId(order.brandId),
     brandName: getRefName(order.brandId),
@@ -54,7 +55,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     hubName: getRefName(order.hubId),
     channelId: getRefId(order.channelId),
     channelName: getRefName(order.channelId),
-  })
+  }))
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {

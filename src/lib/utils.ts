@@ -2,6 +2,7 @@ import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { format, parseISO } from 'date-fns'
 import { vi } from 'date-fns/locale'
+import { repairTextRecord, repairVietnameseText } from '@/lib/text-normalizer'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -35,10 +36,10 @@ export function getOrderDisplayCode(order: OrderCodeLike) {
 
   if (order.source === 'grab') {
     const grabCode = raw.displayID ?? raw.shortOrderID ?? raw.shortOrderId
-    if (grabCode) return String(grabCode)
+    if (grabCode) return repairVietnameseText(String(grabCode))
   }
 
-  return String(order.externalOrderId ?? order.shortId ?? '')
+  return repairVietnameseText(String(order.externalOrderId ?? order.shortId ?? ''))
 }
 
 export function generateId() {
@@ -54,7 +55,7 @@ export function slugify(text: string) {
     .replace(/(^-|-$)+/g, '')
 }
 
-export const ORDER_STATUS_LABEL: Record<string, string> = {
+export const ORDER_STATUS_LABEL: Record<string, string> = repairTextRecord({
   draft: 'Đơn nháp',
   pre_order: 'Đặt trước',
   waiting_confirm: 'Chờ xác nhận',
@@ -62,7 +63,7 @@ export const ORDER_STATUS_LABEL: Record<string, string> = {
   delivering: 'Đang giao',
   completed: 'Hoàn thành',
   cancelled: 'Đã hủy',
-}
+})
 
 export const ORDER_STATUS_COLOR: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-600',
@@ -74,14 +75,14 @@ export const ORDER_STATUS_COLOR: Record<string, string> = {
   cancelled: 'bg-red-100 text-red-700',
 }
 
-export const CHANNEL_SOURCE_LABEL: Record<string, string> = {
+export const CHANNEL_SOURCE_LABEL: Record<string, string> = repairTextRecord({
   shopee: 'Shopee',
   grab: 'GrabFood',
   xanh_sm: 'Xanh SM',
   be: 'Be',
   internal: 'Nội bộ',
   other: 'Khác',
-}
+})
 
 export const CHANNEL_SOURCE_COLOR: Record<string, string> = {
   shopee: 'bg-orange-100 text-orange-700',
@@ -92,21 +93,21 @@ export const CHANNEL_SOURCE_COLOR: Record<string, string> = {
   other: 'bg-purple-100 text-purple-700',
 }
 
-export const BRAND_TYPE_LABEL: Record<string, string> = {
+export const BRAND_TYPE_LABEL: Record<string, string> = repairTextRecord({
   fnb: 'F&B',
   retail: 'Bán lẻ',
   service: 'Dịch vụ',
   other: 'Khác',
-}
+})
 
-export const PROMOTION_TYPE_LABEL: Record<string, string> = {
+export const PROMOTION_TYPE_LABEL: Record<string, string> = repairTextRecord({
   discount_percent: 'Giảm % theo SP',
   discount_amount: 'Giảm tiền theo SP',
   free_item: 'Tặng món theo đơn',
   combo: 'Mua X tặng/giảm Y',
   order_tiered_discount: 'Giảm theo tổng đơn',
   shipping_discount: 'Giảm phí vận chuyển',
-}
+})
 
 export const PROMOTION_TYPE_COLOR: Record<string, string> = {
   discount_percent: 'bg-blue-100 text-blue-700',
@@ -117,12 +118,12 @@ export const PROMOTION_TYPE_COLOR: Record<string, string> = {
   shipping_discount: 'bg-teal-100 text-teal-700',
 }
 
-export const PRODUCT_TYPE_LABEL: Record<string, string> = {
+export const PRODUCT_TYPE_LABEL: Record<string, string> = repairTextRecord({
   raw_material: 'Nguyên vật liệu',
   semi_product: 'Bán thành phẩm',
   finished_product: 'Thành phẩm',
   goods: 'Hàng hóa',
-}
+})
 
 export const PRODUCT_TYPE_COLOR: Record<string, string> = {
   raw_material: 'bg-yellow-100 text-yellow-700',
@@ -131,12 +132,12 @@ export const PRODUCT_TYPE_COLOR: Record<string, string> = {
   goods: 'bg-purple-100 text-purple-700',
 }
 
-export const STAFF_ROLE_LABEL: Record<string, string> = {
+export const STAFF_ROLE_LABEL: Record<string, string> = repairTextRecord({
   admin: 'Admin',
   brand_manager: 'Quản lý thương hiệu',
   hub_manager: 'Quản lý cửa hàng',
   cashier: 'Thu ngân',
-}
+})
 
 export const STAFF_ROLE_COLOR: Record<string, string> = {
   admin: 'bg-red-100 text-red-700',
@@ -145,25 +146,25 @@ export const STAFF_ROLE_COLOR: Record<string, string> = {
   cashier: 'bg-gray-100 text-gray-700',
 }
 
-export const SHIFT_STATUS_LABEL: Record<string, string> = {
+export const SHIFT_STATUS_LABEL: Record<string, string> = repairTextRecord({
   open: 'Đang mở',
   closed: 'Đã đóng',
-}
+})
 
-export const SHIPMENT_STATUS_LABEL: Record<string, string> = {
+export const SHIPMENT_STATUS_LABEL: Record<string, string> = repairTextRecord({
   assigned: 'Đã phân công',
   picked_up: 'Đã lấy hàng',
   delivering: 'Đang giao',
   delivered: 'Đã giao',
   failed: 'Giao thất bại',
-}
+})
 
-export const TABLE_STATUS_LABEL: Record<string, string> = {
+export const TABLE_STATUS_LABEL: Record<string, string> = repairTextRecord({
   available: 'Trống',
   occupied: 'Đang dùng',
   reserved: 'Đặt trước',
   cleaning: 'Đang dọn',
-}
+})
 
 export const TABLE_STATUS_COLOR: Record<string, string> = {
   available: 'bg-green-100 text-green-700',
@@ -172,12 +173,12 @@ export const TABLE_STATUS_COLOR: Record<string, string> = {
   cleaning: 'bg-yellow-100 text-yellow-700',
 }
 
-export const LOYALTY_TIER_LABEL: Record<string, string> = {
+export const LOYALTY_TIER_LABEL: Record<string, string> = repairTextRecord({
   bronze: 'Đồng',
   silver: 'Bạc',
   gold: 'Vàng',
   platinum: 'Bạch Kim',
-}
+})
 
 export const LOYALTY_TIER_COLOR: Record<string, string> = {
   bronze: 'bg-amber-100 text-amber-700',
@@ -186,13 +187,13 @@ export const LOYALTY_TIER_COLOR: Record<string, string> = {
   platinum: 'bg-indigo-100 text-indigo-700',
 }
 
-export const MOVEMENT_TYPE_LABEL: Record<string, string> = {
+export const MOVEMENT_TYPE_LABEL: Record<string, string> = repairTextRecord({
   import: 'Nhập kho',
   export: 'Xuất kho',
   adjust: 'Điều chỉnh',
   consume: 'Tiêu thụ',
   transfer: 'Chuyển kho',
-}
+})
 
 export const MOVEMENT_TYPE_COLOR: Record<string, string> = {
   import: 'bg-green-100 text-green-700',
@@ -202,7 +203,7 @@ export const MOVEMENT_TYPE_COLOR: Record<string, string> = {
   transfer: 'bg-purple-100 text-purple-700',
 }
 
-export const PAYMENT_METHOD_LABEL: Record<string, string> = {
+export const PAYMENT_METHOD_LABEL: Record<string, string> = repairTextRecord({
   cash: 'Tiền mặt',
   card: 'Thẻ ngân hàng',
   momo: 'MoMo',
@@ -210,4 +211,4 @@ export const PAYMENT_METHOD_LABEL: Record<string, string> = {
   vnpay: 'VNPay',
   banking: 'Chuyển khoản',
   other: 'Khác',
-}
+})

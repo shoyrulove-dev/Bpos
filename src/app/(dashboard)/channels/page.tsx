@@ -25,7 +25,18 @@ const SOURCES = [
 ]
 
 const PAGE_SIZE = 20
+const COLUMN_SIZE = 10
 const emptyForm = { name: '', source: 'grab', brandId: '', hubId: '', externalStoreId: '' }
+
+type PauseStoreStatus = {
+  source: 'grab' | 'be'
+  storeId?: string
+  paused: boolean
+  loggedIn: boolean
+  isUnknown?: boolean
+  platformStatus?: string | null
+  pauseLabel?: string | null
+}
 
 function PaginationControls({
   page,
@@ -66,6 +77,7 @@ export default function ChannelsPage() {
   const [form, setForm]       = useState(emptyForm)
   const [saveError, setSaveError] = useState('')
   const listRef = useRef<HTMLDivElement | null>(null)
+  const [pauseStatuses, setPauseStatuses] = useState<Record<string, PauseStoreStatus>>({})
 
   const dq = useDebounce(search)
   const { data: rawChannels = [], isLoading } = useChannels({ q: dq })
@@ -100,6 +112,10 @@ export default function ChannelsPage() {
     () => activeChannels.slice((channelPage - 1) * PAGE_SIZE, channelPage * PAGE_SIZE),
     [activeChannels, channelPage]
   )
+  const channelColumns = useMemo(
+    () => [paginatedChannels.slice(0, COLUMN_SIZE), paginatedChannels.slice(COLUMN_SIZE, PAGE_SIZE)],
+    [paginatedChannels]
+  )
 
   const filteredHubs = hubs
 
@@ -110,6 +126,36 @@ export default function ChannelsPage() {
   useEffect(() => {
     if (channelPage > totalPages) setChannelPage(totalPages)
   }, [channelPage, totalPages])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadPauseStatuses = async () => {
+      try {
+        const response = await fetch('/api/integrations/pause-store?live=1', { cache: 'no-store' })
+        if (!response.ok) return
+        const payload = await response.json() as { stores?: PauseStoreStatus[] }
+        if (cancelled || !Array.isArray(payload.stores)) return
+
+        const nextMap = payload.stores.reduce((acc, store) => {
+          const key = `${store.source}:${String(store.storeId ?? '').trim().toLowerCase()}`
+          if (key !== `${store.source}:`) acc[key] = store
+          return acc
+        }, {} as Record<string, PauseStoreStatus>)
+
+        setPauseStatuses(nextMap)
+      } catch {
+        if (!cancelled) setPauseStatuses({})
+      }
+    }
+
+    void loadPauseStatuses()
+    const interval = window.setInterval(loadPauseStatuses, 30_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [])
 
   const openCreate = () => {
     setEditId(null)
@@ -220,52 +266,68 @@ export default function ChannelsPage() {
           onPageChange={handlePageChange}
         />
 
-        <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
-          {paginatedChannels.length > 0 ? (
-            paginatedChannels.map((channel: Channel) => (
-              <div key={channel._id} className="flex flex-col gap-3 border-b border-gray-100 px-4 py-4 last:border-b-0 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex items-start gap-3 min-w-0 flex-1">
-                  <PlatformIcon source={channel.source} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-sm text-gray-900 truncate">{channel.name}</h3>
-                      <span className={cn('badge badge-sm', channel.status === 'active' ? 'badge-green' : 'badge-red')}>
-                        {channel.status === 'active' ? 'Hoạt động' : 'Ngừng'}
-                      </span>
-                      {channel.scraperPaused && (
-                        <span className="badge badge-sm bg-amber-100 text-amber-700 border-amber-200">Pause</span>
-                      )}
-                      {channel.scraperLastSeen && !channel.scraperLoggedIn && (
-                        <span className="badge badge-sm bg-red-100 text-red-700 border-red-200">Offline</span>
-                      )}
+        <div className="grid gap-4 xl:grid-cols-2">
+          {channelColumns.map((column, columnIndex) => (
+            <div key={columnIndex} className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+              {column.length > 0 ? column.map((channel: Channel) => {
+                const storeId = String((channel as unknown as Record<string, unknown>).externalStoreId ?? '').trim().toLowerCase()
+                const liveStatus = pauseStatuses[`${channel.source}:${storeId}`]
+                const loginUsername = (() => {
+                  const integ = integrations.find(i =>
+                    i.provider === channel.source &&
+                    i.externalStoreId && i.externalStoreId === (channel as unknown as Record<string, unknown>).externalStoreId
+                  )
+                  return integ?.loginUsername || null
+                })()
+
+                return (
+                  <div key={channel._id} className="flex items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0">
+                    <PlatformIcon source={channel.source} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap text-sm">
+                        <span className="truncate font-semibold text-gray-900">{channel.name}</span>
+                        <span className={cn('badge badge-sm shrink-0', channel.status === 'active' ? 'badge-green' : 'badge-red')}>
+                          {channel.status === 'active' ? 'Hoạt động' : 'Ngừng'}
+                        </span>
+                        {liveStatus?.isUnknown ? (
+                          <span className="badge badge-sm shrink-0 bg-gray-100 text-gray-700 border-gray-200">Unknown</span>
+                        ) : liveStatus?.paused ? (
+                          <span className="badge badge-sm shrink-0 bg-amber-100 text-amber-700 border-amber-200">
+                            {liveStatus.pauseLabel ?? 'Paused'}
+                          </span>
+                        ) : channel.scraperPaused ? (
+                          <span className="badge badge-sm shrink-0 bg-amber-100 text-amber-700 border-amber-200">Paused</span>
+                        ) : null}
+                        {liveStatus ? (
+                          !liveStatus.loggedIn ? <span className="badge badge-sm shrink-0 bg-red-100 text-red-700 border-red-200">Offline</span> : null
+                        ) : channel.scraperLastSeen && !channel.scraperLoggedIn ? (
+                          <span className="badge badge-sm shrink-0 bg-red-100 text-red-700 border-red-200">Offline</span>
+                        ) : null}
+                        <span className="truncate text-xs text-gray-500">
+                          {[channel.brandName, channel.hubName, loginUsername, (channel as unknown as Record<string, unknown>).externalStoreId as string | undefined].filter(Boolean).join(' · ')}
+                        </span>
+                      </div>
                     </div>
-                    <p className="mt-1 text-xs text-gray-500 truncate">
-                      {[channel.brandName, channel.hubName, (() => {
-                        const integ = integrations.find(i =>
-                          i.provider === channel.source &&
-                          i.externalStoreId && i.externalStoreId === (channel as unknown as Record<string, unknown>).externalStoreId
-                        )
-                        return integ?.loginUsername || null
-                      })(), (channel as unknown as Record<string, unknown>).externalStoreId as string | undefined].filter(Boolean).join(' · ')}
-                    </p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={() => openEdit(channel)} className="btn-outline btn-sm">
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => handleDelete(channel._id)} className="btn-outline btn-sm border-red-200 text-red-500 hover:bg-red-50">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => openEdit(channel)} className="btn-outline btn-sm">
-                    <Edit className="w-3.5 h-3.5" /> Sửa
-                  </button>
-                  <button onClick={() => handleDelete(channel._id)} className="btn-outline btn-sm border-red-200 text-red-500 hover:bg-red-50">
-                    <Trash2 className="w-3.5 h-3.5" /> Xóa
-                  </button>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-12 text-gray-400">
-              <Link2 className="w-10 h-10 mx-auto mb-3 text-gray-200" />
-              <p>Chưa có kênh bán nào cho {MARKETPLACE_TABS.find((tab) => tab.value === activeSourceTab)?.label}.</p>
+                )
+              }) : (
+                columnIndex === 0 && (
+                  <div className="text-center py-12 text-gray-400">
+                    <Link2 className="w-10 h-10 mx-auto mb-3 text-gray-200" />
+                    <p>Chưa có kênh bán nào cho {MARKETPLACE_TABS.find((tab) => tab.value === activeSourceTab)?.label}.</p>
+                  </div>
+                )
+              )}
             </div>
-          )}
+          ))}
         </div>
 
         <PaginationControls

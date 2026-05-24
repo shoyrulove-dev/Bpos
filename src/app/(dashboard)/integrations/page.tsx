@@ -24,6 +24,7 @@ const PROVIDERS = [
 
 const PROVIDER_TAB_STORAGE_KEY = 'bpos-integ-tab'
 const PAGE_SIZE = 20
+const COLUMN_SIZE = 10
 
 type CredField = { key: string; label: string; type?: string; placeholder?: string }
 
@@ -271,25 +272,29 @@ function PlatformAccountsSection() {
       return next
     })
 
-  const groupedAccounts = useMemo(
-    () => PLATFORM_ACCOUNTS.reduce((acc, account) => {
-      if (!acc[account.provider]) acc[account.provider] = []
-      acc[account.provider].push(account)
-      return acc
-    }, {} as Record<string, typeof PLATFORM_ACCOUNTS>),
+  const sortedAccounts = useMemo(
+    () => [...PLATFORM_ACCOUNTS].sort((a, b) => {
+      if (a.provider !== b.provider) return a.provider.localeCompare(b.provider)
+      if (a.brand !== b.brand) return a.brand.localeCompare(b.brand)
+      return a.hub.localeCompare(b.hub)
+    }),
     []
   )
-  const filterProvider = activeProvider
-  const setFilterProvider = (provider: string) => setActiveProvider(provider || PROVIDERS[0].value)
-  const providers = Object.keys(groupedAccounts)
+  const groupedAccounts = useMemo(
+    () => PROVIDERS.reduce((acc, provider) => {
+      acc[provider.value] = sortedAccounts.filter((account) => account.provider === provider.value)
+      return acc
+    }, {} as Record<string, typeof PLATFORM_ACCOUNTS>),
+    [sortedAccounts]
+  )
   const visibleAccounts = groupedAccounts[activeProvider] ?? []
-  const filtered = visibleAccounts
   const totalPages = Math.max(1, Math.ceil(visibleAccounts.length / PAGE_SIZE))
   const paginatedAccounts = visibleAccounts.slice((accountPage - 1) * PAGE_SIZE, accountPage * PAGE_SIZE)
+  const accountColumns = [paginatedAccounts.slice(0, COLUMN_SIZE), paginatedAccounts.slice(COLUMN_SIZE, PAGE_SIZE)]
 
   useEffect(() => {
     setAccountPage(1)
-  }, [activeProvider, showSection])
+  }, [showSection, activeProvider])
 
   useEffect(() => {
     if (accountPage > totalPages) setAccountPage(totalPages)
@@ -312,9 +317,7 @@ function PlatformAccountsSection() {
           <KeyRound className="w-5 h-5 text-gray-400" />
           <div className="text-left">
             <p className="font-semibold text-gray-900 text-sm">Tài khoản đăng nhập sàn</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {PLATFORM_ACCOUNTS.length} tài khoản · Grab, Be, Shopee, Xanh SM · Click để xem
-            </p>
+            <p className="text-xs text-gray-400 mt-0.5">{PLATFORM_ACCOUNTS.length} tài khoản · chia theo từng sàn · 20 tài khoản mỗi trang</p>
           </div>
           <PaginationControls
             page={accountPage}
@@ -324,13 +327,12 @@ function PlatformAccountsSection() {
             onPageChange={handlePageChange}
           />
         </div>
-        <span className="text-xs text-gray-400">{showSection ? '▲ Thu gọn' : '▼ Mở rộng'}</span>
+        <span className="text-xs text-gray-400">{showSection ? 'Thu gọn' : 'Mở rộng'}</span>
       </button>
 
       {showSection && (
         <div ref={listRef} className="px-5 pb-5 space-y-3 border-t border-gray-100">
-          {/* Filter bar */}
-          <div className="flex gap-2 pt-3 flex-wrap">
+          <div className="flex gap-2 pt-3 flex-wrap items-center justify-between">
             {PROVIDERS.map((provider) => (
               <button
                 key={provider.value}
@@ -349,10 +351,6 @@ function PlatformAccountsSection() {
                 </span>
               </button>
             ))}
-            <select className="hidden input text-sm w-36 h-8" value={filterProvider} onChange={e => setFilterProvider(e.target.value)}>
-              <option value="">Tất cả sàn</option>
-              {providers.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
             {revealed.size > 0 && (
               <button onClick={() => setRevealed(new Set())} className="btn-ghost text-xs h-8 px-3 text-red-500">
                 Ẩn tất cả
@@ -368,34 +366,38 @@ function PlatformAccountsSection() {
             onPageChange={handlePageChange}
           />
 
-          <div className="overflow-hidden rounded-2xl border border-gray-100">
-            {paginatedAccounts.map((acc) => {
-              const idx = PLATFORM_ACCOUNTS.indexOf(acc)
-              const show = revealed.has(idx)
-              return (
-                <div key={idx} className="flex items-center gap-3 border-b border-gray-100 bg-gray-50 px-3 py-3 last:border-b-0">
-                  <PlatformIcon source={acc.provider} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-xs font-bold text-gray-700">{acc.brand}</span>
-                      <span className="text-xs text-gray-400">·</span>
-                      <span className="text-xs text-gray-500">{acc.hub}</span>
+          <div className="grid gap-4 xl:grid-cols-2">
+            {accountColumns.map((column, columnIndex) => (
+              <div key={columnIndex} className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
+                {column.length > 0 ? column.map((acc) => {
+                  const idx = PLATFORM_ACCOUNTS.indexOf(acc)
+                  const show = revealed.has(idx)
+                  return (
+                    <div key={idx} className="flex items-center gap-3 border-b border-gray-100 px-3 py-3 last:border-b-0">
+                      <PlatformIcon source={acc.provider} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-sm">
+                          <span className="shrink-0 text-xs font-semibold text-gray-700">{acc.brand}</span>
+                          <span className="shrink-0 text-xs text-gray-400">·</span>
+                          <span className="truncate text-xs text-gray-500">{acc.hub}</span>
+                          <span className="truncate font-mono text-xs text-gray-700">{acc.username}</span>
+                          <span className="font-mono text-xs tracking-widest text-gray-500">{show ? acc.password : '••••••••'}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => toggle(idx)}
+                        className="shrink-0 rounded px-1.5 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                        title={show ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                      >
+                        {show ? 'Ẩn' : 'Hiện'}
+                      </button>
                     </div>
-                    <p className="text-xs font-mono text-gray-700 truncate">{acc.username}</p>
-                    <p className="text-xs font-mono text-gray-500 tracking-widest">
-                      {show ? acc.password : '••••••••'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => toggle(idx)}
-                    className="shrink-0 text-xs text-gray-400 hover:text-gray-700 px-1.5 py-1 rounded hover:bg-gray-200 transition-colors"
-                    title={show ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                  >
-                    {show ? '🙈' : '👁'}
-                  </button>
-                </div>
-              )
-            })}
+                  )
+                }) : (
+                  columnIndex === 0 && <div className="px-4 py-8 text-center text-sm text-gray-400">Chưa có tài khoản cho sàn này.</div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -1351,6 +1353,7 @@ export default function IntegrationsPage() {
   const activeProviderSection = providerSections.find((section) => section.value === activeProviderTab) ?? providerSections[0]
   const providerTotalPages = Math.max(1, Math.ceil(activeProviderSection.integrations.length / PAGE_SIZE))
   const paginatedProviderIntegrations = activeProviderSection.integrations.slice((providerPage - 1) * PAGE_SIZE, providerPage * PAGE_SIZE)
+  const providerColumns = [paginatedProviderIntegrations.slice(0, COLUMN_SIZE), paginatedProviderIntegrations.slice(COLUMN_SIZE, PAGE_SIZE)]
 
   useEffect(() => {
     if (providerPage > providerTotalPages) setProviderPage(providerTotalPages)
@@ -1449,7 +1452,7 @@ export default function IntegrationsPage() {
     const isSavingName  = savingNameId === integ._id
 
     return (
-      <div key={integ._id} className={cn('border-b border-gray-100 px-4 py-4 last:border-b-0', isPendingSetup && 'opacity-60')}>
+      <div key={integ._id} className={cn('break-inside-avoid-column border-b border-gray-100 px-4 py-3 last:border-b-0', isPendingSetup && 'opacity-60')}>
         {/* Row 1: icon + name + meta + delete */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -1987,9 +1990,20 @@ export default function IntegrationsPage() {
             label="tích hợp"
             onPageChange={handleProviderPageChange}
           />
-          <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white">
+          <div className="grid gap-4 xl:grid-cols-2">
             {activeProviderSection.integrations.length > 0 ? (
-              paginatedProviderIntegrations.map((integration) => renderIntegrationCard(integration))
+              providerColumns.map((column, columnIndex) => (
+                <div key={columnIndex} className="overflow-hidden rounded-3xl border border-gray-200 bg-white">
+                  {column.length > 0 ? column.map((integration) => renderIntegrationCard(integration)) : (
+                    columnIndex === 0 && (
+                      <div className="rounded-2xl bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+                        <ShoppingBag className="w-8 h-8 mx-auto mb-3 text-gray-300" />
+                        Chưa có tích hợp nào trong tab này.
+                      </div>
+                    )
+                  )}
+                </div>
+              ))
             ) : (
               <div className="rounded-2xl bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
                 <ShoppingBag className="w-8 h-8 mx-auto mb-3 text-gray-300" />

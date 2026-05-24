@@ -1,4 +1,4 @@
-﻿import type { Brand, Hub, Channel, Order, BillTemplate, SyncLog, Shipment, EInvoiceConnection, DashboardStats } from '@/types'
+import type { Brand, Hub, Channel, Order, BillTemplate, SyncLog, Shipment, EInvoiceConnection, DashboardStats } from '@/types'
 
 // ============================================================
 // BRANDS
