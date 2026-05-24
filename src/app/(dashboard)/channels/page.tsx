@@ -221,7 +221,7 @@ export default function ChannelsPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" style={{ fontFamily: 'Tahoma, Verdana, sans-serif' }}>
       <div className="page-header">
         <div>
           <h1 className="page-title">Kênh bán</h1>
@@ -318,8 +318,8 @@ export default function ChannelsPage() {
               ].filter(Boolean)
 
               return (
-                <div key={channel._id} className="relative rounded-3xl border border-gray-200 bg-white shadow-sm">
-                  <div className="flex items-center gap-3 px-4 py-3">
+                <div key={channel._id} className="relative rounded-2xl border border-gray-200 bg-white">
+                  <div className="flex items-center gap-3 px-4 py-2.5">
                     <PlatformIcon source={channel.source} size="sm" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 text-sm">
