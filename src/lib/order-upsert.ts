@@ -2,6 +2,7 @@ import { generateId } from '@/lib/utils'
 import { extractGrabCustomerFinancials, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
 import { hasBeCancelSignal } from '@/lib/be-order-status'
 import { normalizeCompactPhone } from '@/lib/phone'
+import { resolveOrderCustomerName, resolveOrderCustomerPhone, resolveOrderDeliveredAtValue, resolveOrderPlacedAtValue } from '@/lib/order-recovery'
 import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
 import type { NormalizedOrder, Order } from '@/types'
 
@@ -723,13 +724,17 @@ export function buildOrderUpsert(integration: IntegrationRef, normalized: Normal
   const resolvedOrderStatus = resolveNormalizedOrderStatus(normalizedOrder)
   const financialBreakdown = getFinancialBreakdown(normalizedOrder as unknown as Order)
   const recoveredDriverName = getDisplayDriverName(normalizedOrder as unknown as Order)
+  const recoveredCustomerName = resolveOrderCustomerName(normalizedOrder as unknown as Order)
+  const recoveredCustomerPhone = resolveOrderCustomerPhone(normalizedOrder as unknown as Order)
+  const recoveredPlacedAt = resolveOrderPlacedAtValue(normalizedOrder as unknown as Order)
+  const recoveredDeliveredAt = resolveOrderDeliveredAtValue(normalizedOrder as unknown as Order)
   const customerName = pickPreferredName(
-    getDisplayCustomerName(normalizedOrder as unknown as Order) || normalizedOrder.customerName,
+    recoveredCustomerName || getDisplayCustomerName(normalizedOrder as unknown as Order) || normalizedOrder.customerName,
     undefined,
     CUSTOMER_NAME_PLACEHOLDERS,
     'Khách hàng'
   ) ?? 'Khách hàng'
-  const customerPhone = pickPreferredPhone(getDisplayCustomerPhone(normalizedOrder as unknown as Order) || normalizedOrder.customerPhone, undefined)
+  const customerPhone = pickPreferredPhone(recoveredCustomerPhone || getDisplayCustomerPhone(normalizedOrder as unknown as Order) || normalizedOrder.customerPhone, undefined)
   const driverPhone = pickPreferredPhone(getDisplayDriverPhone(normalizedOrder as unknown as Order) || normalizedOrder.driverInfo?.phone, undefined)
   const driverInfo = mergeDriverInfoPreservingDetail(undefined, {
     ...normalizedOrder.driverInfo,
@@ -771,7 +776,7 @@ export function buildOrderUpsert(integration: IntegrationRef, normalized: Normal
   if (resolvedOrderStatus === 'completed') {
     // Ưu tiên timestamp thực từ payload; fallback về thời điểm hiện tại nếu Grab không trả về
     // (Grab history orders đôi khi không có deliveredAt nhưng cần có thời gian nhận hàng)
-    baseSet.deliveredAt = extractDeliveredDate(normalized) ?? new Date()
+    baseSet.deliveredAt = recoveredDeliveredAt ?? extractDeliveredDate(normalized) ?? new Date()
     unsetFields.cancelledAt = ''
     unsetFields.cancelReason = ''
   } else if (resolvedOrderStatus === 'cancelled') {
@@ -792,7 +797,7 @@ export function buildOrderUpsert(integration: IntegrationRef, normalized: Normal
   return {
     $setOnInsert: {
       shortId: generateId(),
-      placedAt: parseDateValue(normalizedOrder.placedAt) ?? new Date(),
+      placedAt: parseDateValue(recoveredPlacedAt ?? normalizedOrder.placedAt) ?? new Date(),
       brandId: integration.brandId,
       hubId: integration.hubId,
     },

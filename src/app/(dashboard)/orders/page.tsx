@@ -8,6 +8,7 @@ import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
 import { getActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverPhone } from '@/lib/order-financials'
+import { resolveOrderDeliveredAtValue, resolveOrderPlacedAtValue } from '@/lib/order-recovery'
 import { printItemLabels, printOrderWithFallback } from '@/lib/local-printer'
 import { formatDateInput } from '@/lib/date-range'
 import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '@/lib/utils'
@@ -80,48 +81,6 @@ function buildGrabPortalOrderUrl(order: Order) {
 function openWindow(url: string) {
   if (typeof window === 'undefined') return
   window.open(url, '_blank', 'noopener,noreferrer')
-}
-
-function getOrderPlacedAtCandidate(order: Order) {
-  const raw = order.rawPayload as Record<string, unknown> | undefined
-  const times = raw && typeof raw.times === 'object' && !Array.isArray(raw.times) ? raw.times as Record<string, unknown> : undefined
-  return order.placedAt
-    || times?.createdAt
-    || raw?.createdAt
-    || raw?.created_at
-    || raw?.placedAt
-    || raw?.placed_at
-    || order.createdAt
-}
-
-function getOrderDeliveryTime(order: Order) {
-  const raw = order.rawPayload as Record<string, unknown> | undefined
-  const times = raw && typeof raw.times === 'object' && !Array.isArray(raw.times) ? raw.times as Record<string, unknown> : undefined
-  const candidate = order.deliveredAt
-    || order.deliveryInfo?.estimatedTime
-    || times?.deliveredAt
-    || times?.completedAt
-    || times?.updatedAt
-    || raw?.deliveredAt
-    || raw?.delivered_at
-    || raw?.completedAt
-    || raw?.completed_at
-    || raw?.deliveryCompletedAt
-    || raw?.delivered_time
-    || raw?.updatedAt
-    || raw?.updated_at
-
-  if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
-    const nested = candidate as Record<string, unknown>
-    for (const key of ['deliveredAt', 'delivered_at', 'completedAt', 'completed_at', 'deliveryCompletedAt', 'updatedAt', 'updated_at', 'createdAt', 'created_at']) {
-      const nestedValue = nested[key]
-      if (nestedValue !== undefined && nestedValue !== null && nestedValue !== '') {
-        return nestedValue
-      }
-    }
-  }
-
-  return candidate
 }
 
 function formatMaybeDate(value: unknown): string {
@@ -351,8 +310,8 @@ export default function OrdersPage() {
                         <InfoRow label="Thực nhận" value={formatCurrency(actualReceived)} valueClassName="text-emerald-600" />
                       </InfoGroup>
                       <InfoGroup title="Giao nhận">
-                        <InfoRow label="Đặt lúc" value={formatMaybeDate(getOrderPlacedAtCandidate(order))} />
-                        <InfoRow label="Nhận hàng" value={formatMaybeDate(getOrderDeliveryTime(order))} />
+                        <InfoRow label="Đặt lúc" value={formatMaybeDate(resolveOrderPlacedAtValue(order) ?? order.placedAt)} />
+                        <InfoRow label="Nhận hàng" value={formatMaybeDate(resolveOrderDeliveredAtValue(order) ?? order.deliveredAt ?? order.deliveryInfo?.estimatedTime)} />
                       </InfoGroup>
                       <InfoGroup title="Vận chuyển">
                         <InfoRow label="Tài xế" value={order.driverInfo?.name || '–'} />

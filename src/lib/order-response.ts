@@ -1,4 +1,5 @@
 import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
+import { recoverOrderDisplayFields } from '@/lib/order-recovery'
 
 type PopulatedRef = { _id?: { toString(): string } | string; name?: string } | string | null | undefined
 type OrderLike = Record<string, unknown> & {
@@ -20,8 +21,19 @@ function getRefName(value: PopulatedRef) {
 }
 
 export function serializeOrderResponse<T extends OrderLike>(order: T) {
+  const recovered = recoverOrderDisplayFields(order as {
+    rawPayload?: unknown
+    customerName?: unknown
+    customerPhone?: unknown
+    placedAt?: unknown
+    deliveredAt?: unknown
+    createdAt?: unknown
+    updatedAt?: unknown
+    status?: unknown
+  })
+
   return repairVietnameseTextDeep({
-    ...order,
+    ...recovered,
     _id: typeof order._id === 'string' ? order._id : order._id?.toString?.(),
     brandId: getRefId(order.brandId),
     brandName: getRefName(order.brandId),

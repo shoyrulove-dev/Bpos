@@ -6,6 +6,7 @@ import { buildOrderUpsert, getComparableDriverName, hasMeaningfulCustomerName, h
 import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
 import { buildSessionStoreId } from '@/lib/realtime-order-sync'
 import { normalizeCompactPhone } from '@/lib/phone'
+import { resolveOrderCustomerName, resolveOrderCustomerPhone, resolveOrderDeliveredAtValue, resolveOrderPlacedAtValue } from '@/lib/order-recovery'
 import mongoose from 'mongoose'
 import IntegrationModel from '@/models/Integration'
 import OrderModel from '@/models/Order'
@@ -466,8 +467,10 @@ function needsOrderDetailBackfill(order: StoredOrder) {
   if (!order.externalOrderId) return false
 
   const rawPayload = getRecord(order.rawPayload)
+  const missingPlacedAt = !parseDateValue(order.placedAt) || !resolveOrderPlacedAtValue(order as unknown as Order)
   const missingDeliveredAt = order.status === 'completed' && !order.deliveredAt && !hasDeliveredAtSignal(rawPayload)
-  const missingCustomerPhone = order.source === 'grab' && !hasMeaningfulPhone(getDisplayCustomerPhone(order as unknown as Order))
+  const missingCustomerName = !hasMeaningfulCustomerName(resolveOrderCustomerName(order as unknown as Order))
+  const missingCustomerPhone = !hasMeaningfulPhone(resolveOrderCustomerPhone(order as unknown as Order))
   const missingDriverPhone = order.source === 'grab' && !hasMeaningfulPhone(getDisplayDriverPhone(order as unknown as Order))
   const missingItemDetail = order.source === 'grab'
     ? !hasGrabDetailedItems(rawPayload)
@@ -478,7 +481,7 @@ function needsOrderDetailBackfill(order: StoredOrder) {
       : !hasBePromotionDetail(rawPayload)
   )
 
-  return missingDeliveredAt || missingCustomerPhone || missingDriverPhone || missingItemDetail || missingPromotionDetail
+  return missingPlacedAt || missingDeliveredAt || missingCustomerName || missingCustomerPhone || missingDriverPhone || missingItemDetail || missingPromotionDetail
 }
 
 function buildAdapterConfigFromIntegration(integration: {
@@ -550,7 +553,7 @@ async function backfillOrderDetails(days: number, providers: string[], externalO
       }
 
   const candidateDocs = await OrderModel.find(query)
-    .select('shortId source externalOrderId externalStoreId brandId hubId customerName customerPhone driverInfo items discount status deliveredAt deliveryInfo rawPayload')
+    .select('shortId source externalOrderId externalStoreId brandId hubId customerName customerPhone driverInfo items discount status placedAt deliveredAt createdAt updatedAt deliveryInfo rawPayload')
     .lean()
 
   const candidates = candidateDocs
@@ -675,10 +678,12 @@ async function repairStoredOrders(
       await upsertCustomerFromOrder(order)
       await upsertDriverFromOrder(order)
 
-      const nextCustomerName = getDisplayCustomerName(order as unknown as Order) || undefined
-      const nextCustomerPhone = getDisplayCustomerPhone(order as unknown as Order) || undefined
+      const nextCustomerName = resolveOrderCustomerName(order as unknown as Order)
+      const nextCustomerPhone = resolveOrderCustomerPhone(order as unknown as Order)
       const nextDriverName = getDisplayDriverName(order as unknown as Order) || undefined
       const nextDriverPhone = getDisplayDriverPhone(order as unknown as Order) || undefined
+      const nextPlacedAt = resolveOrderPlacedAtValue(order as unknown as Order)
+      const nextDeliveredAt = resolveOrderDeliveredAtValue(order as unknown as Order)
       const financialBreakdown = getFinancialBreakdown(order as unknown as Order)
 
       const set: Record<string, unknown> = {}
@@ -690,6 +695,22 @@ async function repairStoredOrders(
 
       if (nextCustomerPhone && !hasMeaningfulPhone(order.customerPhone)) {
         set.customerPhone = nextCustomerPhone
+      }
+
+      if (nextPlacedAt) {
+        const currentPlacedAt = parseDateValue(order.placedAt)?.getTime()
+        const resolvedPlacedAt = parseDateValue(nextPlacedAt)?.getTime()
+        if (!currentPlacedAt || (resolvedPlacedAt && currentPlacedAt !== resolvedPlacedAt)) {
+          set.placedAt = nextPlacedAt
+        }
+      }
+
+      if (order.status === 'completed' && nextDeliveredAt) {
+        const currentDeliveredAt = parseDateValue(order.deliveredAt)?.getTime()
+        const resolvedDeliveredAt = parseDateValue(nextDeliveredAt)?.getTime()
+        if (!currentDeliveredAt || (resolvedDeliveredAt && currentDeliveredAt !== resolvedDeliveredAt)) {
+          set.deliveredAt = nextDeliveredAt
+        }
       }
 
       const currentDriverInfo = order.driverInfo ?? {}

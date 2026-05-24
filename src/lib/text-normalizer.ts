@@ -74,11 +74,20 @@ export function repairVietnameseTextDeep<T>(value: T): T {
     return repairVietnameseText(value) as T
   }
 
+  if (value instanceof Date) {
+    return value
+  }
+
   if (Array.isArray(value)) {
     return value.map((item) => repairVietnameseTextDeep(item)) as T
   }
 
   if (value && typeof value === 'object') {
+    const prototype = Object.getPrototypeOf(value)
+    if (prototype !== Object.prototype && prototype !== null) {
+      return value
+    }
+
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, repairVietnameseTextDeep(entry)])
     ) as T
