@@ -82,6 +82,24 @@ function openWindow(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
+function getOrderDeliveryTime(order: Order) {
+  const raw = order.rawPayload as Record<string, unknown> | undefined
+  const times = raw && typeof raw.times === 'object' && !Array.isArray(raw.times) ? raw.times as Record<string, unknown> : undefined
+  return order.deliveredAt
+    || order.deliveryInfo?.estimatedTime
+    || times?.deliveredAt
+    || times?.completedAt
+    || times?.updatedAt
+    || raw?.deliveredAt
+    || raw?.delivered_at
+    || raw?.completedAt
+    || raw?.completed_at
+    || raw?.deliveryCompletedAt
+    || raw?.delivered_time
+    || raw?.updatedAt
+    || raw?.updated_at
+}
+
 function InfoRow({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
     <div className="grid grid-cols-[78px_minmax(0,1fr)] items-start gap-2 text-sm leading-5">
@@ -289,7 +307,7 @@ export default function OrdersPage() {
                       </InfoGroup>
                       <InfoGroup title="Giao nhận">
                         <InfoRow label="Đặt lúc" value={formatDate(order.placedAt)} />
-                        <InfoRow label="Nhận hàng" value={order.deliveredAt ? formatDate(order.deliveredAt) : order.deliveryInfo?.estimatedTime ? formatDate(order.deliveryInfo.estimatedTime) : '–'} />
+                        <InfoRow label="Nhận hàng" value={getOrderDeliveryTime(order) ? formatDate(getOrderDeliveryTime(order) as string | Date) : '–'} />
                       </InfoGroup>
                       <InfoGroup title="Vận chuyển">
                         <InfoRow label="Tài xế" value={order.driverInfo?.name || '–'} />

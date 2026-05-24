@@ -201,12 +201,15 @@ function PrintButton({ orderId, type = 'receipt', label, className }: { orderId:
   )
 }
 
-function formatMaybeDate(value?: string) {
-  if (!value) return '-'
+function formatMaybeDate(value: unknown) {
+  if (value === undefined || value === null || value === '') return '-'
   try {
-    return formatDate(value)
+    if (value instanceof Date || typeof value === 'string') {
+      return formatDate(value)
+    }
+    return String(value)
   } catch {
-    return value
+    return String(value)
   }
 }
 
@@ -225,6 +228,35 @@ function getRecord(value: unknown) {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
 }
 
+function getOrderPlacedAtCandidate(order: Order) {
+  const raw = getRecord(order.rawPayload)
+  const times = getRecord(raw?.times)
+  return order.placedAt
+    || times?.createdAt
+    || raw?.createdAt
+    || raw?.created_at
+    || raw?.placedAt
+    || raw?.placed_at
+}
+
+function getOrderDeliveredAtCandidate(order: Order) {
+  const raw = getRecord(order.rawPayload)
+  const times = getRecord(raw?.times)
+  return order.deliveredAt
+    || order.deliveryInfo?.estimatedTime
+    || times?.deliveredAt
+    || times?.completedAt
+    || times?.updatedAt
+    || raw?.deliveredAt
+    || raw?.delivered_at
+    || raw?.completedAt
+    || raw?.completed_at
+    || raw?.deliveryCompletedAt
+    || raw?.delivered_time
+    || raw?.updatedAt
+    || raw?.updated_at
+}
+
 function getGrabTimeline(order: Order) {
   const raw = getRecord(order.rawPayload)
   const times = getRecord(raw?.times)
@@ -233,41 +265,41 @@ function getGrabTimeline(order: Order) {
   if (order.status === 'completed') {
     return {
       label: 'Đã giao',
-      at: String(times?.deliveredAt ?? order.deliveredAt ?? ''),
+      at: times?.deliveredAt ?? order.deliveredAt,
     }
   }
 
   if (deliveryTaskpoolStatus === 'DRIVER_AT_STORE') {
     return {
       label: 'Tài xế đã đến',
-      at: String(times?.driverArriveRestoAt ?? ''),
+      at: times?.driverArriveRestoAt,
     }
   }
 
   if (deliveryTaskpoolStatus === 'PICKING_UP') {
     return {
       label: 'Đang lấy hàng',
-      at: String(times?.driverArriveRestoAt ?? times?.readyAt ?? ''),
+      at: times?.driverArriveRestoAt ?? times?.readyAt,
     }
   }
 
   if (order.status === 'waiting_pickup') {
     return {
       label: 'Đang chuẩn bị',
-      at: String(times?.acceptedAt ?? order.placedAt ?? ''),
+      at: times?.acceptedAt ?? order.placedAt,
     }
   }
 
   if (order.status === 'delivering') {
     return {
       label: 'Đang giao',
-      at: String(times?.driverArriveRestoAt ?? times?.readyAt ?? ''),
+      at: times?.driverArriveRestoAt ?? times?.readyAt,
     }
   }
 
   return {
     label: ORDER_STATUS_LABEL[order.status],
-    at: String(times?.createdAt ?? order.placedAt ?? ''),
+    at: times?.createdAt ?? order.placedAt,
   }
 }
 
@@ -795,7 +827,7 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
           </div>
           <div>
             <p className="text-[10px] text-gray-400">Đặt lúc · Số món</p>
-            <p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(String(times?.createdAt ?? order.placedAt ?? ''))}</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(times?.createdAt ?? order.placedAt)}</p>
             <p className="text-xs text-gray-500">{itemCount} món</p>
           </div>
         </div>
@@ -966,8 +998,8 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
           </div>
           <div>
             <p className="text-[10px] text-gray-400">Thời gian</p>
-            <p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(order.placedAt)}</p>
-            <p className="text-xs text-gray-500">Lấy: {formatMaybeDate(order.deliveryInfo?.estimatedTime || order.deliveredAt)}</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(getOrderPlacedAtCandidate(order))}</p>
+            <p className="text-xs text-gray-500">Lấy: {formatMaybeDate(getOrderDeliveredAtCandidate(order))}</p>
           </div>
           <div>
             <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>
@@ -1113,8 +1145,8 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
           </div>
           <div>
             <p className="text-[10px] text-gray-400">Thời gian</p>
-            <p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(order.placedAt)}</p>
-            <p className="text-xs text-gray-500">Lấy: {formatMaybeDate(order.deliveredAt || order.deliveryInfo?.estimatedTime)}</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{formatMaybeDate(getOrderPlacedAtCandidate(order))}</p>
+            <p className="text-xs text-gray-500">Lấy: {formatMaybeDate(getOrderDeliveredAtCandidate(order))}</p>
           </div>
           <div>
             <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>

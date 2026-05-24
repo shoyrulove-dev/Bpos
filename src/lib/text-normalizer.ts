@@ -1,8 +1,8 @@
-const MOJIBAKE_PATTERN = /[ÃÂÆÄÐáºâ€œž™¢£¤¥¦§¨©ª«¬®¯°±²³´µ¶·¸¹º»¼½¾¿]/
+const MOJIBAKE_PATTERN = /(?:Ã[\x80-\xFF]|Â[\x80-\xFF]|Ä[\x80-\xFF]|Å[\x80-\xFF]|Æ[\x80-\xFF]|Ð[\x80-\xFF]|á[\x80-\xFF]|â[\x80-\xFF]|œ|ž|™|¢|£|¤|¥|¦|§|¨|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|º|»|¼|½|¾|¿)/
 const VIETNAMESE_ACCENT_PATTERN = /[ĂăÂâÊêÔôƠơƯưĐđÁÀẢÃẠÂẤẦẨẪẬĂẮẰẲẴẶÉÈẺẼẸÊẾỀỂỄỆÍÌỊĨÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÚÙỦŨỤƯỨỪỬỮỰÝỲỶỸỴ]/
 
 function countMojibakeSignals(value: string) {
-  const matches = value.match(/Ã.|Â.|Æ.|Ä.|Ð.|á.|â./g)
+  const matches = value.match(/(?:Ã.|Â.|Æ.|Ä.|Ð.|á[\x80-\xFF]|â[\x80-\xFF])/g)
   return matches?.length ?? 0
 }
 

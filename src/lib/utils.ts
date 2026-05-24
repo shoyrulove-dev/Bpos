@@ -10,8 +10,16 @@ export function cn(...inputs: ClassValue[]) {
 
 export function toValidDate(value: string | Date | null | undefined) {
   if (!value) return null
-  const date = typeof value === 'string' ? parseISO(value) : value
-  return isValid(date) ? date : null
+
+  if (value instanceof Date) {
+    return isValid(value) ? value : null
+  }
+
+  const parsed = parseISO(value)
+  if (isValid(parsed)) return parsed
+
+  const fallback = new Date(value)
+  return isValid(fallback) ? fallback : null
 }
 
 export function formatDate(date: string | Date, fmt = 'dd/MM/yyyy HH:mm') {

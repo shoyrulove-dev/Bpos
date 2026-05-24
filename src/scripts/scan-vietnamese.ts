@@ -1,12 +1,14 @@
 import { connectDB } from '../lib/db'
 import OrderModel from '@/models/Order'
+import { repairVietnameseText } from '@/lib/text-normalizer'
 
 const MOJIBAKE_PATTERN = /(?:Ã[\x80-\xFF]|Â[\x80-\xFF]|Ä[\x80-\xFF]|Å[\x80-\xFF]|Æ[\x80-\xFF]|Ð[\x80-\xFF]|â[€“”‘’–—]|œ|ž|™|¢|£|¤|¥|¦|§|¨|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|º|»|¼|½|¾|¿)/
 const REPLACEMENT_CHAR_PATTERN = /\uFFFD/
 
 function findMojibakeValues(value: unknown, path: string[] = [], hits: Array<{ path: string; value: string }> = []) {
   if (typeof value === 'string') {
-    if (MOJIBAKE_PATTERN.test(value) || REPLACEMENT_CHAR_PATTERN.test(value)) {
+    const repaired = repairVietnameseText(value)
+    if (REPLACEMENT_CHAR_PATTERN.test(value) || repaired !== value) {
       hits.push({ path: path.join('.'), value })
     }
     return hits
