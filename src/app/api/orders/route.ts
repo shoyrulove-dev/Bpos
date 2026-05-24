@@ -44,7 +44,7 @@ const ORDER_LIST_RAW_SELECT = [
   'rawPayload.delivered_time',
   'rawPayload.finished_at',
 ].join(' ')
-const ORDER_LIST_SELECT = `shortId source externalOrderId brandId hubId channelId customerName customerPhone items.name items.quantity discount subtotal total platformFee paymentMethod deliveryInfo.address deliveryInfo.estimatedTime driverInfo note status placedAt deliveredAt createdAt updatedAt ${ORDER_LIST_RAW_SELECT}`
+const ORDER_LIST_SELECT = `shortId source externalOrderId brandId hubId channelId customerName customerPhone items.quantity total platformFee deliveryInfo.address deliveryInfo.estimatedTime driverInfo.name driverInfo.phone status placedAt deliveredAt ${ORDER_LIST_RAW_SELECT}`
 
 export async function GET(req: NextRequest) {
   const { res } = await requireAuth(req)
@@ -55,12 +55,6 @@ export async function GET(req: NextRequest) {
   const requestedLimit = parseInt(searchParams.get('limit') || '10', 10) || 10
   const limit = Math.min(500, Math.max(1, requestedLimit))
   const filter = buildOrderFilterFromSearchParams(searchParams)
-  // Use Vietnam timezone (UTC+7) for day boundaries
-  const VN_OFFSET_MS = 7 * 60 * 60 * 1000
-  const vnNowMs = Date.now() + VN_OFFSET_MS
-  const vnDayStartMs = Math.floor(vnNowMs / (24 * 60 * 60 * 1000)) * (24 * 60 * 60 * 1000)
-  const todayStart = new Date(vnDayStartMs - VN_OFFSET_MS)
-  const tomorrowStart = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000)
   const skip = (page - 1) * limit
   const [orderRows, total] = await Promise.all([
     OrderModel.find(filter)
