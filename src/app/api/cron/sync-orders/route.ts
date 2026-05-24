@@ -293,6 +293,9 @@ export async function GET(req: NextRequest) {
           const isFromActiveBucket = ['PreparingV2', 'Ready', 'Upcoming'].includes(incomingPageType)
             || ['preparing', 'ready', 'upcoming'].includes(incomingPageStage.toLowerCase())
             || ['in_progress', 'on_delivery', 'pending'].includes(incomingFetchType)
+          const isIncomingBeCancelledCorrection = intg.provider === 'be'
+            && existingDbStatus === 'completed'
+            && mergedNormalized.orderStatus === 'cancelled'
 
           if (existingDbStatus === 'cancelled') {
             const canRecoverCancelledGrabOrder = intg.provider === 'grab'
@@ -311,7 +314,7 @@ export async function GET(req: NextRequest) {
           }
 
           // Completed orders should not revert back to active unless we truly see active bucket data.
-          if (!isFromActiveBucket && existingDbStatus === 'completed' && ACTIVE_ORDER_STATUSES.has(mergedNormalized.orderStatus)) {
+          if (!isIncomingBeCancelledCorrection && !isFromActiveBucket && existingDbStatus === 'completed' && ACTIVE_ORDER_STATUSES.has(mergedNormalized.orderStatus)) {
             mergedNormalized.orderStatus = 'completed'
           }
 

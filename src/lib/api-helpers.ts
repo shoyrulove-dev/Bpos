@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
 import type { NextRequest } from 'next/server'
 
 export function ok(data: unknown, status = 200) {
-  return NextResponse.json(data, { status })
+  return NextResponse.json(repairVietnameseTextDeep(data), { status })
 }
 
 export function err(message: string, status = 400) {

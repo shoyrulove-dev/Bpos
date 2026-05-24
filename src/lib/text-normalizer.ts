@@ -12,13 +12,24 @@ export function repairVietnameseText(value: unknown) {
   if (!value || !MOJIBAKE_PATTERN.test(value)) return value
 
   try {
-    const bytes = Uint8Array.from(Array.from(value, (char) => char.charCodeAt(0) & 0xff))
-    const repaired = new TextDecoder('utf-8', { fatal: false }).decode(bytes)
-    if (!repaired.trim()) return value
+    let bestValue = value
+    let bestScore = countMojibakeSignals(value)
+    let currentValue = value
 
-    const originalScore = countMojibakeSignals(value)
-    const repairedScore = countMojibakeSignals(repaired)
-    return repairedScore < originalScore ? repaired : value
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const bytes = Uint8Array.from(Array.from(currentValue, (char) => char.charCodeAt(0) & 0xff))
+      const repaired = new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+      if (!repaired.trim()) break
+
+      const repairedScore = countMojibakeSignals(repaired)
+      if (repairedScore >= bestScore) break
+
+      bestValue = repaired
+      bestScore = repairedScore
+      currentValue = repaired
+    }
+
+    return bestValue
   } catch {
     return value
   }

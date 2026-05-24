@@ -1,5 +1,6 @@
 import { generateId } from '@/lib/utils'
 import { extractGrabCustomerFinancials, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
+import { hasBeCancelSignal } from '@/lib/be-order-status'
 import { normalizeCompactPhone } from '@/lib/phone'
 import type { NormalizedOrder, Order } from '@/types'
 
@@ -601,12 +602,17 @@ export function shouldSkipFinalizedOrderSync(existing: Partial<NormalizedOrder> 
   const existingRecord = getRecord(existing)
   const existingStatus = String(existingRecord?.status ?? '').trim().toLowerCase()
   const incomingStatus = String(incoming.orderStatus ?? '').trim().toLowerCase()
+  const incomingRaw = getRecord(incoming.rawPayload)
+  const allowBeCancelledCorrection = incoming.source === 'be'
+    && existingStatus === 'completed'
+    && incomingStatus === 'cancelled'
+    && Boolean(incomingRaw && hasBeCancelSignal(incomingRaw))
 
   if (!FINALIZED_ORDER_STATUSES.has(existingStatus)) return false
 
   // Đơn đã được force-complete không được bị historical sync ghi đè thành cancelled.
   // completed có thể ghi đè cancelled (đơn bị hủy nhầm), nhưng không chiều ngược lại.
-  if (existingStatus === 'completed' && incomingStatus === 'cancelled') return true
+  if (existingStatus === 'completed' && incomingStatus === 'cancelled' && !allowBeCancelledCorrection) return true
 
   if (existingStatus !== incomingStatus) return false
 

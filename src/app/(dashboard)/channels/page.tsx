@@ -7,8 +7,10 @@ import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
 import { useIntegrations } from '@/hooks/use-data'
 import { useDebounce } from '@/hooks/use-debounce'
+import { getStoreIdentityKey, normalizeStoreId, normalizeStoreSource } from '@/lib/store-pause-status'
 import { cn } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
+import { PlatformStatusIcon } from '@/components/ui/PlatformStatusIcon'
 import type { Channel } from '@/types'
 
 const MARKETPLACE_TABS = [
@@ -30,12 +32,15 @@ const emptyForm = { name: '', source: 'grab', brandId: '', hubId: '', externalSt
 
 type PauseStoreStatus = {
   source: 'grab' | 'be'
+  integrationId?: string
   storeId?: string
   paused: boolean
   loggedIn: boolean
   isUnknown?: boolean
   platformStatus?: string | null
   pauseLabel?: string | null
+  username?: string
+  label?: string
 }
 
 function PaginationControls({
@@ -138,8 +143,17 @@ export default function ChannelsPage() {
         if (cancelled || !Array.isArray(payload.stores)) return
 
         const nextMap = payload.stores.reduce((acc, store) => {
-          const key = `${store.source}:${String(store.storeId ?? '').trim().toLowerCase()}`
-          if (key !== `${store.source}:`) acc[key] = store
+          const source = normalizeStoreSource(store.source)
+          if (!source) return acc
+          const normalized = {
+            ...store,
+            source,
+            storeId: normalizeStoreId(store.storeId),
+            integrationId: store.integrationId ? String(store.integrationId) : undefined,
+            username: store.username ? String(store.username) : undefined,
+            label: String(store.label ?? ''),
+          }
+          acc[getStoreIdentityKey(normalized)] = normalized
           return acc
         }, {} as Record<string, PauseStoreStatus>)
 
@@ -270,15 +284,35 @@ export default function ChannelsPage() {
           {channelColumns.map((column, columnIndex) => (
             <div key={columnIndex} className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
               {column.length > 0 ? column.map((channel: Channel) => {
-                const storeId = String((channel as unknown as Record<string, unknown>).externalStoreId ?? '').trim().toLowerCase()
-                const liveStatus = pauseStatuses[`${channel.source}:${storeId}`]
-                const loginUsername = (() => {
-                  const integ = integrations.find(i =>
-                    i.provider === channel.source &&
-                    i.externalStoreId && i.externalStoreId === (channel as unknown as Record<string, unknown>).externalStoreId
-                  )
-                  return integ?.loginUsername || null
-                })()
+                const integ = integrations.find(i =>
+                  i.provider === channel.source &&
+                  i.externalStoreId && i.externalStoreId === (channel as unknown as Record<string, unknown>).externalStoreId
+                )
+                const liveStatus = pauseStatuses[getStoreIdentityKey({
+                  source: normalizeStoreSource(channel.source) ?? 'grab',
+                  integrationId: integ?._id,
+                  storeId: normalizeStoreId((channel as unknown as Record<string, unknown>).externalStoreId),
+                  username: integ?.loginUsername,
+                  label: channel.name,
+                })]
+                const statusTone = liveStatus
+                  ? (!liveStatus.loggedIn ? 'offline' : liveStatus.isUnknown ? 'unknown' : liveStatus.paused ? 'paused' : 'active')
+                  : channel.scraperLastSeen && !channel.scraperLoggedIn
+                    ? 'offline'
+                    : channel.scraperPaused
+                      ? 'paused'
+                      : channel.status === 'active'
+                        ? 'active'
+                        : 'inactive'
+                const statusTitle = liveStatus
+                  ? (!liveStatus.loggedIn ? 'Offline' : liveStatus.isUnknown ? (liveStatus.platformStatus ?? 'Unknown') : liveStatus.paused ? (liveStatus.pauseLabel ?? 'Paused') : 'Active')
+                  : channel.scraperLastSeen && !channel.scraperLoggedIn
+                    ? 'Offline'
+                    : channel.scraperPaused
+                      ? 'Paused'
+                      : channel.status === 'active'
+                        ? 'Active'
+                        : 'Inactive'
 
                 return (
                   <div key={channel._id} className="flex items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0">
@@ -286,25 +320,9 @@ export default function ChannelsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap text-sm">
                         <span className="truncate font-semibold text-gray-900">{channel.name}</span>
-                        <span className={cn('badge badge-sm shrink-0', channel.status === 'active' ? 'badge-green' : 'badge-red')}>
-                          {channel.status === 'active' ? 'Hoạt động' : 'Ngừng'}
-                        </span>
-                        {liveStatus?.isUnknown ? (
-                          <span className="badge badge-sm shrink-0 bg-gray-100 text-gray-700 border-gray-200">Unknown</span>
-                        ) : liveStatus?.paused ? (
-                          <span className="badge badge-sm shrink-0 bg-amber-100 text-amber-700 border-amber-200">
-                            {liveStatus.pauseLabel ?? 'Paused'}
-                          </span>
-                        ) : channel.scraperPaused ? (
-                          <span className="badge badge-sm shrink-0 bg-amber-100 text-amber-700 border-amber-200">Paused</span>
-                        ) : null}
-                        {liveStatus ? (
-                          !liveStatus.loggedIn ? <span className="badge badge-sm shrink-0 bg-red-100 text-red-700 border-red-200">Offline</span> : null
-                        ) : channel.scraperLastSeen && !channel.scraperLoggedIn ? (
-                          <span className="badge badge-sm shrink-0 bg-red-100 text-red-700 border-red-200">Offline</span>
-                        ) : null}
+                        <PlatformStatusIcon status={statusTone} title={statusTitle} />
                         <span className="truncate text-xs text-gray-500">
-                          {[channel.brandName, channel.hubName, loginUsername, (channel as unknown as Record<string, unknown>).externalStoreId as string | undefined].filter(Boolean).join(' · ')}
+                          {[channel.brandName, channel.hubName, integ?.loginUsername, (channel as unknown as Record<string, unknown>).externalStoreId as string | undefined].filter(Boolean).join(' · ')}
                         </span>
                       </div>
                     </div>

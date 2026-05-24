@@ -14,6 +14,7 @@ import { getDefaultSessionRefreshMode } from '@/lib/session-refresh-mode'
 import { canonicalizePauseStoreState, getStoreIdentityKey, normalizeStoreId, normalizeStoreSource } from '@/lib/store-pause-status'
 import { cn, formatDateNative, toValidDate } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
+import { PlatformStatusIcon } from '@/components/ui/PlatformStatusIcon'
 
 const PROVIDERS = [
   { value: 'grab',     label: 'GrabFood',    color: 'bg-green-100 text-green-700' },
@@ -865,11 +866,15 @@ function PauseStoreSection() {
                 : store.paused
                   ? (isGrouped ? (idx % 2 === 0 ? 'bg-amber-50' : 'bg-amber-50/70') : 'bg-amber-50')
                   : (isGrouped ? (idx % 2 === 0 ? 'bg-green-50/60' : 'bg-green-50/40') : (idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'))
-            const dotColor = !store.loggedIn ? 'text-red-500' : isUnknownStatus ? 'text-gray-400' : store.paused ? 'text-amber-500' : 'text-green-500'
             const pausedUntilDate = toValidDate(store.pausedUntil)
-            const pausedUntilStr = pausedUntilDate
-              ? pausedUntilDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-              : null
+            const statusTone = !store.loggedIn ? 'offline' : isUnknownStatus ? 'unknown' : store.paused ? 'paused' : 'active'
+            const statusTitle = !store.loggedIn
+              ? 'Offline'
+              : isUnknownStatus
+                ? (store.platformStatus ?? 'Unknown')
+                : store.paused
+                  ? [store.pauseLabel ?? 'Paused', pausedUntilDate ? `đến ${formatDateNative(pausedUntilDate, 'time')}` : null].filter(Boolean).join(' · ')
+                  : 'Active'
             return (
               <div key={key}>
                 {showGroupHeader && (
@@ -890,25 +895,11 @@ function PauseStoreSection() {
                   ) : (
                     <span className="w-3.5 h-3.5 flex-shrink-0" />
                   )}
-                  <span className={cn('text-[10px] flex-shrink-0', dotColor)}>●</span>
+                  <PlatformStatusIcon status={statusTone} title={statusTitle} />
                   <span className="flex-1 min-w-0">
                     <span className="text-sm font-semibold text-gray-900">{store.label}</span>
                     {!isGrouped && store.username && (
                       <span className="ml-1.5 text-xs font-bold text-gray-500">({store.username})</span>
-                    )}
-                    {!store.loggedIn && (
-                      <span className="ml-1.5 text-[11px] font-bold text-red-600">Offline</span>
-                    )}
-                    {isUnknownStatus && store.loggedIn && (
-                      <span className="ml-1.5 text-[11px] font-bold text-gray-500" title={store.platformStatus ?? 'Unknown'}>Unknown</span>
-                    )}
-                    {store.paused && !isUnknownStatus && (
-                      <span className="ml-1.5 text-[11px] font-bold text-amber-600">
-                        ⏸ {store.pauseLabel ? `Tạm dừng: ${store.pauseLabel}` : 'Tạm dừng'}{pausedUntilStr ? ` đến ${pausedUntilStr}` : ''}
-                      </span>
-                    )}
-                    {!store.paused && !isUnknownStatus && store.loggedIn && (
-                      <span className="ml-1.5 text-[11px] font-bold text-green-600">Active</span>
                     )}
                   </span>
                   {/* Duration select (Grab only, not paused, not unknown) */}
@@ -1376,15 +1367,6 @@ export default function IntegrationsPage() {
     return String(integ.hubId)
   }
 
-  const timeAgo = (isoStr?: string) => {
-    if (!isoStr) return null
-    const secs = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000)
-    if (secs < 60)    return `${secs}s trước`
-    if (secs < 3600)  return `${Math.floor(secs / 60)}p trước`
-    if (secs < 86400) return `${Math.floor(secs / 3600)}h trước`
-    return new Date(isoStr).toLocaleDateString('vi-VN')
-  }
-
   const safeTimeAgo = (isoStr?: string | null) => {
     const date = toValidDate(isoStr)
     if (!date) return null
@@ -1449,10 +1431,10 @@ export default function IntegrationsPage() {
         return <span className={cn('text-[11px]', cls)} title={integ.sessionStatus === 'active' && integ.sessionExpiresAt ? `Hết hạn ${formatDateNative(integ.sessionExpiresAt, 'date')}` : ''}>{label}</span>
       }
       if (integ.automationRunning) return <span className="text-[11px] text-blue-600"><Loader2 className="w-2.5 h-2.5 animate-spin inline mr-0.5" />Login…</span>
-      if (integ.sessionStatus === 'active') return <span className="text-[11px] text-green-600">● Active</span>
-      if (integ.sessionStatus === 'expired') return <span className="text-[11px] text-amber-600">● Hết hạn</span>
-      if (integ.sessionStatus === 'error') return <span className="text-[11px] text-red-500 truncate max-w-[120px]" title={integ.sessionError ?? ''}>● {integ.sessionError ?? 'Lỗi'}</span>
-      return <span className="text-[11px] text-gray-400">● Chờ login</span>
+      if (integ.sessionStatus === 'active') return <PlatformStatusIcon status="active" title={integ.sessionExpiresAt ? `Active · hết hạn ${formatDateNative(integ.sessionExpiresAt, 'datetime')}` : 'Active'} />
+      if (integ.sessionStatus === 'expired') return <PlatformStatusIcon status="paused" title="Hết hạn phiên" />
+      if (integ.sessionStatus === 'error') return <PlatformStatusIcon status="offline" title={integ.sessionError ?? 'Lỗi phiên'} />
+      return <PlatformStatusIcon status="unknown" title="Chờ đăng nhập" />
     })() : null
 
     const brandName = getBrandName(integ)

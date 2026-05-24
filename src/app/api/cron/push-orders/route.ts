@@ -267,13 +267,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // BE completed orders: once marked completed in DB, never re-sync from scraper push
-      // (manual status changes via UI are preserved; use the order detail page to correct if needed)
       const existingStatus = (existing as { status?: string } | undefined)?.status
-      if (intg.provider === 'be' && existingStatus === 'completed') {
-        skipped++
-        continue
-      }
 
       // Don't downgrade: once cancelled keep cancelled; once completed don't revert to active status
       // Exception: if incoming is from an ACTIVE platform bucket (PreparingV2 / in_progress / on_delivery),
@@ -285,6 +279,9 @@ export async function POST(req: NextRequest) {
       const isFromActiveBucket = ['PreparingV2', 'Ready', 'Upcoming'].includes(incomingPageType)
         || ['preparing', 'ready', 'upcoming'].includes(incomingPageStage.toLowerCase())
         || ['in_progress', 'on_delivery', 'pending'].includes(incomingFetchType)
+      const isIncomingBeCancelledCorrection = intg.provider === 'be'
+        && existingStatus === 'completed'
+        && merged.orderStatus === 'cancelled'
       // Keep cancelled as final by default, but allow Grab to recover from stale/incorrect
       // cancel snapshots when new payload shows active bucket or explicit completion.
       if (existingStatus === 'cancelled') {
@@ -303,7 +300,7 @@ export async function POST(req: NextRequest) {
         merged.orderStatus = 'waiting_pickup'
       }
       // Completed orders don't revert to active unless pushed from a live active bucket
-      if (!isFromActiveBucket && existingStatus === 'completed' && (merged.orderStatus === 'waiting_pickup' || merged.orderStatus === 'waiting_confirm' || merged.orderStatus === 'delivering')) {
+      if (!isIncomingBeCancelledCorrection && !isFromActiveBucket && existingStatus === 'completed' && (merged.orderStatus === 'waiting_pickup' || merged.orderStatus === 'waiting_confirm' || merged.orderStatus === 'delivering')) {
         merged.orderStatus = 'completed'
       }
       // Backfill source: never UPGRADE an active order to completed
