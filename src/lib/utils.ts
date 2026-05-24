@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { format, parseISO } from 'date-fns'
+import { format, isValid, parseISO } from 'date-fns'
 import { vi } from 'date-fns/locale'
 import { repairTextRecord, repairVietnameseText } from '@/lib/text-normalizer'
 
@@ -8,9 +8,28 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function toValidDate(value: string | Date | null | undefined) {
+  if (!value) return null
+  const date = typeof value === 'string' ? parseISO(value) : value
+  return isValid(date) ? date : null
+}
+
 export function formatDate(date: string | Date, fmt = 'dd/MM/yyyy HH:mm') {
-  const d = typeof date === 'string' ? parseISO(date) : date
+  const d = toValidDate(date)
+  if (!d) return '--'
   return format(d, fmt, { locale: vi })
+}
+
+export function formatDateNative(
+  date: string | Date | null | undefined,
+  mode: 'date' | 'time' | 'datetime' = 'datetime',
+  locale = 'vi-VN',
+) {
+  const d = toValidDate(date)
+  if (!d) return '--'
+  if (mode === 'date') return d.toLocaleDateString(locale)
+  if (mode === 'time') return d.toLocaleTimeString(locale)
+  return d.toLocaleString(locale)
 }
 
 export function formatCurrency(amount: number) {

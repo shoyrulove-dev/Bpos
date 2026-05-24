@@ -12,7 +12,7 @@ import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
 import { getDefaultSessionRefreshMode } from '@/lib/session-refresh-mode'
 import { canonicalizePauseStoreState, getStoreIdentityKey, normalizeStoreId, normalizeStoreSource } from '@/lib/store-pause-status'
-import { cn } from '@/lib/utils'
+import { cn, formatDateNative, toValidDate } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 
 const PROVIDERS = [
@@ -866,8 +866,9 @@ function PauseStoreSection() {
                   ? (isGrouped ? (idx % 2 === 0 ? 'bg-amber-50' : 'bg-amber-50/70') : 'bg-amber-50')
                   : (isGrouped ? (idx % 2 === 0 ? 'bg-green-50/60' : 'bg-green-50/40') : (idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'))
             const dotColor = !store.loggedIn ? 'text-red-500' : isUnknownStatus ? 'text-gray-400' : store.paused ? 'text-amber-500' : 'text-green-500'
-            const pausedUntilStr = store.pausedUntil
-              ? new Date(store.pausedUntil).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+            const pausedUntilDate = toValidDate(store.pausedUntil)
+            const pausedUntilStr = pausedUntilDate
+              ? pausedUntilDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
               : null
             return (
               <div key={key}>
@@ -1384,6 +1385,16 @@ export default function IntegrationsPage() {
     return new Date(isoStr).toLocaleDateString('vi-VN')
   }
 
+  const safeTimeAgo = (isoStr?: string | null) => {
+    const date = toValidDate(isoStr)
+    if (!date) return null
+    const secs = Math.floor((Date.now() - date.getTime()) / 1000)
+    if (secs < 60) return `${Math.max(secs, 0)}s trước`
+    if (secs < 3600) return `${Math.floor(secs / 60)}p trước`
+    if (secs < 86400) return `${Math.floor(secs / 3600)}h trước`
+    return formatDateNative(date, 'date')
+  }
+
   function openCreateModal(provider = 'grab') {
     setActionStatus(null)
     setForm({
@@ -1435,7 +1446,7 @@ export default function IntegrationsPage() {
       if (integ.provider === 'be') {
         const cls = integ.sessionStatus === 'active' ? 'text-teal-600' : integ.sessionStatus === 'error' ? 'text-red-500' : 'text-gray-400'
         const label = integ.sessionStatus === 'active' ? '⚡ Token OK' : integ.sessionStatus === 'error' ? `⚡ ${integ.sessionError ?? 'Lỗi token'}` : '⚡ Chưa token'
-        return <span className={cn('text-[11px]', cls)} title={integ.sessionStatus === 'active' && integ.sessionExpiresAt ? `Hết hạn ${new Date(integ.sessionExpiresAt).toLocaleDateString('vi-VN')}` : ''}>{label}</span>
+        return <span className={cn('text-[11px]', cls)} title={integ.sessionStatus === 'active' && integ.sessionExpiresAt ? `Hết hạn ${formatDateNative(integ.sessionExpiresAt, 'date')}` : ''}>{label}</span>
       }
       if (integ.automationRunning) return <span className="text-[11px] text-blue-600"><Loader2 className="w-2.5 h-2.5 animate-spin inline mr-0.5" />Login…</span>
       if (integ.sessionStatus === 'active') return <span className="text-[11px] text-green-600">● Active</span>
@@ -1502,7 +1513,7 @@ export default function IntegrationsPage() {
         {/* Row 2: sync status + session */}
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className={cn('badge badge-sm', syncBadgeClass)}>{syncLabel}</span>
-          {displayedSyncAt && <span className="text-[11px] text-gray-400" title={new Date(displayedSyncAt).toLocaleString('vi-VN')}>{timeAgo(displayedSyncAt)}</span>}
+          {safeTimeAgo(displayedSyncAt) && <span className="text-[11px] text-gray-400" title={formatDateNative(displayedSyncAt)}>{safeTimeAgo(displayedSyncAt)}</span>}
           {sessionBadge && <span className="text-gray-300">·</span>}
           {sessionBadge}
           {isExternalScraperManaged && integ.scraperSyncMessage && (
@@ -1511,8 +1522,8 @@ export default function IntegrationsPage() {
         </div>
 
         {isExternalScraperManaged && integ.provider === 'be' && integ.appLastSyncAt && (
-          <p className="text-[11px] text-gray-400" title={new Date(integ.appLastSyncAt).toLocaleString('vi-VN')}>
-            API nền: {integ.appSyncStatus === 'success' ? 'OK' : integ.appSyncStatus === 'error' ? 'lỗi' : integ.appSyncStatus ?? 'n/a'} · {timeAgo(integ.appLastSyncAt)}
+          <p className="text-[11px] text-gray-400" title={formatDateNative(integ.appLastSyncAt)}>
+            API nền: {integ.appSyncStatus === 'success' ? 'OK' : integ.appSyncStatus === 'error' ? 'lỗi' : integ.appSyncStatus ?? 'n/a'} · {safeTimeAgo(integ.appLastSyncAt)}
           </p>
         )}
 
