@@ -280,7 +280,7 @@ export default function ChannelsPage() {
           onPageChange={handlePageChange}
         />
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
           {channelColumns.map((column, columnIndex) => (
             <div key={columnIndex} className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
               {column.length > 0 ? column.map((channel: Channel) => {

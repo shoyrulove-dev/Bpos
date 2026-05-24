@@ -5,28 +5,12 @@ import '@/models/Brand'
 import '@/models/Hub'
 import '@/models/Channel'
 import { ok, err, requireAuth } from '@/lib/api-helpers'
-import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
+import { serializeOrderResponse } from '@/lib/order-response'
 
-type PopulatedRef = { _id?: { toString(): string } | string; name?: string } | string | null | undefined
-type OrderDetailDoc = Record<string, unknown> & {
-  brandId?: PopulatedRef
-  hubId?: PopulatedRef
-  channelId?: PopulatedRef
-}
+type OrderDetailDoc = Record<string, unknown>
 
-function getRefId(value: PopulatedRef) {
-  if (!value || typeof value === 'string') return value
-  if ('_id' in value && value._id) return value._id.toString()
-  return undefined
-}
-
-function getRefName(value: PopulatedRef) {
-  if (!value || typeof value === 'string') return undefined
-  return typeof value.name === 'string' ? value.name : undefined
-}
-
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const { res } = await requireAuth(_req)
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const { res } = await requireAuth(req)
   if (res) return res
   await connectDB()
 
@@ -34,52 +18,81 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     q.populate('brandId', 'name').populate('hubId', 'name').populate('channelId', 'name source').lean() as Promise<OrderDetailDoc | null>
 
   const id = params.id.trim()
-  // Support lookup by MongoDB ObjectId, shortId, or platform displayID (e.g. GF-723)
   const isObjectId = /^[0-9a-f]{24}$/i.test(id)
+
   let order: OrderDetailDoc | null = isObjectId
     ? await populateQuery(OrderModel.findById(id))
     : null
 
   if (!order) {
     order = await populateQuery(
-      OrderModel.findOne({ $or: [{ shortId: id }, { 'rawPayload.displayID': id }] })
+      OrderModel.findOne({
+        $or: [
+          { shortId: id },
+          { externalOrderId: id },
+          { 'rawPayload.displayID': id },
+          { 'rawPayload.shortOrderID': id },
+          { 'rawPayload.shortOrderId': id },
+          { 'rawPayload.bookingCode': id },
+        ],
+      })
     )
   }
 
   if (!order) return err('Không tìm thấy', 404)
-  return ok(repairVietnameseTextDeep({
-    ...order,
-    brandId: getRefId(order.brandId),
-    brandName: getRefName(order.brandId),
-    hubId: getRefId(order.hubId),
-    hubName: getRefName(order.hubId),
-    channelId: getRefId(order.channelId),
-    channelName: getRefName(order.channelId),
-  }))
+  return ok(serializeOrderResponse(order))
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const { res } = await requireAuth(req)
   if (res) return res
   await connectDB()
+
   const body = await req.json()
   const order = await OrderModel.findByIdAndUpdate(params.id, body, { new: true, runValidators: true }).lean()
   if (!order) return err('Không tìm thấy', 404)
-  return ok(order)
+  return ok(serializeOrderResponse(order as Record<string, unknown>))
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const { res } = await requireAuth(req)
   if (res) return res
   await connectDB()
+
   const body = await req.json() as { locked?: boolean }
   if (typeof body.locked !== 'boolean') return err('locked phải là true hoặc false', 400)
+
   const order = await OrderModel.findByIdAndUpdate(
     params.id,
     { $set: { locked: body.locked } },
     { new: true }
   ).lean()
+
   if (!order) return err('Không tìm thấy', 404)
   return ok({ locked: (order as Record<string, unknown>).locked })
 }
 
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const { res } = await requireAuth(req)
+  if (res) return res
+  await connectDB()
+
+  const id = params.id.trim()
+  const isObjectId = /^[0-9a-f]{24}$/i.test(id)
+
+  const deleted = isObjectId
+    ? await OrderModel.findByIdAndDelete(id).lean()
+    : await OrderModel.findOneAndDelete({
+        $or: [
+          { shortId: id },
+          { externalOrderId: id },
+          { 'rawPayload.displayID': id },
+          { 'rawPayload.shortOrderID': id },
+          { 'rawPayload.shortOrderId': id },
+          { 'rawPayload.bookingCode': id },
+        ],
+      }).lean()
+
+  if (!deleted) return err('Không tìm thấy', 404)
+  return ok({ deleted: true, orderId: (deleted as { _id?: { toString(): string } | string })._id?.toString?.() ?? null })
+}

@@ -5,23 +5,10 @@ import '@/models/Brand'
 import '@/models/Hub'
 import { ok, requireAuth } from '@/lib/api-helpers'
 import { buildOrderFilterFromSearchParams } from '@/lib/order-query'
-import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
+import { serializeOrderResponse } from '@/lib/order-response'
 
 const ORDER_STATUS_KEYS = ['draft', 'pre_order', 'waiting_confirm', 'waiting_pickup', 'delivering', 'completed', 'cancelled'] as const
 const ORDER_LIST_SELECT = 'shortId source externalOrderId brandId hubId channelId customerName customerPhone items.name items.quantity discount subtotal total platformFee paymentMethod deliveryInfo driverInfo note status placedAt deliveredAt createdAt updatedAt rawPayload'
-
-type PopulatedRef = { _id?: { toString(): string } | string; name?: string } | string | null | undefined
-
-function getRefId(value: PopulatedRef) {
-  if (!value || typeof value === 'string') return value
-  if ('_id' in value && value._id) return value._id.toString()
-  return undefined
-}
-
-function getRefName(value: PopulatedRef) {
-  if (!value || typeof value === 'string') return undefined
-  return typeof value.name === 'string' ? value.name : undefined
-}
 
 export async function GET(req: NextRequest) {
   const { res } = await requireAuth(req)
@@ -86,13 +73,7 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  const orders = orderRows.map((order) => repairVietnameseTextDeep({
-    ...order,
-    brandId: getRefId(order.brandId),
-    brandName: getRefName(order.brandId),
-    hubId: getRefId(order.hubId),
-    hubName: getRefName(order.hubId),
-  }))
+  const orders = orderRows.map((order) => serializeOrderResponse(order as Record<string, unknown>))
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
 

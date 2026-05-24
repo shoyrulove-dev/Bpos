@@ -367,7 +367,7 @@ function PlatformAccountsSection() {
             onPageChange={handlePageChange}
           />
 
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             {accountColumns.map((column, columnIndex) => (
               <div key={columnIndex} className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
                 {column.length > 0 ? column.map((acc) => {
@@ -1983,7 +1983,7 @@ export default function IntegrationsPage() {
             label="tích hợp"
             onPageChange={handleProviderPageChange}
           />
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             {activeProviderSection.integrations.length > 0 ? (
               providerColumns.map((column, columnIndex) => (
                 <div key={columnIndex} className="overflow-hidden rounded-3xl border border-gray-200 bg-white">
