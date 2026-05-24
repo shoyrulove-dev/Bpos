@@ -6,11 +6,11 @@ import type { Brand, Hub, Channel, Order, BillTemplate, SyncLog, Shipment, EInvo
 export const mockBrands: Brand[] = [
   {
     _id: 'brand-1',
-    name: 'TrÃ  Sá»¯a PhÃºc Long',
+    name: 'Trà Sữa Phúc Long',
     phone: '028-3822-3456',
     type: 'fnb',
-    address: '123 Nguyá»…n Huá»‡, P. Báº¿n NghÃ©, Q.1, TP.HCM',
-    note: 'ThÆ°Æ¡ng hiá»‡u trÃ  sá»¯a hÃ ng Ä‘áº§u Viá»‡t Nam',
+    address: '123 Nguyễn Huệ, P. Bến Nghé, Q.1, TP.HCM',
+    note: 'Thương hiệu trà sữa hàng đầu Việt Nam',
     logo: '',
     status: 'active',
     createdAt: '2024-01-15T08:00:00Z',
@@ -21,8 +21,8 @@ export const mockBrands: Brand[] = [
     name: 'Pizza 4P\'s',
     phone: '028-3822-7979',
     type: 'fnb',
-    address: '8 ThÃ¡i VÄƒn Lung, P. Báº¿n NghÃ©, Q.1, TP.HCM',
-    note: 'NhÃ  hÃ ng pizza Nháº­t Báº£n',
+    address: '8 Thái Văn Lung, P. Bến Nghé, Q.1, TP.HCM',
+    note: 'Nhà hàng pizza Nhật Bản',
     logo: '',
     status: 'active',
     createdAt: '2024-02-10T08:00:00Z',
@@ -30,11 +30,11 @@ export const mockBrands: Brand[] = [
   },
   {
     _id: 'brand-3',
-    name: 'BÃºn BÃ² Huáº¿ Æ i',
+    name: 'Bún Bò Huế Ơi',
     phone: '0903-123-456',
     type: 'fnb',
-    address: '45 LÃª Lá»£i, Q. Háº£i ChÃ¢u, ÄÃ  Náºµng',
-    note: 'Äáº·c sáº£n miá»n Trung',
+    address: '45 Lê Lợi, Q. Hải Châu, Đà Nẵng',
+    note: 'Đặc sản miền Trung',
     logo: '',
     status: 'active',
     createdAt: '2024-03-01T08:00:00Z',
@@ -42,11 +42,11 @@ export const mockBrands: Brand[] = [
   },
   {
     _id: 'brand-4',
-    name: 'CÆ¡m Táº¥m Kiá»u Giang',
+    name: 'Cơm Tấm Kiều Giang',
     phone: '0912-345-678',
     type: 'fnb',
-    address: '78 VÃµ VÄƒn Kiá»‡t, Q.1, TP.HCM',
-    note: 'CÆ¡m táº¥m truyá»n thá»‘ng SÃ i GÃ²n',
+    address: '78 Võ Văn Kiệt, Q.1, TP.HCM',
+    note: 'Cơm tấm truyền thống Sài Gòn',
     status: 'inactive',
     createdAt: '2024-01-20T08:00:00Z',
     updatedAt: '2024-04-10T12:00:00Z',
@@ -54,16 +54,16 @@ export const mockBrands: Brand[] = [
 ]
 
 // ============================================================
-// HUBS (Äiá»ƒm bÃ¡n)
+// HUBS (Điểm bán)
 // ============================================================
 export const mockHubs: Hub[] = [
   {
     _id: 'hub-1',
     code: 'PL-Q1-001',
-    name: 'PhÃºc Long Nguyá»…n Huá»‡',
-    address: '123 Nguyá»…n Huá»‡, P. Báº¿n NghÃ©, Q.1, TP.HCM',
+    name: 'Phúc Long Nguyễn Huệ',
+    address: '123 Nguyễn Huệ, P. Bến Nghé, Q.1, TP.HCM',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     linkedChannels: ['chan-1', 'chan-2'],
     servicePackage: 'premium',
     status: 'active',
@@ -73,10 +73,10 @@ export const mockHubs: Hub[] = [
   {
     _id: 'hub-2',
     code: 'PL-Q7-001',
-    name: 'PhÃºc Long PhÃº Má»¹ HÆ°ng',
-    address: '10 TÃ¢n PhÃº, P. TÃ¢n Phong, Q.7, TP.HCM',
+    name: 'Phúc Long Phú Mỹ Hưng',
+    address: '10 Tân Phú, P. Tân Phong, Q.7, TP.HCM',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     linkedChannels: ['chan-3'],
     servicePackage: 'standard',
     status: 'active',
@@ -86,8 +86,8 @@ export const mockHubs: Hub[] = [
   {
     _id: 'hub-3',
     code: 'PP-Q1-001',
-    name: 'Pizza 4P\'s LÃª ThÃ¡nh TÃ´n',
-    address: '8 ThÃ¡i VÄƒn Lung, Q.1, TP.HCM',
+    name: 'Pizza 4P\'s Lê Thánh Tôn',
+    address: '8 Thái Văn Lung, Q.1, TP.HCM',
     brandId: 'brand-2',
     brandName: 'Pizza 4P\'s',
     linkedChannels: ['chan-4'],
@@ -99,10 +99,10 @@ export const mockHubs: Hub[] = [
   {
     _id: 'hub-4',
     code: 'BB-DN-001',
-    name: 'BÃºn BÃ² Huáº¿ Æ i - Háº£i ChÃ¢u',
-    address: '45 LÃª Lá»£i, Q. Háº£i ChÃ¢u, ÄÃ  Náºµng',
+    name: 'Bún Bò Huế Ơi - Hải Châu',
+    address: '45 Lê Lợi, Q. Hải Châu, Đà Nẵng',
     brandId: 'brand-3',
-    brandName: 'BÃºn BÃ² Huáº¿ Æ i',
+    brandName: 'Bún Bò Huế Ơi',
     linkedChannels: [],
     servicePackage: 'basic',
     status: 'active',
@@ -112,57 +112,57 @@ export const mockHubs: Hub[] = [
 ]
 
 // ============================================================
-// STAFFS (NhÃ¢n viÃªn)
+// STAFFS (Nhân viên)
 // ============================================================
 export const mockStaffs = [
   {
     _id: 'staff-1',
-    name: 'Nguyá»…n VÄƒn An',
+    name: 'Nguyễn Văn An',
     email: 'admin@bpos.vn',
     phone: '0901-234-567',
     role: 'admin',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     status: 'active',
     createdAt: '2024-01-01T08:00:00Z',
     updatedAt: '2024-06-01T10:00:00Z',
   },
   {
     _id: 'staff-2',
-    name: 'Tráº§n Thá»‹ Báº£o',
+    name: 'Trần Thị Bảo',
     email: 'user@bpos.vn',
     phone: '0912-345-678',
     role: 'user',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     hubId: 'hub-1',
-    hubName: 'PhÃºc Long Nguyá»…n Huá»‡',
+    hubName: 'Phúc Long Nguyễn Huệ',
     status: 'active',
     createdAt: '2024-01-15T08:00:00Z',
     updatedAt: '2024-06-01T10:00:00Z',
   },
   {
     _id: 'staff-3',
-    name: 'LÃª HoÃ ng CÆ°á»ng',
+    name: 'Lê Hoàng Cường',
     email: 'cuong.le@bpos.vn',
     phone: '0923-456-789',
     role: 'user',
     brandId: 'brand-2',
     brandName: 'Pizza 4P\'s',
     hubId: 'hub-3',
-    hubName: 'Pizza 4P\'s LÃª ThÃ¡nh TÃ´n',
+    hubName: 'Pizza 4P\'s Lê Thánh Tôn',
     status: 'active',
     createdAt: '2024-02-20T08:00:00Z',
     updatedAt: '2024-05-30T10:00:00Z',
   },
   {
     _id: 'staff-4',
-    name: 'Pháº¡m Thá»‹ Dung',
+    name: 'Phạm Thị Dung',
     email: 'dung.pham@bpos.vn',
     phone: '0934-567-890',
     role: 'user',
     brandId: 'brand-3',
-    brandName: 'BÃºn BÃ² Huáº¿ Æ i',
+    brandName: 'Bún Bò Huế Ơi',
     status: 'inactive',
     createdAt: '2024-03-10T08:00:00Z',
     updatedAt: '2024-04-15T11:00:00Z',
@@ -175,13 +175,13 @@ export const mockStaffs = [
 export const mockProducts = [
   {
     _id: 'prod-1',
-    name: 'TrÃ  Sá»¯a TrÃ¢n ChÃ¢u HoÃ ng Kim',
+    name: 'Trà Sữa Trân Châu Hoàng Kim',
     code: 'TS-001',
-    category: 'TrÃ  Sá»¯a',
+    category: 'Trà Sữa',
     type: 'single',
     unit: 'Ly',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     saleStatus: 'selling',
     status: 'active',
     price: 55000,
@@ -190,13 +190,13 @@ export const mockProducts = [
   },
   {
     _id: 'prod-2',
-    name: 'CÃ  PhÃª Sá»¯a ÄÃ¡',
+    name: 'Cà Phê Sữa Đá',
     code: 'CF-001',
-    category: 'CÃ  PhÃª',
+    category: 'Cà Phê',
     type: 'single',
     unit: 'Ly',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     saleStatus: 'selling',
     status: 'active',
     price: 35000,
@@ -205,13 +205,13 @@ export const mockProducts = [
   },
   {
     _id: 'prod-3',
-    name: 'Combo TrÃ  Sá»¯a 2 Ly',
+    name: 'Combo Trà Sữa 2 Ly',
     code: 'CB-001',
     category: 'Combo',
     type: 'combo',
     unit: 'Set',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     saleStatus: 'selling',
     status: 'active',
     price: 99000,
@@ -224,7 +224,7 @@ export const mockProducts = [
     code: 'PZ-001',
     category: 'Pizza',
     type: 'single',
-    unit: 'CÃ¡i',
+    unit: 'Cái',
     brandId: 'brand-2',
     brandName: 'Pizza 4P\'s',
     saleStatus: 'selling',
@@ -239,7 +239,7 @@ export const mockProducts = [
     code: 'PZ-002',
     category: 'Pizza',
     type: 'single',
-    unit: 'CÃ¡i',
+    unit: 'Cái',
     brandId: 'brand-2',
     brandName: 'Pizza 4P\'s',
     saleStatus: 'selling',
@@ -250,13 +250,13 @@ export const mockProducts = [
   },
   {
     _id: 'prod-6',
-    name: 'BÃºn BÃ² Huáº¿ Ä‘áº·c biá»‡t',
+    name: 'Bún Bò Huế đặc biệt',
     code: 'BB-001',
-    category: 'BÃºn',
+    category: 'Bún',
     type: 'single',
-    unit: 'TÃ´',
+    unit: 'Tô',
     brandId: 'brand-3',
-    brandName: 'BÃºn BÃ² Huáº¿ Æ i',
+    brandName: 'Bún Bò Huế Ơi',
     saleStatus: 'selling',
     status: 'active',
     price: 65000,
@@ -266,15 +266,15 @@ export const mockProducts = [
 ]
 
 // ============================================================
-// MENUS (Thá»±c Ä‘Æ¡n)
+// MENUS (Thực đơn)
 // ============================================================
 export const mockMenus = [
   {
     _id: 'menu-1',
-    name: 'Menu ChÃ­nh - PhÃºc Long',
-    description: 'Thá»±c Ä‘Æ¡n chÃ­nh cho táº¥t cáº£ Ä‘iá»ƒm bÃ¡n PhÃºc Long',
+    name: 'Menu Chính - Phúc Long',
+    description: 'Thực đơn chính cho tất cả điểm bán Phúc Long',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     productIds: ['prod-1', 'prod-2', 'prod-3'],
     status: 'active',
     createdAt: '2024-01-25T08:00:00Z',
@@ -282,10 +282,10 @@ export const mockMenus = [
   },
   {
     _id: 'menu-2',
-    name: 'Menu Shopee - PhÃºc Long',
-    description: 'Thá»±c Ä‘Æ¡n dÃ nh riÃªng cho kÃªnh Shopee Food',
+    name: 'Menu Shopee - Phúc Long',
+    description: 'Thực đơn dành riêng cho kênh Shopee Food',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     productIds: ['prod-1', 'prod-2'],
     status: 'active',
     createdAt: '2024-02-10T08:00:00Z',
@@ -294,7 +294,7 @@ export const mockMenus = [
   {
     _id: 'menu-3',
     name: 'Menu Pizza 4P\'s',
-    description: 'Thá»±c Ä‘Æ¡n Ä‘áº§y Ä‘á»§ cá»§a Pizza 4P\'s',
+    description: 'Thực đơn đầy đủ của Pizza 4P\'s',
     brandId: 'brand-2',
     brandName: 'Pizza 4P\'s',
     productIds: ['prod-4', 'prod-5'],
@@ -305,19 +305,19 @@ export const mockMenus = [
 ]
 
 // ============================================================
-// CHANNELS (KÃªnh bÃ¡n)
+// CHANNELS (Kênh bán)
 // ============================================================
 export const mockChannels: Channel[] = [
   {
     _id: 'chan-1',
-    name: 'Shopee Food - PhÃºc Long Q1',
+    name: 'Shopee Food - Phúc Long Q1',
     source: 'shopee',
     externalStoreId: 'SPE-12345',
-    externalStoreName: 'PhÃºc Long Nguyá»…n Huá»‡ (Shopee)',
+    externalStoreName: 'Phúc Long Nguyễn Huệ (Shopee)',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     hubId: 'hub-1',
-    hubName: 'PhÃºc Long Nguyá»…n Huá»‡',
+    hubName: 'Phúc Long Nguyễn Huệ',
     isPageActive: true,
     isStoreOpen: true,
     isManualConfirm: false,
@@ -329,14 +329,14 @@ export const mockChannels: Channel[] = [
   },
   {
     _id: 'chan-2',
-    name: 'GrabFood - PhÃºc Long Q1',
+    name: 'GrabFood - Phúc Long Q1',
     source: 'grab',
     externalStoreId: 'GRAB-67890',
-    externalStoreName: 'PhÃºc Long Nguyá»…n Huá»‡ (Grab)',
+    externalStoreName: 'Phúc Long Nguyễn Huệ (Grab)',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     hubId: 'hub-1',
-    hubName: 'PhÃºc Long Nguyá»…n Huá»‡',
+    hubName: 'Phúc Long Nguyễn Huệ',
     isPageActive: true,
     isStoreOpen: true,
     isManualConfirm: true,
@@ -348,14 +348,14 @@ export const mockChannels: Channel[] = [
   },
   {
     _id: 'chan-3',
-    name: 'Shopee Food - PhÃºc Long Q7',
+    name: 'Shopee Food - Phúc Long Q7',
     source: 'shopee',
     externalStoreId: 'SPE-24680',
-    externalStoreName: 'PhÃºc Long PMH (Shopee)',
+    externalStoreName: 'Phúc Long PMH (Shopee)',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     hubId: 'hub-2',
-    hubName: 'PhÃºc Long PhÃº Má»¹ HÆ°ng',
+    hubName: 'Phúc Long Phú Mỹ Hưng',
     isPageActive: true,
     isStoreOpen: false,
     isManualConfirm: false,
@@ -370,11 +370,11 @@ export const mockChannels: Channel[] = [
     name: 'Xanh SM - Pizza 4P\'s',
     source: 'xanh_sm',
     externalStoreId: 'XSM-11111',
-    externalStoreName: '4P\'s LÃª ThÃ¡nh TÃ´n',
+    externalStoreName: '4P\'s Lê Thánh Tôn',
     brandId: 'brand-2',
     brandName: 'Pizza 4P\'s',
     hubId: 'hub-3',
-    hubName: 'Pizza 4P\'s LÃª ThÃ¡nh TÃ´n',
+    hubName: 'Pizza 4P\'s Lê Thánh Tôn',
     isPageActive: true,
     isStoreOpen: true,
     isManualConfirm: false,
@@ -387,7 +387,7 @@ export const mockChannels: Channel[] = [
 ]
 
 // ============================================================
-// ORDERS (ÄÆ¡n hÃ ng)
+// ORDERS (Đơn hàng)
 // ============================================================
 export const mockOrders: Order[] = [
   {
@@ -396,24 +396,24 @@ export const mockOrders: Order[] = [
     source: 'shopee',
     externalOrderId: 'SPE-2024-001',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     hubId: 'hub-1',
-    hubName: 'PhÃºc Long Nguyá»…n Huá»‡',
+    hubName: 'Phúc Long Nguyễn Huệ',
     channelId: 'chan-1',
-    channelName: 'Shopee Food - PhÃºc Long Q1',
-    customerName: 'Nguyá»…n Thá»‹ Mai',
+    channelName: 'Shopee Food - Phúc Long Q1',
+    customerName: 'Nguyễn Thị Mai',
     customerPhone: '0901-111-222',
     items: [
-      { name: 'TrÃ  Sá»¯a TrÃ¢n ChÃ¢u HoÃ ng Kim', quantity: 2, price: 55000, total: 110000 },
-      { name: 'CÃ  PhÃª Sá»¯a ÄÃ¡', quantity: 1, price: 35000, total: 35000 },
+      { name: 'Trà Sữa Trân Châu Hoàng Kim', quantity: 2, price: 55000, total: 110000 },
+      { name: 'Cà Phê Sữa Đá', quantity: 1, price: 35000, total: 35000 },
     ],
     subtotal: 145000,
     discount: 20000,
     total: 125000,
     platformFee: 12500,
     paymentMethod: 'online',
-    deliveryInfo: { address: '45 Äinh TiÃªn HoÃ ng, Q.1, TP.HCM' },
-    driverInfo: { name: 'Tráº§n VÄƒn Nam', phone: '0909-123-456', vehiclePlate: '51B-12345' },
+    deliveryInfo: { address: '45 Đinh Tiên Hoàng, Q.1, TP.HCM' },
+    driverInfo: { name: 'Trần Văn Nam', phone: '0909-123-456', vehiclePlate: '51B-12345' },
     status: 'delivering',
     placedAt: '2024-06-20T10:30:00Z',
     createdAt: '2024-06-20T10:30:00Z',
@@ -425,23 +425,23 @@ export const mockOrders: Order[] = [
     source: 'grab',
     externalOrderId: 'GRAB-2024-456',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     hubId: 'hub-1',
-    hubName: 'PhÃºc Long Nguyá»…n Huá»‡',
+    hubName: 'Phúc Long Nguyễn Huệ',
     channelId: 'chan-2',
-    channelName: 'GrabFood - PhÃºc Long Q1',
-    customerName: 'LÃª VÄƒn BÃ¬nh',
+    channelName: 'GrabFood - Phúc Long Q1',
+    customerName: 'Lê Văn Bình',
     customerPhone: '0912-222-333',
     items: [
-      { name: 'Combo TrÃ  Sá»¯a 2 Ly', quantity: 1, price: 99000, total: 99000 },
+      { name: 'Combo Trà Sữa 2 Ly', quantity: 1, price: 99000, total: 99000 },
     ],
     subtotal: 99000,
     discount: 0,
     total: 99000,
     platformFee: 9900,
     paymentMethod: 'cash',
-    deliveryInfo: { address: '100 LÃ½ Tá»± Trá»ng, Q.1, TP.HCM' },
-    driverInfo: { name: 'Pháº¡m Thá»‹ Lan', phone: '0898-234-567', vehiclePlate: '51F-67890' },
+    deliveryInfo: { address: '100 Lý Tự Trọng, Q.1, TP.HCM' },
+    driverInfo: { name: 'Phạm Thị Lan', phone: '0898-234-567', vehiclePlate: '51F-67890' },
     status: 'waiting_confirm',
     placedAt: '2024-06-20T11:00:00Z',
     createdAt: '2024-06-20T11:00:00Z',
@@ -455,10 +455,10 @@ export const mockOrders: Order[] = [
     brandId: 'brand-2',
     brandName: 'Pizza 4P\'s',
     hubId: 'hub-3',
-    hubName: 'Pizza 4P\'s LÃª ThÃ¡nh TÃ´n',
+    hubName: 'Pizza 4P\'s Lê Thánh Tôn',
     channelId: 'chan-4',
     channelName: 'Xanh SM - Pizza 4P\'s',
-    customerName: 'HoÃ ng Minh ChÃ¢u',
+    customerName: 'Hoàng Minh Châu',
     customerPhone: '0923-333-444',
     items: [
       { name: 'Pizza Margherita', quantity: 1, price: 189000, total: 189000 },
@@ -469,7 +469,7 @@ export const mockOrders: Order[] = [
     total: 424000,
     platformFee: 42400,
     paymentMethod: 'online',
-    deliveryInfo: { address: '20 Hai BÃ  TrÆ°ng, Q.1, TP.HCM' },
+    deliveryInfo: { address: '20 Hai Bà Trưng, Q.1, TP.HCM' },
     status: 'completed',
     placedAt: '2024-06-20T08:00:00Z',
     deliveredAt: '2024-06-20T09:15:00Z',
@@ -482,22 +482,22 @@ export const mockOrders: Order[] = [
     source: 'be',
     externalOrderId: 'BE-2024-321',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     hubId: 'hub-2',
-    hubName: 'PhÃºc Long PhÃº Má»¹ HÆ°ng',
+    hubName: 'Phúc Long Phú Mỹ Hưng',
     channelId: 'chan-3',
-    channelName: 'Shopee Food - PhÃºc Long Q7',
-    customerName: 'VÅ© Thá»‹ Hoa',
+    channelName: 'Shopee Food - Phúc Long Q7',
+    customerName: 'Vũ Thị Hoa',
     customerPhone: '0934-444-555',
     items: [
-      { name: 'TrÃ  Sá»¯a TrÃ¢n ChÃ¢u HoÃ ng Kim', quantity: 3, price: 55000, total: 165000 },
+      { name: 'Trà Sữa Trân Châu Hoàng Kim', quantity: 3, price: 55000, total: 165000 },
     ],
     subtotal: 165000,
     discount: 15000,
     total: 150000,
     platformFee: 15000,
     paymentMethod: 'online',
-    deliveryInfo: { address: '10 TÃ¢n PhÃº, Q.7, TP.HCM' },
+    deliveryInfo: { address: '10 Tân Phú, Q.7, TP.HCM' },
     status: 'waiting_pickup',
     placedAt: '2024-06-20T12:00:00Z',
     createdAt: '2024-06-20T12:00:00Z',
@@ -509,24 +509,24 @@ export const mockOrders: Order[] = [
     source: 'shopee',
     externalOrderId: 'SPE-2024-002',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     hubId: 'hub-1',
-    hubName: 'PhÃºc Long Nguyá»…n Huá»‡',
+    hubName: 'Phúc Long Nguyễn Huệ',
     channelId: 'chan-1',
-    channelName: 'Shopee Food - PhÃºc Long Q1',
-    customerName: 'Äáº·ng VÄƒn KiÃªn',
+    channelName: 'Shopee Food - Phúc Long Q1',
+    customerName: 'Đặng Văn Kiên',
     customerPhone: '0945-555-666',
     items: [
-      { name: 'CÃ  PhÃª Sá»¯a ÄÃ¡', quantity: 2, price: 35000, total: 70000 },
+      { name: 'Cà Phê Sữa Đá', quantity: 2, price: 35000, total: 70000 },
     ],
     subtotal: 70000,
     discount: 0,
     total: 70000,
     platformFee: 7000,
     paymentMethod: 'cash',
-    deliveryInfo: { address: '55 BÃ¹i Viá»‡n, Q.1, TP.HCM' },
+    deliveryInfo: { address: '55 Bùi Viện, Q.1, TP.HCM' },
     status: 'cancelled',
-    cancelReason: 'KhÃ¡ch hÃ ng há»§y Ä‘Æ¡n',
+    cancelReason: 'Khách hàng hủy đơn',
     placedAt: '2024-06-20T09:00:00Z',
     cancelledAt: '2024-06-20T09:05:00Z',
     createdAt: '2024-06-20T09:00:00Z',
@@ -540,10 +540,10 @@ export const mockOrders: Order[] = [
     brandId: 'brand-2',
     brandName: 'Pizza 4P\'s',
     hubId: 'hub-3',
-    hubName: 'Pizza 4P\'s LÃª ThÃ¡nh TÃ´n',
+    hubName: 'Pizza 4P\'s Lê Thánh Tôn',
     channelId: 'chan-4',
     channelName: 'Xanh SM - Pizza 4P\'s',
-    customerName: 'TrÆ°Æ¡ng Thá»‹ Ngá»c',
+    customerName: 'Trương Thị Ngọc',
     customerPhone: '0956-666-777',
     items: [
       { name: 'Pizza Margherita', quantity: 2, price: 189000, total: 378000 },
@@ -554,7 +554,7 @@ export const mockOrders: Order[] = [
     platformFee: 34800,
     paymentMethod: 'online',
     deliveryInfo: { address: '77 Nguyá»…n Du, Q.1, TP.HCM' },
-    driverInfo: { name: 'BÃ¹i VÄƒn Tuáº¥n', phone: '0967-789-012', vehiclePlate: '51K-11111' },
+    driverInfo: { name: 'Bùi Văn Tuấn', phone: '0967-789-012', vehiclePlate: '51K-11111' },
     status: 'delivering',
     placedAt: '2024-06-20T13:00:00Z',
     createdAt: '2024-06-20T13:00:00Z',
@@ -568,10 +568,10 @@ export const mockOrders: Order[] = [
 export const mockPromotions = [
   {
     _id: 'promo-1',
-    name: 'Giáº£m 20% Cuá»‘i Tuáº§n',
+    name: 'Giảm 20% Cuối Tuần',
     type: 'discount_percent',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     startAt: '2024-06-15T00:00:00Z',
     endAt: '2024-06-30T23:59:59Z',
     quantity: 500,
@@ -582,10 +582,10 @@ export const mockPromotions = [
   },
   {
     _id: 'promo-2',
-    name: 'Mua 1 Táº·ng 1 CÃ  PhÃª',
+    name: 'Mua 1 Tặng 1 Cà Phê',
     type: 'free_item',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     startAt: '2024-07-01T00:00:00Z',
     endAt: '2024-07-07T23:59:59Z',
     quantity: 200,
@@ -616,25 +616,25 @@ export const mockPromotions = [
 export const mockBillTemplates: BillTemplate[] = [
   {
     _id: 'bill-1',
-    name: 'HÃ³a Ä‘Æ¡n 80mm Máº·c Ä‘á»‹nh',
+    name: 'Hóa đơn 80mm Mặc định',
     type: 'order',
     size: '80mm',
     isActive: true,
     templateContent: `===== {{.BillName}} =====
-Cá»­a hÃ ng: {{.SiteName}}
-KÃªnh bÃ¡n: {{.OrderSource}}
-MÃ£ Ä‘Æ¡n: {{.ShortOrderID}}
-Thá»i gian: {{.CurrentTime}}
+Cửa hàng: {{.SiteName}}
+Kênh bán: {{.OrderSource}}
+Mã đơn: {{.ShortOrderID}}
+Thời gian: {{.CurrentTime}}
 --------------------------
-KhÃ¡ch: {{.CustomerName}}
-Äá»‹a chá»‰ giao: {{.DeliveryAddress}}
+Khách: {{.CustomerName}}
+Địa chỉ giao: {{.DeliveryAddress}}
 --------------------------
 {{range .Items}}
 {{.Name}} x{{.Qty}}  {{.Total}}
 {{end}}
 --------------------------
-Tá»•ng: {{.Subtotal}}
-Khuyáº¿n mÃ£i: -{{.Discount}}
+Tổng: {{.Subtotal}}
+Khuyến mãi: -{{.Discount}}
 THá»°C THU: {{.Total}}
 ==========================`,
     createdAt: '2024-01-15T08:00:00Z',
@@ -642,17 +642,17 @@ THá»°C THU: {{.Total}}
   },
   {
     _id: 'bill-2',
-    name: 'Phiáº¿u Giao HÃ ng A5',
+    name: 'Phiếu Giao Hàng A5',
     type: 'delivery',
     size: 'A5',
     isActive: true,
-    templateContent: `PHIáº¾U GIAO HÃ€NG
-Cá»­a hÃ ng: {{.SiteName}}
-MÃ£ Ä‘Æ¡n: {{.ShortOrderID}}
-NgÃ y Ä‘áº·t: {{.OrderCreatedAt}}
-Giao trÆ°á»›c: {{.OrderDeliveryAt}}
-KhÃ¡ch hÃ ng: {{.CustomerName}}
-Äá»‹a chá»‰: {{.DeliveryAddress}}`,
+    templateContent: `PHIẾU GIAO HÀNG
+Cửa hàng: {{.SiteName}}
+Mã đơn: {{.ShortOrderID}}
+Ngày đặt: {{.OrderCreatedAt}}
+Giao trước: {{.OrderDeliveryAt}}
+Khách hàng: {{.CustomerName}}
+Địa chỉ: {{.DeliveryAddress}}`,
     createdAt: '2024-02-01T08:00:00Z',
     updatedAt: '2024-06-01T10:00:00Z',
   },
@@ -666,7 +666,7 @@ export const mockSyncLogs: SyncLog[] = [
     _id: 'log-1',
     type: 'order',
     status: 'success',
-    content: 'Äá»“ng bá»™ 15 Ä‘Æ¡n hÃ ng tá»« Shopee Food',
+    content: 'Đồng bộ 15 đơn hàng từ Shopee Food',
     source: 'shopee',
     brandId: 'brand-1',
     createdAt: '2024-06-20T10:00:00Z',
@@ -675,7 +675,7 @@ export const mockSyncLogs: SyncLog[] = [
     _id: 'log-2',
     type: 'order',
     status: 'success',
-    content: 'Äá»“ng bá»™ 8 Ä‘Æ¡n hÃ ng tá»« GrabFood',
+    content: 'Đồng bộ 8 đơn hàng từ GrabFood',
     source: 'grab',
     brandId: 'brand-1',
     createdAt: '2024-06-20T10:05:00Z',
@@ -684,7 +684,7 @@ export const mockSyncLogs: SyncLog[] = [
     _id: 'log-3',
     type: 'product',
     status: 'success',
-    content: 'Äá»“ng bá»™ 23 sáº£n pháº©m lÃªn Shopee',
+    content: 'Đồng bộ 23 sản phẩm lên Shopee',
     source: 'shopee',
     brandId: 'brand-1',
     createdAt: '2024-06-20T09:00:00Z',
@@ -693,7 +693,7 @@ export const mockSyncLogs: SyncLog[] = [
     _id: 'log-4',
     type: 'menu',
     status: 'failed',
-    content: 'Lá»—i Ä‘á»“ng bá»™ thá»±c Ä‘Æ¡n lÃªn Xanh SM: timeout',
+    content: 'Lỗi đồng bộ thực đơn lên Xanh SM: timeout',
     source: 'xanh_sm',
     brandId: 'brand-2',
     createdAt: '2024-06-20T08:30:00Z',
@@ -702,7 +702,7 @@ export const mockSyncLogs: SyncLog[] = [
     _id: 'log-5',
     type: 'channel',
     status: 'success',
-    content: 'Káº¿t ná»‘i kÃªnh Be thÃ nh cÃ´ng',
+    content: 'Kết nối kênh Be thành công',
     source: 'be',
     brandId: 'brand-1',
     createdAt: '2024-06-19T15:00:00Z',
@@ -719,7 +719,7 @@ export const mockShipments: Shipment[] = [
     shortOrderId: 'ORD-001',
     trackingCode: 'TRK-001-2024',
     carrierName: 'Shopee Express',
-    driverName: 'Tráº§n VÄƒn Nam',
+    driverName: 'Trần Văn Nam',
     driverPhone: '0909-123-456',
     vehiclePlate: '51B-12345',
     status: 'delivering',
@@ -733,7 +733,7 @@ export const mockShipments: Shipment[] = [
     shortOrderId: 'ORD-003',
     trackingCode: 'TRK-002-2024',
     carrierName: 'Xanh SM',
-    driverName: 'LÃª Thá»‹ Thu',
+    driverName: 'Lê Thị Thu',
     driverPhone: '0876-543-210',
     vehiclePlate: '51G-22222',
     status: 'delivered',
@@ -748,7 +748,7 @@ export const mockShipments: Shipment[] = [
     shortOrderId: 'ORD-006',
     trackingCode: 'TRK-003-2024',
     carrierName: 'GrabExpress',
-    driverName: 'BÃ¹i VÄƒn Tuáº¥n',
+    driverName: 'Bùi Văn Tuấn',
     driverPhone: '0967-789-012',
     vehiclePlate: '51K-11111',
     status: 'picked_up',
@@ -765,7 +765,7 @@ export const mockEInvoiceConnections: EInvoiceConnection[] = [
     _id: 'einv-1',
     provider: 'viettel',
     brandId: 'brand-1',
-    brandName: 'TrÃ  Sá»¯a PhÃºc Long',
+    brandName: 'Trà Sữa Phúc Long',
     taxCode: '0123456789',
     username: 'phuclongviettel',
     isConnected: true,

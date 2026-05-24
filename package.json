@@ -10,7 +10,8 @@
     "autofix:fix": "next lint --fix",
     "autofix:report": "tsx src/scripts/autofix-report.ts",
     "seed": "tsx src/scripts/seed.ts",
-    "repair-orders": "tsx src/scripts/repair-orders.ts"
+    "repair-orders": "tsx src/scripts/repair-orders.ts",
+    "scan-vietnamese": "tsx src/scripts/scan-vietnamese.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

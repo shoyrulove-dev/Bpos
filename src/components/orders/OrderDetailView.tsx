@@ -15,7 +15,7 @@ function openPrintWindow(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer,width=430,height=900')
 }
 
-// Inline receipt preview panel â€” shows exactly what the bridge will print
+// Inline receipt preview panel — shows exactly what the bridge will print
 function PrintPreviewPanel({ orderId }: { orderId: string }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -279,9 +279,12 @@ function getGrabDetailItems(order: Order) {
   // DOM-extracted placeholders (e.g. "HÓA ĐƠN / No data") - skip those.
   const isPlaceholder = (i: unknown) => {
     const r = getRecord(i)
-    const name = String(r?.name ?? '').toUpperCase()
-    const note = String(r?.note ?? '').toLowerCase()
-    return name.includes('HÓA ĐƠN') || name.includes('HOA DON') || note === 'no data'
+    const name = String(r?.name ?? '').trim()
+    const note = String(r?.note ?? '').trim()
+    const normalized = `${name} ${note}`.toLowerCase()
+    return /hóa đơn|hoa don|invoice|no data|n\/a/.test(normalized)
+      || /^[-_]+$/.test(name)
+      || /^[-_]+$/.test(note)
   }
 
   const itemInfoCandidates = Array.isArray(itemInfo?.items)
@@ -384,7 +387,9 @@ function getGrabCustomerName(order: Order) {
 function getGrabCustomerNote(order: Order) {
   const raw = getRecord(order.rawPayload)
   const eater = getRecord(raw?.eater)
-  return String(raw?.customerNote ?? raw?.specialRequest ?? raw?.note ?? raw?.remarks ?? raw?.deliveryNote ?? eater?.comment ?? order.deliveryInfo?.note ?? order.note ?? '').trim()
+  const note = String(raw?.customerNote ?? raw?.specialRequest ?? raw?.note ?? raw?.remarks ?? raw?.deliveryNote ?? eater?.comment ?? order.deliveryInfo?.note ?? order.note ?? '').trim()
+  if (/^(no data|n\/a|not available|không có|không rõ)$/i.test(note)) return ''
+  return note
 }
 
 function getGrabPaymentMethodLabel(order: Order) {

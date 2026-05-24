@@ -2,6 +2,7 @@ import { generateId } from '@/lib/utils'
 import { extractGrabCustomerFinancials, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
 import { hasBeCancelSignal } from '@/lib/be-order-status'
 import { normalizeCompactPhone } from '@/lib/phone'
+import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
 import type { NormalizedOrder, Order } from '@/types'
 
 type IntegrationRef = {
@@ -718,41 +719,42 @@ export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
 }
 
 export function buildOrderUpsert(integration: IntegrationRef, normalized: NormalizedOrder) {
-  const resolvedOrderStatus = resolveNormalizedOrderStatus(normalized)
-  const financialBreakdown = getFinancialBreakdown(normalized as unknown as Order)
-  const recoveredDriverName = getDisplayDriverName(normalized as unknown as Order)
+  const normalizedOrder = repairVietnameseTextDeep(normalized) as NormalizedOrder
+  const resolvedOrderStatus = resolveNormalizedOrderStatus(normalizedOrder)
+  const financialBreakdown = getFinancialBreakdown(normalizedOrder as unknown as Order)
+  const recoveredDriverName = getDisplayDriverName(normalizedOrder as unknown as Order)
   const customerName = pickPreferredName(
-    getDisplayCustomerName(normalized as unknown as Order) || normalized.customerName,
+    getDisplayCustomerName(normalizedOrder as unknown as Order) || normalizedOrder.customerName,
     undefined,
     CUSTOMER_NAME_PLACEHOLDERS,
     'Khách hàng'
   ) ?? 'Khách hàng'
-  const customerPhone = pickPreferredPhone(getDisplayCustomerPhone(normalized as unknown as Order) || normalized.customerPhone, undefined)
-  const driverPhone = pickPreferredPhone(getDisplayDriverPhone(normalized as unknown as Order) || normalized.driverInfo?.phone, undefined)
+  const customerPhone = pickPreferredPhone(getDisplayCustomerPhone(normalizedOrder as unknown as Order) || normalizedOrder.customerPhone, undefined)
+  const driverPhone = pickPreferredPhone(getDisplayDriverPhone(normalizedOrder as unknown as Order) || normalizedOrder.driverInfo?.phone, undefined)
   const driverInfo = mergeDriverInfoPreservingDetail(undefined, {
-    ...normalized.driverInfo,
+    ...normalizedOrder.driverInfo,
     ...(recoveredDriverName ? { name: recoveredDriverName } : {}),
   })
   const discount = financialBreakdown
     ? Number(financialBreakdown.productDiscount ?? 0) + Number(financialBreakdown.orderDiscount ?? 0)
-    : normalized.discount
+    : normalizedOrder.discount
 
   const baseSet: Record<string, unknown> = {
     status: resolvedOrderStatus,
     customerName,
     customerPhone,
-    items: normalized.items,
-    subtotal: financialBreakdown?.subtotal ?? normalized.subtotal,
+    items: normalizedOrder.items,
+    subtotal: financialBreakdown?.subtotal ?? normalizedOrder.subtotal,
     discount,
-    total: financialBreakdown?.revenueAfterPromotion ?? normalized.total,
-    platformFee: financialBreakdown?.platformFee ?? normalized.platformFee,
-    paymentMethod: normalized.paymentMethod,
-    deliveryInfo: normalized.deliveryInfo,
+    total: financialBreakdown?.revenueAfterPromotion ?? normalizedOrder.total,
+    platformFee: financialBreakdown?.platformFee ?? normalizedOrder.platformFee,
+    paymentMethod: normalizedOrder.paymentMethod,
+    deliveryInfo: normalizedOrder.deliveryInfo,
     driverInfo: driverInfo ? { ...driverInfo, ...(driverPhone ? { phone: driverPhone } : {}) } : driverPhone ? { phone: driverPhone } : undefined,
-    rawPayload: normalized.rawPayload,
-    source: normalized.source,
-    externalOrderId: normalized.externalOrderId,
-    externalStoreId: normalized.externalStoreId,
+    rawPayload: normalizedOrder.rawPayload,
+    source: normalizedOrder.source,
+    externalOrderId: normalizedOrder.externalOrderId,
+    externalStoreId: normalizedOrder.externalStoreId,
   }
 
   const unsetFields: Record<string, ''> = {}
@@ -790,7 +792,7 @@ export function buildOrderUpsert(integration: IntegrationRef, normalized: Normal
   return {
     $setOnInsert: {
       shortId: generateId(),
-      placedAt: parseDateValue(normalized.placedAt) ?? new Date(),
+      placedAt: parseDateValue(normalizedOrder.placedAt) ?? new Date(),
       brandId: integration.brandId,
       hubId: integration.hubId,
     },

@@ -290,7 +290,7 @@ export default function ReceiptPrintClient({ orderId }: { orderId: string }) {
                 .finally(() => setPreviewPrinting(false))
             }}
           >
-            {previewPrinting ? 'Đang in...' : '� In lại qua LAN'}
+            {previewPrinting ? 'Đang in...' : '🖨 In lại qua LAN'}
           </button>
         </div>
       )}

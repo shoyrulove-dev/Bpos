@@ -6,6 +6,7 @@ import '@/models/Hub'
 import { ok, requireAuth } from '@/lib/api-helpers'
 import { buildOrderFilterFromSearchParams } from '@/lib/order-query'
 import { serializeOrderResponse } from '@/lib/order-response'
+import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
 
 const ORDER_STATUS_KEYS = ['draft', 'pre_order', 'waiting_confirm', 'waiting_pickup', 'delivering', 'completed', 'cancelled'] as const
 const ORDER_LIST_SELECT = 'shortId source externalOrderId brandId hubId channelId customerName customerPhone items.name items.quantity discount subtotal total platformFee paymentMethod deliveryInfo driverInfo note status placedAt deliveredAt createdAt updatedAt rawPayload'
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
   const { res } = await requireAuth(req)
   if (res) return res
   await connectDB()
-  const body = await req.json()
+  const body = repairVietnameseTextDeep(await req.json()) as Record<string, unknown>
   const shortId = `ORD-${Date.now().toString(36).toUpperCase()}`
   const order = await OrderModel.create({ ...body, shortId, placedAt: body.placedAt || new Date() })
   return ok(order, 201)

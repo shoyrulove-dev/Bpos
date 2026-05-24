@@ -6,6 +6,7 @@ import '@/models/Hub'
 import '@/models/Channel'
 import { ok, err, requireAuth } from '@/lib/api-helpers'
 import { serializeOrderResponse } from '@/lib/order-response'
+import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
 
 type OrderDetailDoc = Record<string, unknown>
 
@@ -48,7 +49,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (res) return res
   await connectDB()
 
-  const body = await req.json()
+  const body = repairVietnameseTextDeep(await req.json()) as Record<string, unknown>
   const order = await OrderModel.findByIdAndUpdate(params.id, body, { new: true, runValidators: true }).lean()
   if (!order) return err('Không tìm thấy', 404)
   return ok(serializeOrderResponse(order as Record<string, unknown>))
