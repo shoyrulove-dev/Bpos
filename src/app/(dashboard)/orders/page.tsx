@@ -100,6 +100,18 @@ function getOrderDeliveryTime(order: Order) {
     || raw?.updated_at
 }
 
+function formatMaybeDate(value: unknown) {
+  if (value === undefined || value === null || value === '') return '–'
+  try {
+    if (value instanceof Date || typeof value === 'string' || typeof value === 'number') {
+      return formatDate(value)
+    }
+    return String(value)
+  } catch {
+    return String(value)
+  }
+}
+
 function InfoRow({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
     <div className="grid grid-cols-[78px_minmax(0,1fr)] items-start gap-2 text-sm leading-5">
@@ -307,7 +319,7 @@ export default function OrdersPage() {
                       </InfoGroup>
                       <InfoGroup title="Giao nhận">
                         <InfoRow label="Đặt lúc" value={formatDate(order.placedAt)} />
-                        <InfoRow label="Nhận hàng" value={getOrderDeliveryTime(order) ? formatDate(getOrderDeliveryTime(order) as string | Date) : '–'} />
+                        <InfoRow label="Nhận hàng" value={formatMaybeDate(getOrderDeliveryTime(order))} />
                       </InfoGroup>
                       <InfoGroup title="Vận chuyển">
                         <InfoRow label="Tài xế" value={order.driverInfo?.name || '–'} />

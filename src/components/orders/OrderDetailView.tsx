@@ -204,7 +204,7 @@ function PrintButton({ orderId, type = 'receipt', label, className }: { orderId:
 function formatMaybeDate(value: unknown) {
   if (value === undefined || value === null || value === '') return '-'
   try {
-    if (value instanceof Date || typeof value === 'string') {
+    if (value instanceof Date || typeof value === 'string' || typeof value === 'number') {
       return formatDate(value)
     }
     return String(value)

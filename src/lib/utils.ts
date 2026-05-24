@@ -8,12 +8,19 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function toValidDate(value: string | Date | null | undefined) {
-  if (!value) return null
+export function toValidDate(value: unknown) {
+  if (value === undefined || value === null || value === '') return null
 
   if (value instanceof Date) {
     return isValid(value) ? value : null
   }
+
+  if (typeof value === 'number') {
+    const date = new Date(value)
+    return isValid(date) ? date : null
+  }
+
+  if (typeof value !== 'string') return null
 
   const parsed = parseISO(value)
   if (isValid(parsed)) return parsed
@@ -22,14 +29,14 @@ export function toValidDate(value: string | Date | null | undefined) {
   return isValid(fallback) ? fallback : null
 }
 
-export function formatDate(date: string | Date, fmt = 'dd/MM/yyyy HH:mm') {
+export function formatDate(date: unknown, fmt = 'dd/MM/yyyy HH:mm') {
   const d = toValidDate(date)
   if (!d) return '--'
   return format(d, fmt, { locale: vi })
 }
 
 export function formatDateNative(
-  date: string | Date | null | undefined,
+  date: unknown,
   mode: 'date' | 'time' | 'datetime' = 'datetime',
   locale = 'vi-VN',
 ) {
