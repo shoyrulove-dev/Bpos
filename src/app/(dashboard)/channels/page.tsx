@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Search, Edit, Trash2, Loader2, Link2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Loader2, Link2, ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import { useChannels, useCreateChannel, useUpdateChannel, useDeleteChannel } from '@/hooks/use-orders-channels'
 import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
@@ -308,24 +308,37 @@ export default function ChannelsPage() {
                       ? 'Active'
                       : 'Inactive'
               const primaryLabel = integ?.loginUsername || channel.name
+              const secondaryLabel = channel.name !== primaryLabel
+                ? channel.name
+                : [channel.hubName, channel.brandName].filter(Boolean).join(' · ')
               const detailParts = [
-                channel.name !== primaryLabel ? channel.name : '',
                 channel.brandName,
                 channel.hubName,
                 (channel as unknown as Record<string, unknown>).externalStoreId as string | undefined,
               ].filter(Boolean)
 
               return (
-                <div key={channel._id} className="rounded-3xl border border-gray-200 bg-white shadow-sm">
+                <div key={channel._id} className="relative rounded-3xl border border-gray-200 bg-white shadow-sm">
                   <div className="flex items-center gap-3 px-4 py-3">
                     <PlatformIcon source={channel.source} size="sm" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 text-sm">
                         <span className="truncate font-mono font-semibold text-gray-900">{primaryLabel}</span>
+                        {secondaryLabel && <span className="truncate text-xs text-gray-500">{secondaryLabel}</span>}
                         <PlatformStatusIcon status={statusTone} title={statusTitle} />
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      {detailParts.length > 0 && (
+                        <details className="group">
+                          <summary className="list-none rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                            <Info className="h-3.5 w-3.5" />
+                          </summary>
+                          <div className="absolute right-4 z-10 mt-2 max-w-[280px] rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500 shadow-lg">
+                            <p className="break-words">{detailParts.join(' · ')}</p>
+                          </div>
+                        </details>
+                      )}
                       <button onClick={() => openEdit(channel)} className="btn-outline btn-sm">
                         <Edit className="w-3.5 h-3.5" />
                       </button>
@@ -334,12 +347,6 @@ export default function ChannelsPage() {
                       </button>
                     </div>
                   </div>
-                  {detailParts.length > 0 && (
-                    <details className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
-                      <summary className="cursor-pointer select-none font-medium text-gray-600">Chi tiết</summary>
-                      <p className="pt-2 break-words">{detailParts.join(' · ')}</p>
-                    </details>
-                  )}
                 </div>
               )
             })}
