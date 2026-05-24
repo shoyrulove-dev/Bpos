@@ -43,11 +43,11 @@ export async function POST(req: NextRequest) {
   await connectDB()
   const body = await req.json()
   const { hubId, brandId, openCash, note } = body
-  if (!hubId || !brandId) return err('Thiáº¿u thÃ´ng tin Ä‘iá»ƒm bÃ¡n')
+  if (!hubId || !brandId) return err('Thiếu thông tin điểm bán')
 
   // Check if there's already an open shift for this hub
   const existing = await ShiftModel.findOne({ hubId, status: 'open' }).lean()
-  if (existing) return err('Äiá»ƒm bÃ¡n nÃ y Ä‘ang cÃ³ ca má»Ÿ. Vui lÃ²ng Ä‘Ã³ng ca trÆ°á»›c.')
+  if (existing) return err('Điểm bán này đang có ca mở. Vui lòng đóng ca trước.')
 
   const shift = await ShiftModel.create({
     hubId,

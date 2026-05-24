@@ -280,7 +280,7 @@ export default function ChannelsPage() {
           onPageChange={handlePageChange}
         />
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
           {channelColumns.map((column, columnIndex) => (
             <div key={columnIndex} className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
               {column.length > 0 ? column.map((channel: Channel) => {
@@ -362,7 +362,7 @@ export default function ChannelsPage() {
             <h2 className="text-base font-semibold text-gray-900">Kênh khác</h2>
             <p className="text-sm text-gray-500">Giữ riêng các kênh nội bộ hoặc kênh ngoài 4 sàn chính để không lẫn vào tab marketplace.</p>
           </div>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {otherChannels.map((channel) => (
               <div key={channel._id} className="rounded-2xl border border-gray-200 p-4">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">

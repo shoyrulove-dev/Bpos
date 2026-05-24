@@ -27,13 +27,13 @@ type OrdersResponse = {
 
 const STATUS_ITEMS = [
   { value: '', label: 'Tất cả', dot: 'bg-teal-500' },
-  { value: 'draft', label: 'Đơn nháp', dot: 'bg-gray-300' },
-  { value: 'pre_order', label: 'Đơn đặt trước', dot: 'bg-blue-500' },
-  { value: 'waiting_confirm', label: 'Chờ xác nhận', dot: 'bg-yellow-400' },
-  { value: 'waiting_pickup', label: 'Chờ lấy hàng', dot: 'bg-orange-400' },
-  { value: 'delivering', label: 'Đang giao', dot: 'bg-indigo-400' },
-  { value: 'completed', label: 'Hoàn thành', dot: 'bg-emerald-500' },
-  { value: 'cancelled', label: 'Đã hủy', dot: 'bg-rose-400' },
+  { value: 'draft', label: ORDER_STATUS_LABEL.draft, dot: 'bg-gray-300' },
+  { value: 'pre_order', label: ORDER_STATUS_LABEL.pre_order, dot: 'bg-blue-500' },
+  { value: 'waiting_confirm', label: ORDER_STATUS_LABEL.waiting_confirm, dot: 'bg-yellow-400' },
+  { value: 'waiting_pickup', label: ORDER_STATUS_LABEL.waiting_pickup, dot: 'bg-orange-400' },
+  { value: 'delivering', label: ORDER_STATUS_LABEL.delivering, dot: 'bg-indigo-400' },
+  { value: 'completed', label: ORDER_STATUS_LABEL.completed, dot: 'bg-emerald-500' },
+  { value: 'cancelled', label: ORDER_STATUS_LABEL.cancelled, dot: 'bg-rose-400' },
 ] as const
 
 const SOURCES = [
