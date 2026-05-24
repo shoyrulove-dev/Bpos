@@ -7,7 +7,7 @@ import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
-import { getActualReceived, getDisplayCustomerPhone, getDisplayDriverPhone } from '@/lib/order-financials'
+import { getActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverPhone } from '@/lib/order-financials'
 import { printItemLabels, printOrderWithFallback } from '@/lib/local-printer'
 import { formatDateInput } from '@/lib/date-range'
 import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL } from '@/lib/utils'
@@ -82,10 +82,22 @@ function openWindow(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
+function getOrderPlacedAtCandidate(order: Order) {
+  const raw = order.rawPayload as Record<string, unknown> | undefined
+  const times = raw && typeof raw.times === 'object' && !Array.isArray(raw.times) ? raw.times as Record<string, unknown> : undefined
+  return order.placedAt
+    || times?.createdAt
+    || raw?.createdAt
+    || raw?.created_at
+    || raw?.placedAt
+    || raw?.placed_at
+    || order.createdAt
+}
+
 function getOrderDeliveryTime(order: Order) {
   const raw = order.rawPayload as Record<string, unknown> | undefined
   const times = raw && typeof raw.times === 'object' && !Array.isArray(raw.times) ? raw.times as Record<string, unknown> : undefined
-  return order.deliveredAt
+  const candidate = order.deliveredAt
     || order.deliveryInfo?.estimatedTime
     || times?.deliveredAt
     || times?.completedAt
@@ -98,17 +110,38 @@ function getOrderDeliveryTime(order: Order) {
     || raw?.delivered_time
     || raw?.updatedAt
     || raw?.updated_at
+
+  if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+    const nested = candidate as Record<string, unknown>
+    for (const key of ['deliveredAt', 'delivered_at', 'completedAt', 'completed_at', 'deliveryCompletedAt', 'updatedAt', 'updated_at', 'createdAt', 'created_at']) {
+      const nestedValue = nested[key]
+      if (nestedValue !== undefined && nestedValue !== null && nestedValue !== '') {
+        return nestedValue
+      }
+    }
+  }
+
+  return candidate
 }
 
-function formatMaybeDate(value: unknown) {
+function formatMaybeDate(value: unknown): string {
   if (value === undefined || value === null || value === '') return '–'
-  try {
-    if (value instanceof Date || typeof value === 'string' || typeof value === 'number') {
-      return formatDate(value)
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    const nested = value as Record<string, unknown>
+    for (const key of ['createdAt', 'created_at', 'placedAt', 'placed_at', 'deliveredAt', 'delivered_at', 'completedAt', 'completed_at', 'deliveryCompletedAt', 'updatedAt', 'updated_at', 'orderTime']) {
+      const candidate = nested[key]
+      if (candidate !== undefined && candidate !== null && candidate !== '') {
+        const formatted = formatMaybeDate(candidate)
+        if (formatted !== '–') return formatted
+      }
     }
-    return String(value)
+    return '–'
+  }
+
+  try {
+    return formatDate(value)
   } catch {
-    return String(value)
+    return '–'
   }
 }
 
@@ -310,7 +343,7 @@ export default function OrdersPage() {
                   <div className="rounded-2xl bg-gray-50 px-2.5 py-2.5">
                     <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                       <InfoGroup title="Khách hàng">
-                        <InfoRow label="Tên" value={(order.customerName && order.customerName !== 'Khách hàng') ? order.customerName : '–'} />
+                        <InfoRow label="Tên" value={getDisplayCustomerName(order) || '–'} />
                         <InfoRow label="SĐT" value={getDisplayCustomerPhone(order) || '–'} />
                       </InfoGroup>
                       <InfoGroup title="Thanh toán">
@@ -318,7 +351,7 @@ export default function OrdersPage() {
                         <InfoRow label="Thực nhận" value={formatCurrency(actualReceived)} valueClassName="text-emerald-600" />
                       </InfoGroup>
                       <InfoGroup title="Giao nhận">
-                        <InfoRow label="Đặt lúc" value={formatDate(order.placedAt)} />
+                        <InfoRow label="Đặt lúc" value={formatMaybeDate(getOrderPlacedAtCandidate(order))} />
                         <InfoRow label="Nhận hàng" value={formatMaybeDate(getOrderDeliveryTime(order))} />
                       </InfoGroup>
                       <InfoGroup title="Vận chuyển">
