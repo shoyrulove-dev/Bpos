@@ -529,6 +529,13 @@ function getBePaymentMethodLabel(order: Order) {
   return repairVietnameseText(PAYMENT_METHOD_LABEL[paymentMode] ?? order.paymentMethod ?? 'Khác')
 }
 
+function getGenericPaymentMethodLabel(order: Order) {
+  const paymentMethod = cleanText(order.paymentMethod)
+  if (!paymentMethod) return 'Khác'
+  const normalized = paymentMethod.toLowerCase()
+  return repairVietnameseText(PAYMENT_METHOD_LABEL[normalized] ?? paymentMethod)
+}
+
 type BeVoucherLine = {
   title: string
   discountValue: number | undefined
@@ -974,6 +981,14 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
   const driverPhone = getDisplayDriverPhone(order) || '-'
   const driverName = cleanText(order.driverInfo?.name ?? raw?.driver_name, '-')
   const paymentMethodLabel = getBePaymentMethodLabel(order)
+  const externalReference = cleanText(order.externalOrderId, '-')
+  const brandName = cleanText(order.brandName, '-')
+  const channelName = cleanText(order.channelName || CHANNEL_SOURCE_LABEL[order.source], '-')
+  const hubName = cleanText(order.hubName, '-')
+  const customerName = cleanText(order.customerName, '-')
+  const deliveryAddress = cleanOptionalText(order.deliveryInfo?.address)
+  const deliveryNote = cleanOptionalText(order.deliveryInfo?.note || order.note)
+  const driverVehiclePlate = cleanOptionalText(order.driverInfo?.vehiclePlate)
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0)
   const voucherLines = getBeVoucherLines(order)
   const utensilRequest = getBeUtensilRequest(order)
@@ -989,7 +1004,7 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
               <PlatformIcon source={order.source} size="md" />
             </div>
             <h1 className="mt-1 text-2xl font-semibold leading-none text-gray-950">{displayOrderCode || order.shortId}</h1>
-            <p className="mt-0.5 font-mono text-xs text-gray-500">Ref code: {order.externalOrderId}</p>
+            <p className="mt-0.5 font-mono text-xs text-gray-500">Ref code: {externalReference}</p>
           </div>
         </div>
 
@@ -1005,8 +1020,8 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 lg:grid-cols-4">
           <div>
             <p className="text-[10px] text-gray-400">Site & Hub</p>
-            <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.brandName || '-'}</p>
-            <p className="text-xs text-gray-500">{order.channelName || CHANNEL_SOURCE_LABEL[order.source]} · {order.hubName || '-'}</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{brandName}</p>
+            <p className="text-xs text-gray-500">{channelName} · {hubName}</p>
           </div>
           <div>
             <p className="text-[10px] text-gray-400">Thời gian</p>
@@ -1015,20 +1030,20 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
           </div>
           <div>
             <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>
-            <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.customerName}</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{customerName}</p>
             <p className="text-xs text-gray-500">{customerPhone}</p>
-            {order.deliveryInfo?.address && <p className="mt-0.5 text-[11px] text-gray-500 line-clamp-1">{order.deliveryInfo.address}</p>}
+            {deliveryAddress && <p className="mt-0.5 text-[11px] text-gray-500 line-clamp-1">{deliveryAddress}</p>}
           </div>
           <div>
             <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Tài xế</p>
             <p className="mt-0.5 text-sm font-semibold text-gray-950">{driverName}</p>
             <p className="text-xs text-gray-500">{driverPhone}</p>
-            {order.driverInfo?.vehiclePlate && <p className="mt-0.5 text-[11px] text-gray-400">Biển số: <span className="text-gray-700">{order.driverInfo.vehiclePlate}</span></p>}
+            {driverVehiclePlate && <p className="mt-0.5 text-[11px] text-gray-400">Biển số: <span className="text-gray-700">{driverVehiclePlate}</span></p>}
             {utensilRequest !== '-' && <p className="mt-0.5 text-[11px] text-gray-400">Dụng cụ: <span className="text-gray-700">{utensilRequest}</span></p>}
           </div>
         </div>
-        {(order.deliveryInfo?.note || order.note) && (
-          <p className="mt-2.5 border-t border-gray-100 pt-2.5 text-xs text-gray-500">Ghi chú: {order.deliveryInfo?.note || order.note}</p>
+        {deliveryNote && (
+          <p className="mt-2.5 border-t border-gray-100 pt-2.5 text-xs text-gray-500">Ghi chú: {deliveryNote}</p>
         )}
       </div>
 
@@ -1115,7 +1130,8 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
   const totalItems = order.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
   const displayOrderCode = getOrderDisplayCode(order)
   const financialBreakdown = getSettlementFinancialBreakdown(order)
-  const showExternalReference = Boolean(order.externalOrderId && order.externalOrderId !== displayOrderCode)
+  const externalReference = cleanText(order.externalOrderId)
+  const showExternalReference = Boolean(externalReference && externalReference !== displayOrderCode)
 
   if (order.source === 'grab') {
     return <GrabDetailView order={order} displayOrderCode={displayOrderCode} actualReceived={actualReceived} financialBreakdown={financialBreakdown} onRefresh={() => refetch()} isRefreshing={isRefetching} />
@@ -1124,6 +1140,16 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
   if (order.source === 'be') {
     return <BeDetailView order={order} displayOrderCode={displayOrderCode} actualReceived={actualReceived} financialBreakdown={financialBreakdown} onRefresh={() => refetch()} isRefreshing={isRefetching} />
   }
+
+  const brandName = cleanText(order.brandName, '-')
+  const channelName = cleanText(order.channelName || CHANNEL_SOURCE_LABEL[order.source], '-')
+  const hubName = cleanText(order.hubName, '-')
+  const customerName = cleanText(order.customerName, '-')
+  const driverName = cleanText(order.driverInfo?.name, '-')
+  const driverVehiclePlate = cleanOptionalText(order.driverInfo?.vehiclePlate)
+  const deliveryAddress = cleanOptionalText(order.deliveryInfo?.address)
+  const deliveryNote = cleanOptionalText(order.deliveryInfo?.note || order.note)
+  const paymentMethodLabel = getGenericPaymentMethodLabel(order)
 
   return (
     <div className="space-y-3">
@@ -1136,7 +1162,7 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
               <PlatformIcon source={order.source} size="md" />
             </div>
             <h1 className="mt-1 text-2xl font-semibold leading-none text-gray-950">{displayOrderCode || order.shortId}</h1>
-            {showExternalReference && <p className="mt-0.5 font-mono text-xs text-gray-500">Ref code: {order.externalOrderId}</p>}
+            {showExternalReference && <p className="mt-0.5 font-mono text-xs text-gray-500">Ref code: {externalReference}</p>}
           </div>
         </div>
 
@@ -1152,8 +1178,8 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 lg:grid-cols-4">
           <div>
             <p className="text-[10px] text-gray-400">Site & Hub</p>
-            <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.brandName || '-'}</p>
-            <p className="text-xs text-gray-500">{order.channelName || CHANNEL_SOURCE_LABEL[order.source]} · {order.hubName || '-'}</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{brandName}</p>
+            <p className="text-xs text-gray-500">{channelName} · {hubName}</p>
           </div>
           <div>
             <p className="text-[10px] text-gray-400">Thời gian</p>
@@ -1162,20 +1188,20 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
           </div>
           <div>
             <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Khách hàng</p>
-            <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.customerName || '-'}</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{customerName}</p>
             <p className="text-xs text-gray-500">{getDisplayCustomerPhone(order) || '-'}</p>
-            {order.deliveryInfo?.address && <p className="mt-0.5 text-[11px] text-gray-500 line-clamp-1">{order.deliveryInfo.address}</p>}
+            {deliveryAddress && <p className="mt-0.5 text-[11px] text-gray-500 line-clamp-1">{deliveryAddress}</p>}
           </div>
           <div>
             <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Tài xế</p>
-            <p className="mt-0.5 text-sm font-semibold text-gray-950">{order.driverInfo?.name || '-'}</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-950">{driverName}</p>
             <p className="text-xs text-gray-500">{getDisplayDriverPhone(order) || '-'}</p>
-            {order.driverInfo?.vehiclePlate && <p className="mt-0.5 text-[11px] text-gray-400">Biển số: <span className="text-gray-700">{order.driverInfo.vehiclePlate}</span></p>}
+            {driverVehiclePlate && <p className="mt-0.5 text-[11px] text-gray-400">Biển số: <span className="text-gray-700">{driverVehiclePlate}</span></p>}
             <p className="mt-0.5 text-[11px] text-emerald-600">Thực nhận: {formatCurrency(actualReceived)}</p>
           </div>
         </div>
-        {(order.deliveryInfo?.note || order.note) && (
-          <p className="mt-2.5 border-t border-gray-100 pt-2.5 text-xs text-gray-500">Ghi chú: {order.deliveryInfo?.note || order.note}</p>
+        {deliveryNote && (
+          <p className="mt-2.5 border-t border-gray-100 pt-2.5 text-xs text-gray-500">Ghi chú: {deliveryNote}</p>
         )}
       </div>
 
@@ -1198,8 +1224,8 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
             </table>
           </div>
 
-          {(order.deliveryInfo?.address || order.deliveryInfo?.note) && (
-            <div className="mt-3 flex items-start gap-2 rounded-2xl bg-gray-50 px-3 py-2.5 text-sm text-gray-700"><MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary-500" /><div>{order.deliveryInfo?.address && <p className="whitespace-pre-line break-words">{order.deliveryInfo.address}</p>}{order.deliveryInfo?.note && <p className="mt-0.5 text-xs text-gray-500">{order.deliveryInfo.note}</p>}</div></div>
+          {(deliveryAddress || deliveryNote) && (
+            <div className="mt-3 flex items-start gap-2 rounded-2xl bg-gray-50 px-3 py-2.5 text-sm text-gray-700"><MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary-500" /><div>{deliveryAddress && <p className="whitespace-pre-line break-words">{deliveryAddress}</p>}{deliveryNote && <p className="mt-0.5 text-xs text-gray-500">{deliveryNote}</p>}</div></div>
           )}
         </div>
 
@@ -1214,10 +1240,10 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
           </div>
 
           <div className="mt-3 border-t border-gray-200 pt-3"><div className="flex items-center justify-between gap-3 text-xl font-semibold text-gray-950"><span>Thực nhận từ sàn</span><span>{formatCurrency(actualReceived)}</span></div></div>
-          <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600"><p className="font-medium text-gray-900">Phương thức thanh toán</p><p className="mt-1">{PAYMENT_METHOD_LABEL[order.paymentMethod || 'other'] || order.paymentMethod || 'Khác'}</p></div>
+          <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600"><p className="font-medium text-gray-900">Phương thức thanh toán</p><p className="mt-1">{paymentMethodLabel}</p></div>
           <div className="mt-2 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
             <div className="flex items-start gap-2"><Phone className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">Liên hệ giao nhận</p><p className="mt-0.5">{getDisplayDriverPhone(order) || getDisplayCustomerPhone(order) || '-'}</p></div></div>
-            <div className="mt-2 flex items-start gap-2"><Truck className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">Tài xế</p><p className="mt-0.5">{order.driverInfo?.name || 'Chưa có thông tin'}</p></div></div>
+            <div className="mt-2 flex items-start gap-2"><Truck className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" /><div><p className="font-medium text-gray-900">Tài xế</p><p className="mt-0.5">{driverName !== '-' ? driverName : 'Chưa có thông tin'}</p></div></div>
           </div>
         </div>
       </div>
