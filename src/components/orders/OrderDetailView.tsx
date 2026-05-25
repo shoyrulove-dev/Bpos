@@ -7,6 +7,7 @@ import { useOrder } from '@/hooks/use-orders-channels'
 import { getActualReceived as getSettlementActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown, getGrabMoneyBreakdown as getSettlementGrabMoneyBreakdown } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
 import { buildOrderPrintHtml, printItemLabels, printOrderWithFallback, printOrderWithHtmlTemplate } from '@/lib/local-printer'
+import { repairVietnameseText } from '@/lib/text-normalizer'
 import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, PAYMENT_METHOD_LABEL } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import type { Order } from '@/types'
@@ -207,10 +208,21 @@ function formatMaybeDate(value: unknown) {
     if (value instanceof Date || typeof value === 'string' || typeof value === 'number') {
       return formatDate(value)
     }
-    return String(value)
+    return repairVietnameseText(String(value))
   } catch {
-    return String(value)
+    return repairVietnameseText(String(value))
   }
+}
+
+function cleanText(value: unknown, fallback = '') {
+  const text = typeof value === 'string' ? value.trim() : String(value ?? '').trim()
+  if (!text) return fallback
+  return repairVietnameseText(text)
+}
+
+function cleanOptionalText(value: unknown) {
+  const text = cleanText(value)
+  return text || undefined
 }
 
 function parseAmount(value: unknown) {
@@ -385,13 +397,13 @@ function getGrabDetailItems(order: Order) {
         : Array.isArray(groupRecord?.items)
         ? groupRecord.items
         : []
-      const title = String(groupRecord?.modifierGroupName ?? groupRecord?.name ?? groupRecord?.title ?? '').trim() || 'Tùy chọn'
+      const title = cleanText(groupRecord?.modifierGroupName ?? groupRecord?.name ?? groupRecord?.title, 'Tùy chọn')
 
       const lines = modifiers.map((modifier) => {
         const modifierRecord = getRecord(modifier)
         const modifierQuantity = Number(modifierRecord?.quantity ?? 1)
         const quantityLabel = modifierQuantity > 1 ? `${modifierQuantity} x ` : ''
-        const modifierName = String(modifierRecord?.modifierName ?? modifierRecord?.name ?? '').trim()
+        const modifierName = cleanText(modifierRecord?.modifierName ?? modifierRecord?.name)
         const priceLabel = parseAmount(modifierRecord?.priceDisplay ?? modifierRecord?.revampedPriceDisplay ?? modifierRecord?.price)
         return `${quantityLabel}${modifierName}${typeof priceLabel === 'number' && priceLabel > 0 ? ` ${formatCurrency(priceLabel)}` : ''}`.trim()
       }).filter(Boolean)
@@ -400,26 +412,26 @@ function getGrabDetailItems(order: Order) {
     })
 
     return {
-      name: String(record?.name ?? ''),
+      name: cleanText(record?.name),
       quantity,
       originalPrice,
       strikePrice,
       sellingPrice,
       total: Number(record?.total ?? (quantity * sellingPrice)),
-      note: String(record?.comment ?? record?.remarks ?? record?.note ?? record?.specialInstruction ?? record?.specialInstructions ?? '').trim() || undefined,
+      note: cleanOptionalText(record?.comment ?? record?.remarks ?? record?.note ?? record?.specialInstruction ?? record?.specialInstructions),
       addonGroups: addonGroups.filter((group) => group.lines.length > 0),
     }
   })
 }
 
 function getGrabCustomerName(order: Order) {
-  return getDisplayCustomerName(order) ?? 'Khách hàng'
+  return cleanText(getDisplayCustomerName(order), 'Khách hàng')
 }
 
 function getGrabCustomerNote(order: Order) {
   const raw = getRecord(order.rawPayload)
   const eater = getRecord(raw?.eater)
-  const note = String(raw?.customerNote ?? raw?.specialRequest ?? raw?.note ?? raw?.remarks ?? raw?.deliveryNote ?? eater?.comment ?? order.deliveryInfo?.note ?? order.note ?? '').trim()
+  const note = cleanText(raw?.customerNote ?? raw?.specialRequest ?? raw?.note ?? raw?.remarks ?? raw?.deliveryNote ?? eater?.comment ?? order.deliveryInfo?.note ?? order.note)
   if (/^(no data|n\/a|not available|không có|không rõ)$/i.test(note)) return ''
   return note
 }
@@ -433,7 +445,7 @@ function getGrabPaymentMethodLabel(order: Order) {
   if (normalized === 'cashless') return 'Không tiền mặt'
   if (normalized === 'cash') return 'Tiền mặt'
 
-  return PAYMENT_METHOD_LABEL[normalized] ?? paymentMethod
+  return repairVietnameseText(PAYMENT_METHOD_LABEL[normalized] ?? paymentMethod)
 }
 
 function getBeDetailItems(order: Order) {
@@ -479,31 +491,31 @@ function getBeDetailItems(order: Order) {
         const parsed = JSON.parse(customizeJson) as Array<{ name?: string; options?: Array<{ name?: string; quantity?: number; price?: number }> }>
         addonGroups = parsed
           .map((group) => {
-            const title = String(group.name ?? '').trim()
+            const title = cleanText(group.name)
             const lines = (group.options ?? []).map((option) => {
               const quantityText = option.quantity && option.quantity > 1 ? `${option.quantity} x ` : ''
               const priceText = typeof option.price === 'number' && option.price > 0 ? ` ${formatCurrency(option.price)}` : ''
-              return `${quantityText}${option.name ?? ''}${priceText}`.trim()
+              return cleanText(`${quantityText}${option.name ?? ''}${priceText}`)
             }).filter(Boolean)
             return { title, lines }
           })
           .filter((group) => group.lines.length > 0)
       } catch {
-        const fallbackLines = String(record?.customize_object ?? '').split(/[:,]/).map((part) => part.trim()).filter(Boolean)
+        const fallbackLines = cleanText(record?.customize_object).split(/[:,]/).map((part) => cleanText(part)).filter(Boolean)
         if (fallbackLines.length) addonGroups = [{ title: '', lines: fallbackLines }]
       }
     } else if (record?.customize_object) {
-      addonGroups = [{ title: '', lines: [String(record.customize_object).trim()] }]
+      addonGroups = [{ title: '', lines: [cleanText(record.customize_object)] }]
     }
 
     return {
-      name: String(record?.item_name ?? ''),
+      name: cleanText(record?.item_name),
       quantity,
       originalPrice,
       strikePrice,
       sellingPrice,
       total: sellingAmount || sellingPrice * quantity,
-      note: String(record?.note ?? '').trim() || undefined,
+      note: cleanOptionalText(record?.note),
       addonGroups,
     }
   })
@@ -514,7 +526,7 @@ function getBePaymentMethodLabel(order: Order) {
   const paymentMode = String(raw?.payment_mode ?? order.paymentMethod ?? '').trim().toLowerCase()
   if (paymentMode === '1') return 'Không tiền mặt'
   if (paymentMode === '2') return 'Tiền mặt'
-  return PAYMENT_METHOD_LABEL[paymentMode] ?? order.paymentMethod ?? 'Khác'
+  return repairVietnameseText(PAYMENT_METHOD_LABEL[paymentMode] ?? order.paymentMethod ?? 'Khác')
 }
 
 type BeVoucherLine = {
@@ -549,7 +561,7 @@ function buildGrabVoucherLine(value: unknown, scopeLabel: string): GrabVoucherLi
   const record = getRecord(value)
   if (!record) return null
 
-  const title = String(
+  const title = cleanText(
     record.title ??
     record.name ??
     record.voucherName ??
@@ -558,7 +570,7 @@ function buildGrabVoucherLine(value: unknown, scopeLabel: string): GrabVoucherLi
     record.discountName ??
     record.description ??
     ''
-  ).trim()
+  )
 
   const discountValue =
     parseAmount(record.discountValue) ??
@@ -675,7 +687,7 @@ function getGrabUtensilRequest(order: Order) {
     if (!normalized) continue
     if (['true', 'yes', 'co', 'có', '1'].includes(normalized)) return 'Có'
     if (['false', 'no', 'khong', 'không', '0'].includes(normalized)) return 'Không'
-    return String(value).trim()
+    return cleanText(value)
   }
 
   return '-'
@@ -691,7 +703,7 @@ function getBeVoucherLines(order: Order) {
   const lines = [...foodDiscounts, ...deliveryDiscounts]
     .map((offer) => {
       const record = getRecord(offer)
-      const title = String(record?.title ?? '').trim()
+      const title = cleanText(record?.title)
       const discountValue = parseAmount(record?.discount_value)
       const type = String(record?.type ?? '').trim().toLowerCase()
       const scopeLabel = type === 'delivery' ? 'Ưu đãi giao hàng' : 'Voucher món'
@@ -716,7 +728,7 @@ function getBeVoucherLines(order: Order) {
 
     if (typeof discountValue === 'number' && discountValue > 0) {
       lines.push({
-        title: String(orderDiscount.title ?? orderDiscount.voucher_title ?? orderDiscount.voucher_name ?? orderDiscount.promotion_name ?? 'Ưu đãi từ Be').trim() || 'Ưu đãi từ Be',
+        title: cleanText(orderDiscount.title ?? orderDiscount.voucher_title ?? orderDiscount.voucher_name ?? orderDiscount.promotion_name, 'Ưu đãi từ Be'),
         discountValue,
         scopeLabel: 'Voucher đơn hàng',
       })
@@ -746,7 +758,7 @@ function getBeUtensilRequest(order: Order) {
     if (!normalized) continue
     if (['true', 'yes', 'co', 'có', '1'].includes(normalized)) return 'Có'
     if (['false', 'no', 'khong', 'không', '0'].includes(normalized)) return 'Không'
-    return String(value).trim()
+    return cleanText(value)
   }
 
   return '-'
@@ -771,11 +783,11 @@ function GrabDetailView({ order, displayOrderCode, actualReceived, financialBrea
   const timeline = getGrabTimeline(order)
   const customerName = getGrabCustomerName(order)
   const customerNote = getGrabCustomerNote(order)
-  const driverName = getDisplayDriverName(order) ?? '-'
+  const driverName = cleanText(getDisplayDriverName(order), '-')
   const driverPhone = getDisplayDriverPhone(order) || '-'
   const customerPhone = getDisplayCustomerPhone(order) || '-'
-  const longOrderCode = String(order.externalOrderId ?? '-')
-  const bookingCode = String(raw?.bookingCode ?? raw?.bookingID ?? raw?.bookingId ?? raw?.preparationTaskID ?? '-')
+  const longOrderCode = cleanText(order.externalOrderId, '-')
+  const bookingCode = cleanText(raw?.bookingCode ?? raw?.bookingID ?? raw?.bookingId ?? raw?.preparationTaskID, '-')
   const itemCount = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
   const paymentMethodLabel = getGrabPaymentMethodLabel(order)
   const voucherLines = getGrabVoucherLines(order)
@@ -960,7 +972,7 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
   const items = getBeDetailItems(order)
   const customerPhone = getDisplayCustomerPhone(order) || '-'
   const driverPhone = getDisplayDriverPhone(order) || '-'
-  const driverName = String(order.driverInfo?.name ?? raw?.driver_name ?? '-')
+  const driverName = cleanText(order.driverInfo?.name ?? raw?.driver_name, '-')
   const paymentMethodLabel = getBePaymentMethodLabel(order)
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0)
   const voucherLines = getBeVoucherLines(order)
