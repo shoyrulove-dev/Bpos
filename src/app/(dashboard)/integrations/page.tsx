@@ -1463,6 +1463,8 @@ export default function IntegrationsPage() {
       displayedSyncStatus === 'success' ? 'badge-green' :
       displayedSyncStatus === 'error' ? 'badge-red' :
       (displayedSyncStatus === 'syncing' || displayedSyncStatus === 'starting' || displayedSyncStatus === 'logging-in') ? 'badge-blue' : 'badge-gray'
+    const displayedSyncTime = toValidDate(displayedSyncAt)
+    const isScraperFresh = displayedSyncTime ? (Date.now() - displayedSyncTime.getTime()) <= 5 * 60 * 1000 : false
 
     const syncLabel = isPendingSetup ? 'Chờ cấu hình' :
       isExternalScraperManaged
@@ -1477,7 +1479,7 @@ export default function IntegrationsPage() {
 
     const sessionBadge = integ.loginMode === 'auto' ? (() => {
       if (isExternalScraperManaged) {
-        if (displayedSyncStatus === 'success') {
+        if (displayedSyncStatus === 'success' && isScraperFresh) {
           return <PlatformStatusIcon status="active" title={displayedSyncAt ? `Active · ${formatDateNative(displayedSyncAt, 'datetime')}` : 'Active'} />
         }
         if (integ.sessionStatus === 'expired') {

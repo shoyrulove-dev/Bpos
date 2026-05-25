@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, Loader2, Plus, Printer, RefreshCw, Search, ArrowLeftRight } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, Download, Loader2, Plus, Printer, RefreshCw, Search } from 'lucide-react'
 import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { useOrders, useOrderTodayStatusCounts } from '@/hooks/use-orders-channels'
@@ -15,6 +15,7 @@ import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCo
 import type { Order } from '@/types'
 
 const PAGE_SIZE_OPTIONS = [10, 30, 50, 100, 200, 500] as const
+const SCRAPER_CONTROL_URL = 'http://127.0.0.1:3845/'
 
 type OrdersResponse = {
   orders: Order[]
@@ -58,23 +59,23 @@ function openWindow(url: string) {
 }
 
 function formatMaybeDate(value: unknown): string {
-  if (value === undefined || value === null || value === '') return '–'
+  if (value === undefined || value === null || value === '') return '-'
   if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
     const nested = value as Record<string, unknown>
     for (const key of ['createdAt', 'created_at', 'placedAt', 'placed_at', 'deliveredAt', 'delivered_at', 'completedAt', 'completed_at', 'deliveryCompletedAt', 'updatedAt', 'updated_at', 'orderTime']) {
       const candidate = nested[key]
       if (candidate !== undefined && candidate !== null && candidate !== '') {
         const formatted = formatMaybeDate(candidate)
-        if (formatted !== '–') return formatted
+        if (formatted !== '-') return formatted
       }
     }
-    return '–'
+    return '-'
   }
 
   try {
     return formatDate(value)
   } catch {
-    return '–'
+    return '-'
   }
 }
 
@@ -103,6 +104,23 @@ function isOrderNew(order: Order) {
   return Date.now() - placedAt <= 30 * 60 * 1000
 }
 
+function needsMarketplaceResync(order: Order) {
+  const source = String(order.source ?? '')
+  if (source !== 'grab' && source !== 'be') return false
+
+  const customerName = order.customerName || getDisplayCustomerName(order) || ''
+  const customerPhone = order.customerPhone || getDisplayCustomerPhone(order) || ''
+  const placedAt = resolveOrderPlacedAtValue(order) ?? order.placedAt
+  const deliveredAt = resolveOrderDeliveredAtValue(order) ?? order.deliveredAt ?? order.deliveryInfo?.estimatedTime
+
+  const missingName = !String(customerName).trim() || String(customerName).trim() === '-'
+  const missingPhone = !String(customerPhone).trim() || String(customerPhone).trim() === '-'
+  const missingPlacedAt = formatMaybeDate(placedAt) === '-'
+  const missingDeliveredAt = order.status === 'completed' && formatMaybeDate(deliveredAt) === '-'
+
+  return missingName || missingPhone || missingPlacedAt || missingDeliveredAt
+}
+
 function SourceIcon({ source }: { source: Order['source'] }) {
   return <PlatformIcon source={source} size="lg" />
 }
@@ -124,6 +142,7 @@ export default function OrdersPage() {
   const ordersTopRef = useRef<HTMLDivElement>(null)
   const dq = useDebounce(search)
   const pollingEnabled = page === 1 && !dq && !statusFilter && !sourceFilter
+
   const { data, isLoading, isFetching, refetch, isRefetching } = useOrders({
     q: dq,
     status: statusFilter,
@@ -134,13 +153,13 @@ export default function OrdersPage() {
     toDate,
     pollingEnabled,
   })
+
   const ordersData = data as OrdersResponse | undefined
   const orders: OrderListItem[] = (ordersData?.orders as OrderListItem[] | undefined) ?? []
   const { data: todayCountsData } = useOrderTodayStatusCounts({
     source: sourceFilter,
     pollingEnabled,
   })
-
 
   useEffect(() => {
     setPage(1)
@@ -174,6 +193,9 @@ export default function OrdersPage() {
     }
     return counts
   }, [todayCountsData, statusFilter])
+
+  const marketplaceResyncCount = useMemo(() => orders.filter(needsMarketplaceResync).length, [orders])
+  const shouldShowScraperNotice = marketplaceResyncCount > 0 && (sourceFilter === 'grab' || sourceFilter === 'be' || sourceFilter === '')
 
   const totalPages = Math.max(1, ordersData?.totalPages ?? 1)
   const currentFrom = ordersData?.total ? (page - 1) * pageSize + 1 : 0
@@ -252,11 +274,34 @@ export default function OrdersPage() {
               </div>
             )}
           </div>
-          <div ref={ordersTopRef} className={`space-y-4 transition-opacity duration-150 ${isFetching && !isLoading ? 'opacity-60 pointer-events-none' : ''}`}>
+
+          {shouldShowScraperNotice && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <div className="min-w-0">
+                  <p className="font-semibold">Phát hiện {marketplaceResyncCount} đơn cũ đang thiếu dữ liệu từ sàn.</p>
+                  <p className="mt-1 text-amber-800">Mở scraper rồi chạy sync/repair để lấy lại tên khách, SĐT và thời gian giao nhận từ Grab/Be.</p>
+                  <div className="mt-2">
+                    <button type="button" onClick={() => openWindow(SCRAPER_CONTROL_URL)} className="btn-outline h-8 rounded-full border-amber-300 bg-white px-3 text-xs text-amber-900 hover:bg-amber-100">
+                      Mở Scraper Control
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={ordersTopRef} className={`space-y-4 transition-opacity duration-150 ${isFetching && !isLoading ? 'pointer-events-none opacity-60' : ''}`}>
             {isLoading ? (
-              <div className="flex min-h-[260px] items-center justify-center rounded-[28px] border border-gray-200 bg-white"><div className="flex items-center gap-3 text-gray-500"><Loader2 className="h-5 w-5 animate-spin" /> Đang tải đơn hàng...</div></div>
+              <div className="flex min-h-[260px] items-center justify-center rounded-[28px] border border-gray-200 bg-white">
+                <div className="flex items-center gap-3 text-gray-500"><Loader2 className="h-5 w-5 animate-spin" /> Đang tải đơn hàng...</div>
+              </div>
             ) : orders.length === 0 ? (
-              <div className="rounded-[28px] border border-dashed border-gray-300 bg-white px-6 py-20 text-center"><p className="text-lg font-medium text-gray-900">Không tìm thấy đơn hàng</p><p className="mt-2 text-sm text-gray-500">Thử đổi bộ lọc hoặc tạo một đơn nội bộ mới.</p></div>
+              <div className="rounded-[28px] border border-dashed border-gray-300 bg-white px-6 py-20 text-center">
+                <p className="text-lg font-medium text-gray-900">Không tìm thấy đơn hàng</p>
+                <p className="mt-2 text-sm text-gray-500">Thử đổi bộ lọc hoặc tạo một đơn nội bộ mới.</p>
+              </div>
             ) : orders.map((order) => {
               const totalItems = getTotalItems(order)
               const actualReceived = getActualReceived(order)
@@ -265,7 +310,6 @@ export default function OrdersPage() {
               const displayCode = order.displayCode || getOrderDisplayCode(order)
               return (
                 <article key={order._id} className="rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm">
-                  {/* Header row */}
                   <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       {showNewBadge && <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-rose-600">New</span>}
@@ -281,8 +325,8 @@ export default function OrdersPage() {
                   <div className="rounded-2xl bg-gray-50 px-2.5 py-2.5">
                     <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                       <InfoGroup title="Khách hàng">
-                        <InfoRow label="Tên" value={order.customerName || getDisplayCustomerName(order) || '–'} />
-                        <InfoRow label="SĐT" value={order.customerPhone || getDisplayCustomerPhone(order) || '–'} />
+                        <InfoRow label="Tên" value={order.customerName || getDisplayCustomerName(order) || '-'} />
+                        <InfoRow label="SĐT" value={order.customerPhone || getDisplayCustomerPhone(order) || '-'} />
                       </InfoGroup>
                       <InfoGroup title="Thanh toán">
                         <InfoRow label="Số lượng" value={`${totalItems} sản phẩm`} />
@@ -293,21 +337,20 @@ export default function OrdersPage() {
                         <InfoRow label="Nhận hàng" value={formatMaybeDate(resolveOrderDeliveredAtValue(order) ?? order.deliveredAt ?? order.deliveryInfo?.estimatedTime)} />
                       </InfoGroup>
                       <InfoGroup title="Vận chuyển">
-                        <InfoRow label="Tài xế" value={order.driverInfo?.name || '–'} />
-                        <InfoRow label="SĐT" value={order.driverInfo?.phone || getDisplayDriverPhone(order) || '–'} />
+                        <InfoRow label="Tài xế" value={order.driverInfo?.name || '-'} />
+                        <InfoRow label="SĐT" value={order.driverInfo?.phone || getDisplayDriverPhone(order) || '-'} />
                         {order.deliveryInfo?.address && <InfoRow label="Địa chỉ" value={order.deliveryInfo.address} valueClassName="text-xs" />}
                       </InfoGroup>
                     </div>
                   </div>
 
-                  {/* Footer */}
                   <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2.5">
                     <div className="flex items-center gap-2">
-                      <button type="button" title="Đổi trạng thái" onClick={() => setStatusTarget({ orderId: order._id, currentStatus: order.status })} className="btn-outline h-9 w-9 justify-center px-0 rounded-full"><ArrowLeftRight className="h-3.5 w-3.5" /></button>
+                      <button type="button" title="Đổi trạng thái" onClick={() => setStatusTarget({ orderId: order._id, currentStatus: order.status })} className="btn-outline h-9 w-9 justify-center rounded-full px-0"><ArrowLeftRight className="h-3.5 w-3.5" /></button>
                       <Link href={`/orders/${order._id}`} className="inline-flex items-center gap-2 rounded-full bg-[#20232A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-black">Chi tiết</Link>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => void printOrderWithFallback(order._id, 'receipt', { autoprint: true })} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In Đơn</button>
+                      <button type="button" onClick={() => void printOrderWithFallback(order._id, 'receipt', { autoprint: true })} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In đơn</button>
                       <button type="button" onClick={() => void printItemLabels(order._id)} className="btn-outline rounded-full text-sm"><Printer className="h-3.5 w-3.5" /> In phiếu tem</button>
                     </div>
                   </div>
@@ -320,7 +363,7 @@ export default function OrdersPage() {
             <PaginationControls page={page} pageSize={pageSize} total={ordersData?.total ?? 0} totalPages={totalPages} currentFrom={currentFrom} currentTo={currentTo} onPageChange={handlePageChange} onPageSizeChange={(nextSize) => setPageSize(nextSize)} />
           </div>
         </div>
-        </div>
+      </div>
 
       <OrderCreateModal open={showCreateModal} onClose={() => setShowCreateModal(false)} />
       {statusTarget && (
@@ -337,12 +380,11 @@ export default function OrdersPage() {
 }
 
 function PaginationControls({ page, pageSize, total, totalPages, currentFrom, currentTo, onPageChange, onPageSizeChange }: { page: number; pageSize: (typeof PAGE_SIZE_OPTIONS)[number]; total: number; totalPages: number; currentFrom: number; currentTo: number; onPageChange: (page: number) => void; onPageSizeChange: (size: (typeof PAGE_SIZE_OPTIONS)[number]) => void }) {
-  // Build visible page numbers: always show first, last, and up to 3 around current
   const pages: (number | '...')[] = []
   if (totalPages <= 7) {
     for (let i = 1; i <= totalPages; i++) pages.push(i)
   } else {
-    const near = new Set([1, totalPages, page - 1, page, page + 1].filter(p => p >= 1 && p <= totalPages))
+    const near = new Set([1, totalPages, page - 1, page, page + 1].filter((p) => p >= 1 && p <= totalPages))
     let prev = 0
     for (const p of Array.from(near).sort((a, b) => a - b)) {
       if (prev && p - prev > 1) pages.push('...')
@@ -353,49 +395,33 @@ function PaginationControls({ page, pageSize, total, totalPages, currentFrom, cu
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
-        <span>{total > 0 ? `${currentFrom}–${currentTo} / ${total} đơn` : 'Chưa có đơn hàng'}</span>
-        <select
-          className="input h-8 w-20 py-0 text-xs"
-          value={pageSize}
-          onChange={(e) => onPageSizeChange(Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number])}
-        >
-          {PAGE_SIZE_OPTIONS.map((o) => <option key={o} value={o}>{o} / trang</option>)}
+      <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
+        <span>{total > 0 ? `${currentFrom}-${currentTo} / ${total} đơn` : 'Chưa có đơn hàng'}</span>
+        <select className="input h-8 w-20 py-0 text-xs" value={pageSize} onChange={(e) => onPageSizeChange(Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number])}>
+          {PAGE_SIZE_OPTIONS.map((option) => <option key={option} value={option}>{option} / trang</option>)}
         </select>
       </div>
       <div className="flex items-center gap-1">
-        <button
-          onClick={() => onPageChange(page - 1)}
-          disabled={page <= 1}
-          className="h-8 w-8 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-sm"
-          title="Trang trước"
-        >
-          ‹
-        </button>
-        {pages.map((p, i) =>
-          p === '...'
-            ? <span key={`ellipsis-${i}`} className="h-8 w-6 flex items-center justify-center text-gray-400 text-xs select-none">…</span>
-            : <button
-                key={p}
-                onClick={() => onPageChange(p)}
+        <button onClick={() => onPageChange(page - 1)} disabled={page <= 1} className="h-8 w-8 rounded-lg border border-gray-200 bg-white text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40" title="Trang trước">‹</button>
+        {pages.map((item, index) =>
+          item === '...'
+            ? <span key={`ellipsis-${index}`} className="flex h-8 w-6 select-none items-center justify-center text-xs text-gray-400">…</span>
+            : (
+              <button
+                key={item}
+                onClick={() => onPageChange(item)}
                 className={cn(
-                  'h-8 min-w-[2rem] px-2 flex items-center justify-center rounded-lg border text-sm font-medium transition-colors',
-                  p === page
+                  'flex h-8 min-w-[2rem] items-center justify-center rounded-lg border px-2 text-sm font-medium transition-colors',
+                  item === page
                     ? 'border-gray-900 bg-gray-900 text-white'
                     : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                 )}
               >
-                {p}
+                {item}
               </button>
+            )
         )}
-        <button
-          onClick={() => onPageChange(page + 1)}
-          disabled={page >= totalPages}
-          className="h-8 w-8 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-sm"
-          title="Trang sau"
-        >
-          ›
-        </button>
+        <button onClick={() => onPageChange(page + 1)} disabled={page >= totalPages} className="h-8 w-8 rounded-lg border border-gray-200 bg-white text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40" title="Trang sau">›</button>
       </div>
     </div>
   )
@@ -407,7 +433,7 @@ const CHANGEABLE_STATUSES = [
   { value: 'delivering', label: 'Đang giao', color: 'bg-indigo-400' },
   { value: 'completed', label: 'Hoàn thành', color: 'bg-emerald-500' },
   { value: 'cancelled', label: 'Đã hủy', color: 'bg-rose-400' },
-]
+] as const
 
 function StatusChangeModal({ orderId, currentStatus, saving, onClose, onSave }: {
   orderId: string
@@ -423,32 +449,27 @@ function StatusChangeModal({ orderId, currentStatus, saving, onClose, onSave }: 
       <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h2 className="mb-4 text-base font-bold text-gray-900">Đổi trạng thái đơn hàng</h2>
         <div className="space-y-2">
-          {CHANGEABLE_STATUSES.map((s) => (
+          {CHANGEABLE_STATUSES.map((status) => (
             <button
-              key={s.value}
+              key={status.value}
               type="button"
-              onClick={() => setSelected(s.value)}
+              onClick={() => setSelected(status.value)}
               className={cn(
                 'flex w-full items-center gap-3 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all',
-                selected === s.value
+                selected === status.value
                   ? 'border-gray-900 bg-gray-900 text-white'
                   : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50',
               )}
             >
-              <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', selected === s.value ? 'bg-white' : s.color)} />
-              {s.label}
-              {s.value === currentStatus && <span className="ml-auto text-xs opacity-60">hiện tại</span>}
+              <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', selected === status.value ? 'bg-white' : status.color)} />
+              {status.label}
+              {status.value === currentStatus && <span className="ml-auto text-xs opacity-60">hiện tại</span>}
             </button>
           ))}
         </div>
         <div className="mt-5 flex gap-2">
           <button type="button" onClick={onClose} className="btn-outline flex-1 rounded-full text-sm">Hủy</button>
-          <button
-            type="button"
-            disabled={saving || selected === currentStatus}
-            onClick={() => onSave(orderId, selected)}
-            className="flex-1 rounded-full bg-[#20232A] py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-40"
-          >
+          <button type="button" disabled={saving || selected === currentStatus} onClick={() => onSave(orderId, selected)} className="flex-1 rounded-full bg-[#20232A] py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-40">
             {saving ? 'Đang lưu...' : 'Lưu'}
           </button>
         </div>
