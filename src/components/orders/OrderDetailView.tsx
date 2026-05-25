@@ -215,7 +215,10 @@ function formatMaybeDate(value: unknown) {
 }
 
 function cleanText(value: unknown, fallback = '') {
-  const text = typeof value === 'string' ? value.trim() : String(value ?? '').trim()
+  const text = (typeof value === 'string' ? value : String(value ?? ''))
+    .replace(/[\u0000-\u001F\u007F]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
   if (!text) return fallback
   return repairVietnameseText(text)
 }
@@ -238,6 +241,36 @@ function parseAmount(value: unknown) {
 
 function getRecord(value: unknown) {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
+}
+
+function scoreCleanTitle(title: string) {
+  const hasReplacement = /�/.test(title)
+  const accentCount = (title.match(/[À-ỹ]/g) ?? []).length
+  return (hasReplacement ? -20 : 0) + accentCount * 3 + title.length
+}
+
+function dedupeAddonGroups(groups: { title: string; lines: string[] }[]) {
+  const deduped = new Map<string, { title: string; lines: string[] }>()
+
+  for (const group of groups) {
+    const lines = group.lines.map((line) => cleanText(line)).filter(Boolean)
+    if (!lines.length) continue
+
+    const normalizedTitle = cleanText(group.title, 'Tùy chọn')
+    const key = lines.map((line) => line.toLowerCase()).join('|')
+    const existing = deduped.get(key)
+
+    if (!existing) {
+      deduped.set(key, { title: normalizedTitle, lines })
+      continue
+    }
+
+    if (scoreCleanTitle(normalizedTitle) > scoreCleanTitle(existing.title)) {
+      deduped.set(key, { title: normalizedTitle, lines })
+    }
+  }
+
+  return Array.from(deduped.values())
 }
 
 function getOrderPlacedAtCandidate(order: Order) {
@@ -388,7 +421,7 @@ function getGrabDetailItems(order: Order) {
     const strikePrice = quantity > 0 ? Math.round(itemDiscountTotal / quantity) : itemDiscountTotal
     const originalPrice = sellingPrice + strikePrice
 
-    const addonGroups = [...modifierGroups, ...legacyModifierGroups].map((group) => {
+    const addonGroups = dedupeAddonGroups([...modifierGroups, ...legacyModifierGroups].map((group) => {
       const groupRecord = getRecord(group)
       const modifiers = Array.isArray(groupRecord?.modifiers)
         ? groupRecord.modifiers
@@ -409,7 +442,7 @@ function getGrabDetailItems(order: Order) {
       }).filter(Boolean)
 
       return { title, lines }
-    })
+    }))
 
     return {
       name: cleanText(record?.name),
