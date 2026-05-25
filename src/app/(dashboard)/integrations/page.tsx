@@ -1476,16 +1476,26 @@ export default function IntegrationsPage() {
         : displayedSyncStatus === 'syncing' ? 'Đang sync…' : 'Chưa sync'
 
     const sessionBadge = integ.loginMode === 'auto' ? (() => {
-      if (integ.provider === 'be') {
-        const cls = integ.sessionStatus === 'active' ? 'text-teal-600' : integ.sessionStatus === 'error' ? 'text-red-500' : 'text-gray-400'
-        const label = integ.sessionStatus === 'active' ? '⚡ Token OK' : integ.sessionStatus === 'error' ? `⚡ ${integ.sessionError ?? 'Lỗi token'}` : '⚡ Chưa token'
-        return <span className={cn('text-[11px]', cls)} title={integ.sessionStatus === 'active' && integ.sessionExpiresAt ? `Hết hạn ${formatDateNative(integ.sessionExpiresAt, 'date')}` : ''}>{label}</span>
+      if (isExternalScraperManaged) {
+        if (displayedSyncStatus === 'success') {
+          return <PlatformStatusIcon status="active" title={displayedSyncAt ? `Active · ${formatDateNative(displayedSyncAt, 'datetime')}` : 'Active'} />
+        }
+        if (integ.sessionStatus === 'expired') {
+          return <PlatformStatusIcon status="paused" title="Pause / hết hạn phiên" />
+        }
+        return <PlatformStatusIcon status="offline" title={integ.scraperSyncMessage ?? integ.sessionError ?? 'Scraper offline'} />
       }
-      if (integ.automationRunning) return <span className="text-[11px] text-blue-600"><Loader2 className="w-2.5 h-2.5 animate-spin inline mr-0.5" />Login…</span>
-      if (integ.sessionStatus === 'active') return <PlatformStatusIcon status="active" title={integ.sessionExpiresAt ? `Active · hết hạn ${formatDateNative(integ.sessionExpiresAt, 'datetime')}` : 'Active'} />
-      if (integ.sessionStatus === 'expired') return <PlatformStatusIcon status="paused" title="Hết hạn phiên" />
-      if (integ.sessionStatus === 'error') return <PlatformStatusIcon status="offline" title={integ.sessionError ?? 'Lỗi phiên'} />
-      return <PlatformStatusIcon status="unknown" title="Chờ đăng nhập" />
+
+      if (integ.sessionStatus === 'active') {
+        return <PlatformStatusIcon status="active" title={integ.sessionExpiresAt ? `Active · hết hạn ${formatDateNative(integ.sessionExpiresAt, 'datetime')}` : 'Active'} />
+      }
+      if (integ.sessionStatus === 'expired') {
+        return <PlatformStatusIcon status="paused" title="Pause / hết hạn phiên" />
+      }
+      if (integ.sessionStatus === 'error') {
+        return <PlatformStatusIcon status="offline" title={integ.sessionError ?? 'Lỗi phiên'} />
+      }
+      return <PlatformStatusIcon status="offline" title="Offline / chưa đăng nhập" />
     })() : null
 
     const brandName = getBrandName(integ)
