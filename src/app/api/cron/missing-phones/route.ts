@@ -247,13 +247,13 @@ export async function GET(req: NextRequest) {
       // completed, but we avoid re-queuing phone/item detail churn for those stale rows.
       const allowOnlyStatusRepair = isOlderThan24h && isActiveStatus
 
-      // Customer phone: available while preparing/ready/upcoming or actively delivering
-      const canGetCustomerPhone = !allowOnlyStatusRepair && !skipFinalizedRetry && (
-        ['preparing', 'ready', 'upcoming'].includes(storedStage) || isActivelyDelivering
-      )
-      const missingCustomerPhone = canGetCustomerPhone
+      // Customer/driver phone: try all non-stale orders, including history/completed rows.
+      // Grab history detail often still contains receiver/driver info, and older DB rows are
+      // exactly the ones that need a second pass to recover this data.
+      const canGetContactDetail = !allowOnlyStatusRepair
+      const missingCustomerPhone = canGetContactDetail
         && !hasMeaningfulPhone(getDisplayCustomerPhone(order as unknown as Order))
-      const missingDriverPhone = !allowOnlyStatusRepair && !skipFinalizedRetry
+      const missingDriverPhone = canGetContactDetail
         && !hasMeaningfulPhone(getDisplayDriverPhone(order as unknown as Order))
       // Item/promo detail: always try even for history/completed orders — Grab portal
       // still shows items/vouchers/addons on the history detail page.
