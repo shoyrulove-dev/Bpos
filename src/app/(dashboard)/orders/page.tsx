@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, ArrowLeftRight, Download, Loader2, Plus, Printer, RefreshCw, Search } from 'lucide-react'
+import { ArrowLeftRight, Download, Loader2, Plus, Printer, RefreshCw, Search } from 'lucide-react'
 import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { useOrders, useOrderTodayStatusCounts } from '@/hooks/use-orders-channels'
@@ -15,8 +15,6 @@ import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCo
 import type { Order } from '@/types'
 
 const PAGE_SIZE_OPTIONS = [10, 30, 50, 100, 200, 500] as const
-const SCRAPER_CONTROL_URL = 'http://127.0.0.1:3845/'
-
 type OrdersResponse = {
   orders: Order[]
   total: number
@@ -194,9 +192,6 @@ export default function OrdersPage() {
     return counts
   }, [todayCountsData, statusFilter])
 
-  const marketplaceResyncCount = useMemo(() => orders.filter(needsMarketplaceResync).length, [orders])
-  const shouldShowScraperNotice = marketplaceResyncCount > 0 && (sourceFilter === 'grab' || sourceFilter === 'be' || sourceFilter === '')
-
   const totalPages = Math.max(1, ordersData?.totalPages ?? 1)
   const currentFrom = ordersData?.total ? (page - 1) * pageSize + 1 : 0
   const currentTo = ordersData?.total ? Math.min(page * pageSize, ordersData.total) : 0
@@ -274,23 +269,6 @@ export default function OrdersPage() {
               </div>
             )}
           </div>
-
-          {shouldShowScraperNotice && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                <div className="min-w-0">
-                  <p className="font-semibold">Phát hiện {marketplaceResyncCount} đơn cũ đang thiếu dữ liệu từ sàn.</p>
-                  <p className="mt-1 text-amber-800">Mở scraper rồi chạy sync/repair để lấy lại tên khách, SĐT và thời gian giao nhận từ Grab/Be.</p>
-                  <div className="mt-2">
-                    <button type="button" onClick={() => openWindow(SCRAPER_CONTROL_URL)} className="btn-outline h-8 rounded-full border-amber-300 bg-white px-3 text-xs text-amber-900 hover:bg-amber-100">
-                      Mở Scraper Control
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           <div ref={ordersTopRef} className={`space-y-4 transition-opacity duration-150 ${isFetching && !isLoading ? 'pointer-events-none opacity-60' : ''}`}>
             {isLoading ? (
