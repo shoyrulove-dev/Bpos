@@ -2,6 +2,7 @@ import type { NormalizedOrder, OrderItem, OrderStatus } from '@/types'
 import { enrichGrabSessionExtraHeaders } from '@/lib/grab-session'
 import { extractCompactPhone, normalizeCompactPhone } from '@/lib/phone'
 import { mergeNormalizedOrderPreservingDetail } from '@/lib/order-upsert'
+import { normalizeGrabItemsFromRawPayload } from '@/lib/grab-order-items'
 import type { PlatformAdapter, AdapterConfig, SessionData } from './types'
 
 // GrabFood Partner API (POS) v1.1.3
@@ -300,22 +301,6 @@ function shouldExposeGrabDriverInfo(raw: Record<string, unknown>, orderStatus: O
 
 export class GrabAdapter implements PlatformAdapter {
   source = 'grab' as const
-
-  private getGrabItemUnitPrice(rawItem: Record<string, unknown>) {
-    const fare = rawItem.fare && typeof rawItem.fare === 'object' && !Array.isArray(rawItem.fare)
-      ? rawItem.fare as Record<string, unknown>
-      : undefined
-
-    return Number(
-      fare?.priceFloat ??
-      fare?.priceInMin ??
-      rawItem.itemPrice ??
-      rawItem.price ??
-      rawItem.unitPrice ??
-      this.parseGrabDisplayAmount(fare?.priceDisplay) ??
-      0
-    )
-  }
 
   private getGrabEstimatedTime(raw: Record<string, unknown>) {
     const times = raw.times && typeof raw.times === 'object' && !Array.isArray(raw.times)
@@ -1450,45 +1435,7 @@ export class GrabAdapter implements PlatformAdapter {
     // Prefer itemInfo.items (from XHR intercept, has fare/modifierGroups) over raw.items which
     // may be overwritten by DOM extraction with partial/garbage data (e.g. "HOÁ ĐƠN" placeholder)
     const itemsRaw = (raw.orderItems ?? raw.lineItems ?? itemInfo.items ?? raw.items ?? []) as Record<string, unknown>[]
-    const items: OrderItem[] = itemsRaw.map(i => {
-      // Flatten modifiers/add-ons into item note
-      const modifiers = Array.isArray(i.modifiers) ? i.modifiers as Record<string, unknown>[] : []
-      const addons = Array.isArray(i.addons) ? i.addons as Record<string, unknown>[] : []
-      const modifierGroups = Array.isArray(i.modifierGroups) ? i.modifierGroups as Record<string, unknown>[] : []
-      const modifierTexts: string[] = []
-      for (const m of [...modifiers, ...addons]) {
-        const mItems = Array.isArray(m.modifierItems) ? m.modifierItems as Record<string, unknown>[] : Array.isArray(m.items) ? m.items as Record<string, unknown>[] : []
-        const groupLabel = String(m.name ?? m.groupName ?? '').trim()
-        for (const mi of mItems) {
-          const miName = String(mi.name ?? mi.itemName ?? '').trim()
-          if (miName) modifierTexts.push(groupLabel ? `${groupLabel}: ${miName}` : miName)
-        }
-        // Some formats have name directly on modifier item (group label = option value)
-        if (mItems.length === 0 && groupLabel) modifierTexts.push(groupLabel)
-      }
-      // Grab portal format: modifierGroups[].modifiers[].modifierName
-      for (const mg of modifierGroups) {
-        const groupLabel = String(mg.groupName ?? mg.name ?? mg.groupTitle ?? '').trim()
-        const mgMods = Array.isArray(mg.modifiers) ? mg.modifiers as Record<string, unknown>[] : []
-        for (const m of mgMods) {
-          const mName = String(m.modifierName ?? m.name ?? m.itemName ?? '').trim()
-          if (mName) modifierTexts.push(groupLabel ? `${groupLabel}: ${mName}` : mName)
-        }
-      }
-      const itemNote = [
-        String(i.remarks ?? i.note ?? i.specialInstruction ?? i.comment ?? '').trim(),
-        modifierTexts.length ? modifierTexts.join('\n') : '',
-      ].filter(Boolean).join('\n') || undefined
-
-      return {
-        name:     String(i.name ?? i.itemName ?? ''),
-        quantity: Number(i.quantity ?? 1),
-        price:    this.getGrabItemUnitPrice(i),
-        // Prefer Grab's actual line total (already includes discounts) over qty*unitPrice
-        total:    Number(i.total ?? i.itemTotal ?? i.totalPrice ?? i.soldAmount ?? (Number(i.quantity ?? 1) * this.getGrabItemUnitPrice(i))),
-        note:     itemNote,
-      }
-    })
+    const items: OrderItem[] = normalizeGrabItemsFromRawPayload({ itemInfo: { items: itemsRaw } })
 
     const rawStatus = String(raw.deliveryStatus ?? raw.orderState ?? raw.status ?? raw.orderStatus ?? raw.state ?? '')
     const orderStatus = resolveGrabStatus(rawStatus, raw)
@@ -1630,44 +1577,7 @@ export class GrabAdapter implements PlatformAdapter {
       : Array.isArray(raw.lineItems)
       ? raw.lineItems as Record<string, unknown>[]
       : (itemInfo?.items as Record<string, unknown>[] | undefined) ?? []
-    const items: OrderItem[] = rawItems.map((i) => {
-      // Flatten modifiers into item note
-      const modifiers = Array.isArray(i.modifiers) ? i.modifiers as Record<string, unknown>[] : []
-      const addons = Array.isArray(i.addons) ? i.addons as Record<string, unknown>[] : []
-      const modifierGroups = Array.isArray(i.modifierGroups) ? i.modifierGroups as Record<string, unknown>[] : []
-      const modifierTexts: string[] = []
-      for (const m of [...modifiers, ...addons]) {
-        const mItems = Array.isArray(m.modifierItems) ? m.modifierItems as Record<string, unknown>[] : Array.isArray(m.items) ? m.items as Record<string, unknown>[] : []
-        const groupLabel = String(m.name ?? m.groupName ?? '').trim()
-        for (const mi of mItems) {
-          const miName = String(mi.name ?? mi.itemName ?? '').trim()
-          if (miName) modifierTexts.push(groupLabel ? `${groupLabel}: ${miName}` : miName)
-        }
-        if (mItems.length === 0 && groupLabel) modifierTexts.push(groupLabel)
-      }
-      // Grab portal format: modifierGroups[].modifiers[].modifierName
-      for (const mg of modifierGroups) {
-        const groupLabel = String(mg.groupName ?? mg.name ?? mg.groupTitle ?? '').trim()
-        const mgMods = Array.isArray(mg.modifiers) ? mg.modifiers as Record<string, unknown>[] : []
-        for (const m of mgMods) {
-          const mName = String(m.modifierName ?? m.name ?? m.itemName ?? '').trim()
-          if (mName) modifierTexts.push(groupLabel ? `${groupLabel}: ${mName}` : mName)
-        }
-      }
-      const itemNote = [
-        String(i.remarks ?? i.note ?? i.specialInstruction ?? i.comment ?? '').trim(),
-        modifierTexts.length ? modifierTexts.join('\n') : '',
-      ].filter(Boolean).join('\n') || undefined
-
-      return {
-        name:     String(i.name ?? i.itemName ?? ''),
-        quantity: Number(i.quantity ?? 1),
-        price:    this.getGrabItemUnitPrice(i),
-        // Prefer Grab's actual line total (already includes discounts) over qty*unitPrice
-        total:    Number(i.total ?? i.itemTotal ?? i.totalPrice ?? i.soldAmount ?? (Number(i.quantity ?? 1) * this.getGrabItemUnitPrice(i))),
-        note:     itemNote,
-      }
-    })
+    const items: OrderItem[] = normalizeGrabItemsFromRawPayload({ itemInfo: { items: rawItems } })
 
     // orderState field (not 'state')
     const rawStatus = String(raw.orderState ?? raw.deliveryStatus ?? raw.status ?? raw.orderStatus ?? raw.state ?? '')

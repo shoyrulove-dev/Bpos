@@ -2,6 +2,7 @@ import { generateId } from '@/lib/utils'
 import { extractGrabCustomerFinancials, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
 import { hasBeCancelSignal } from '@/lib/be-order-status'
 import { normalizeCompactPhone } from '@/lib/phone'
+import { normalizeGrabItemsFromRawPayload } from '@/lib/grab-order-items'
 import { resolveOrderCustomerName, resolveOrderCustomerPhone, resolveOrderDeliveredAtValue, resolveOrderPlacedAtValue } from '@/lib/order-recovery'
 import { repairVietnameseTextDeep } from '@/lib/text-normalizer'
 import type { NormalizedOrder, Order } from '@/types'
@@ -746,6 +747,12 @@ export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
 
 export function buildOrderUpsert(integration: IntegrationRef, normalized: NormalizedOrder) {
   const normalizedOrder = repairVietnameseTextDeep(normalized) as NormalizedOrder
+  if (normalizedOrder.source === 'grab') {
+    const enrichedItems = normalizeGrabItemsFromRawPayload(normalizedOrder.rawPayload, normalizedOrder.items)
+    if (enrichedItems.length > 0) {
+      normalizedOrder.items = enrichedItems
+    }
+  }
   const resolvedOrderStatus = resolveNormalizedOrderStatus(normalizedOrder)
   const financialBreakdown = getFinancialBreakdown(normalizedOrder as unknown as Order)
   const recoveredDriverName = getDisplayDriverName(normalizedOrder as unknown as Order)
