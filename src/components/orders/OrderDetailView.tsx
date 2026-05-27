@@ -297,6 +297,30 @@ function parseStoredNoteToAddonGroups(note?: string) {
   }))
 }
 
+function extractFreeformNote(note: unknown, addonGroups: { title: string; lines: string[] }[]) {
+  if (typeof note !== 'string' || !note.trim()) return undefined
+
+  const duplicateLines = new Set<string>()
+  for (const group of addonGroups) {
+    const title = cleanText(group.title)
+    for (const line of group.lines) {
+      const normalizedLine = cleanText(line)
+      if (!normalizedLine) continue
+      duplicateLines.add(normalizedLine.toLowerCase())
+      if (title) duplicateLines.add(`${title}: ${normalizedLine}`.toLowerCase())
+    }
+  }
+
+  const uniqueLines = note
+    .split(/\r?\n+/)
+    .map((line) => cleanText(line))
+    .filter(Boolean)
+    .filter((line) => !duplicateLines.has(line.toLowerCase()))
+
+  if (!uniqueLines.length) return undefined
+  return uniqueLines.join('\n')
+}
+
 function getOrderPlacedAtCandidate(order: Order) {
   const raw = getRecord(order.rawPayload)
   const times = getRecord(raw?.times)
@@ -526,7 +550,7 @@ function getGrabDetailItems(order: Order) {
 
     const fallbackAddonNote = mergedAddonGroups.length === 0
       ? authoritativeGrabNote ?? storedItem?.note
-      : storedItem?.note
+      : extractFreeformNote(storedItem?.note, mergedAddonGroups)
 
     const resolvedNote = cleanOptionalText(rawItemNote ?? fallbackAddonNote)
 
