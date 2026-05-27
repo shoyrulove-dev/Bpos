@@ -435,9 +435,9 @@ export default function ChannelsPage() {
         />
 
         {channelPagination.totalItems > 0 ? (
-          <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
             {channelPagination.pageGroups.map((group) => (
-              <div key={group.key} className={group.grouped ? 'overflow-hidden rounded-2xl border border-green-200 bg-green-50/40' : ''}>
+              <div key={group.key} className={cn(group.grouped && 'overflow-hidden rounded-2xl border border-green-200 bg-green-50/40')}>
                 {group.grouped && group.username && (
                   <div className="flex items-center gap-1.5 border-b border-green-100 bg-green-50 px-4 py-2 text-xs font-bold text-green-800">
                     <span>Tài khoản</span>
@@ -445,7 +445,7 @@ export default function ChannelsPage() {
                     <span className="font-normal text-green-600">· {group.items.length} store chung 1 tài khoản</span>
                   </div>
                 )}
-                <div className={cn('grid gap-4 md:grid-cols-2', group.grouped && 'p-3')}>
+                <div className={cn(group.grouped ? 'space-y-3 p-3' : 'space-y-0')}>
                   {group.items.map(({ channel, integration: integ, username }) => {
               const liveStatus = resolvePauseStoreState(pauseStatuses, {
                 source: normalizeStoreSource(channel.source) ?? 'grab',
