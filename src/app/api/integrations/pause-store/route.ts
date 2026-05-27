@@ -152,7 +152,7 @@ export async function GET(req: NextRequest) {
   const scraperPath = wantsLive ? '/store-status?live=1' : '/store-status'
   const [scraperResult, dbResult] = await Promise.allSettled([
     fetch(`${SCRAPER_URL}${scraperPath}`, {
-      signal: AbortSignal.timeout(wantsLive ? 30_000 : 5_000),
+      signal: AbortSignal.timeout(wantsLive ? 8_000 : 5_000),
     }).then(r => r.json()).catch(() => null),
     (async () => {
       await connectDB()
