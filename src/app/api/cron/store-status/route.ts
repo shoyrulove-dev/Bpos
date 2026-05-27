@@ -11,7 +11,12 @@ function unauthorized() {
 
 // POST /api/cron/store-status
 // Called by scraper every ~60s to push pause/login status for each store session.
-// Body: { sessions: [{ externalStoreId, source, paused, pausedUntil, loggedIn, pauseMode, pauseLabel, isUnknown, platformStatus }] }
+// Body: {
+//   sessions: [{
+//     integrationId, username, externalStoreId, source,
+//     paused, pausedUntil, loggedIn, pauseMode, pauseLabel, isUnknown, platformStatus
+//   }]
+// }
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
   if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
@@ -35,9 +40,11 @@ export async function POST(req: NextRequest) {
 
   for (const session of sessions) {
     const s = session as Record<string, unknown>
+    const integrationId = String(s.integrationId ?? '').trim()
+    const username = String(s.username ?? '').trim()
     const externalStoreId = String(s.externalStoreId ?? '').trim()
     const source = String(s.source ?? '').trim()
-    if (!externalStoreId || !source) continue
+    if (!source || (!integrationId && !externalStoreId && !username)) continue
 
     const scraperPaused = Boolean(s.paused)
     const scraperPausedUntil = s.pausedUntil ? new Date(String(s.pausedUntil)) : null
@@ -58,14 +65,16 @@ export async function POST(req: NextRequest) {
       scraperPlatformStatus,
     }
 
-    const result = await ChannelModel.updateMany(
-      { externalStoreId, source },
-      { $set: update }
-    )
-    await IntegrationModel.updateMany(
-      { externalStoreId, provider: source, isActive: true },
-      { $set: update }
-    )
+    const integrationFilter = integrationId
+      ? { _id: integrationId, provider: source, isActive: true }
+      : externalStoreId
+        ? { externalStoreId, provider: source, isActive: true }
+        : { loginUsername: username, provider: source, isActive: true }
+
+    const result = externalStoreId
+      ? await ChannelModel.updateMany({ externalStoreId, source }, { $set: update })
+      : { modifiedCount: 0 }
+    await IntegrationModel.updateMany(integrationFilter, { $set: update })
     updated += result.modifiedCount
   }
 
