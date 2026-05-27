@@ -258,7 +258,7 @@ function dedupeAddonGroups(groups: { title: string; lines: string[] }[]) {
     if (!lines.length) continue
 
     const normalizedTitle = cleanText(group.title, 'Tùy chọn')
-    const key = lines.map((line) => line.toLowerCase()).join('|')
+    const key = `${normalizedTitle.toLowerCase()}|${lines.map((line) => line.toLowerCase()).join('|')}`
     const existing = deduped.get(key)
 
     if (!existing) {
@@ -486,6 +486,20 @@ function getGrabDetailItems(order: Order) {
       ? addonGroups
       : parseStoredNoteToAddonGroups(storedItem?.note)
 
+    const rawItemNote = cleanOptionalText(
+      record?.comment
+      ?? record?.remarks
+      ?? record?.note
+      ?? record?.specialInstruction
+      ?? record?.specialInstructions
+    )
+
+    const fallbackAddonNote = mergedAddonGroups.length === 0
+      ? authoritativeGrabNote ?? storedItem?.note
+      : storedItem?.note
+
+    const resolvedNote = cleanOptionalText(rawItemNote ?? fallbackAddonNote)
+
     return {
       name: itemName,
       quantity,
@@ -493,15 +507,7 @@ function getGrabDetailItems(order: Order) {
       strikePrice,
       sellingPrice,
       total: Number(record?.total ?? storedItem?.total ?? (quantity * sellingPrice)),
-      note: cleanOptionalText(
-        record?.comment
-        ?? record?.remarks
-        ?? record?.note
-        ?? record?.specialInstruction
-        ?? record?.specialInstructions
-        ?? authoritativeGrabNote
-        ?? storedItem?.note
-      ),
+      note: resolvedNote,
       addonGroups: mergedAddonGroups.filter((group) => group.lines.length > 0),
     }
   })
