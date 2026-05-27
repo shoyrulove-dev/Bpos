@@ -8,7 +8,7 @@ import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/aut
 import { requestAutomationLogin } from '@/lib/automation-login'
 import { upsertCustomerProfile } from '@/lib/customer-upsert'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, getComparableDriverName, hasMeaningfulDriverName, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, resolveNormalizedOrderStatus, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
+import { buildOrderUpsert, getComparableDriverName, hasGrabDefinitiveCompletionSignal, hasMeaningfulDriverName, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, resolveNormalizedOrderStatus, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
 import { getOrderContactProfileCandidates } from '@/lib/order-contact-profiles'
 import DriverModel from '@/models/Driver'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeOrdersByExternalOrderId, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
@@ -309,7 +309,7 @@ export async function GET(req: NextRequest) {
           }
 
           // Active bucket orders should not be forced to completed by stale timestamps.
-          if (isFromActiveBucket && mergedNormalized.orderStatus === 'completed') {
+          if (isFromActiveBucket && mergedNormalized.orderStatus === 'completed' && !hasGrabDefinitiveCompletionSignal(mergedNormalized)) {
             mergedNormalized.orderStatus = 'waiting_pickup'
           }
 

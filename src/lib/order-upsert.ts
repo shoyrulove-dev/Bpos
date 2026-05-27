@@ -480,6 +480,7 @@ function extractNestedTimes(rawPayload: Record<string, unknown>) {
     : undefined
 
   return {
+    createdAt: parseDateValue(times?.createdAt),
     completedAt: parseDateValue(times?.completedAt),
     deliveredAt: parseDateValue(times?.deliveredAt),
     updatedAt: parseDateValue(times?.updatedAt),
@@ -640,6 +641,45 @@ function extractDeliveredDate(normalized: NormalizedOrder) {
   )
 }
 
+export function hasGrabDefinitiveCompletionSignal(normalized: NormalizedOrder) {
+  if (normalized.source !== 'grab') return false
+
+  const rawPayload = normalized.rawPayload ?? {}
+  const nestedTimes = extractNestedTimes(rawPayload)
+  const placedAt = (
+    parseDateValue(normalized.placedAt)
+    ?? parseDateValue(rawPayload.placedAt)
+    ?? parseDateValue(rawPayload.createdAt)
+    ?? parseDateValue(rawPayload.created_at)
+    ?? nestedTimes.createdAt
+  )
+
+  const completedAt = (
+    parseDateValue(rawPayload.completedAt)
+    ?? parseDateValue(rawPayload.completed_at)
+    ?? parseDateValue(rawPayload.deliveryCompletedAt)
+    ?? nestedTimes.completedAt
+  )
+
+  const deliveredAt = (
+    parseDateValue(normalized.deliveredAt)
+    ?? parseDateValue(rawPayload.deliveredAt)
+    ?? parseDateValue(rawPayload.delivered_at)
+    ?? parseDateValue(rawPayload.delivered_time)
+    ?? nestedTimes.deliveredAt
+  )
+
+  if (!placedAt) return Boolean(completedAt || deliveredAt)
+
+  const placedMs = placedAt.getTime()
+  const completedAfterPlaced = Boolean(completedAt && (completedAt.getTime() - placedMs) >= 60_000)
+  const deliveredAfterPlaced = Boolean(deliveredAt && (deliveredAt.getTime() - placedMs) >= 60_000)
+
+  // Treat dual real completion timestamps as authoritative even if Grab still pushes the order
+  // from an active bucket for a short period.
+  return completedAfterPlaced || deliveredAfterPlaced
+}
+
 export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
   const rawPayload = normalized.rawPayload ?? {}
   const nestedTimes = extractNestedTimes(rawPayload)
@@ -676,6 +716,10 @@ export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
     // khiến đơn mới nhất bị mark nhầm là completed.
     const isActivePageBucket = pageStage === 'preparing' || pageStage === 'ready' || pageStage === 'upcoming'
       || pageType === 'preparingv2' || pageType === 'ready' || pageType === 'upcoming'
+
+    if (isActivePageBucket && hasGrabDefinitiveCompletionSignal(normalized)) {
+      return 'completed'
+    }
 
     if (!isActivePageBucket) {
       // Order có active signal nhưng không rõ bucket (có thể đang trong history).
