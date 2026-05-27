@@ -7,7 +7,7 @@ import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
 import { useIntegrations } from '@/hooks/use-data'
 import { useDebounce } from '@/hooks/use-debounce'
-import { getStoreIdentityKey, normalizeStoreId, normalizeStoreSource } from '@/lib/store-pause-status'
+import { canonicalizePauseStoreState, getStoreIdentityKey, normalizeStoreId, normalizeStoreSource } from '@/lib/store-pause-status'
 import { cn } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { PlatformStatusIcon } from '@/components/ui/PlatformStatusIcon'
@@ -140,14 +140,14 @@ export default function ChannelsPage() {
         const nextMap = payload.stores.reduce((acc, store) => {
           const source = normalizeStoreSource(store.source)
           if (!source) return acc
-          const normalized = {
+          const normalized = canonicalizePauseStoreState({
             ...store,
             source,
             storeId: normalizeStoreId(store.storeId),
             integrationId: store.integrationId ? String(store.integrationId) : undefined,
             username: store.username ? String(store.username) : undefined,
             label: String(store.label ?? ''),
-          }
+          })
           acc[getStoreIdentityKey(normalized)] = normalized
           return acc
         }, {} as Record<string, PauseStoreStatus>)

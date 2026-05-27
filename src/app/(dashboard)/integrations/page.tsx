@@ -406,6 +406,8 @@ function PlatformAccountsSection() {
   )
 }
 
+type LiveStatusMap = Record<string, StoreStatus>
+
 // ─── PauseStoreSection: tạm dừng / mở lại cửa hàng qua scraper ─────────────
 
 type StoreStatus = {
@@ -1323,6 +1325,7 @@ export default function IntegrationsPage() {
   })
   const [providerPage, setProviderPage] = useState(1)
   const providerListRef = useRef<HTMLDivElement | null>(null)
+  const [livePauseStatuses, setLivePauseStatuses] = useState<LiveStatusMap>({})
 
   // Inline name edit
   const [editingNameId, setEditingNameId]   = useState<string | null>(null)
@@ -1402,6 +1405,54 @@ export default function IntegrationsPage() {
     if (providerPage > providerTotalPages) setProviderPage(providerTotalPages)
   }, [providerPage, providerTotalPages])
 
+  useEffect(() => {
+    let cancelled = false
+
+    const loadLivePauseStatuses = async () => {
+      try {
+        const response = await fetch('/api/integrations/pause-store?live=1', { cache: 'no-store' })
+        if (!response.ok) return
+        const payload = await response.json() as { stores?: unknown[] }
+        if (cancelled || !Array.isArray(payload.stores)) return
+
+        const nextMap: LiveStatusMap = payload.stores.reduce<LiveStatusMap>((acc, entry) => {
+          const store = entry as Record<string, unknown>
+          const source = normalizeStoreSource(store.source)
+          if (!source) return acc
+
+          const normalized = canonicalizePauseStoreState({
+            integrationId: typeof store.integrationId === 'string' ? store.integrationId : undefined,
+            storeId: normalizeStoreId(store.storeId),
+            label: String(store.label ?? store.storeName ?? store.storeId ?? 'Unknown store'),
+            source,
+            username: typeof store.username === 'string' ? store.username : undefined,
+            loggedIn: Boolean(store.loggedIn),
+            paused: Boolean(store.paused),
+            pausedUntil: typeof store.pausedUntil === 'string' ? store.pausedUntil : null,
+            pauseMode: store.pauseMode === 'tomorrow' || store.pauseMode === 'until-reopen' ? store.pauseMode : null,
+            pauseLabel: typeof store.pauseLabel === 'string' ? store.pauseLabel : null,
+            isUnknown: Boolean(store.isUnknown),
+            platformStatus: typeof store.platformStatus === 'string' ? store.platformStatus : null,
+          })
+
+          acc[getStoreIdentityKey(normalized)] = normalized
+          return acc
+        }, {})
+
+        setLivePauseStatuses(nextMap)
+      } catch {
+        if (!cancelled) setLivePauseStatuses({})
+      }
+    }
+
+    void loadLivePauseStatuses()
+    const timer = window.setInterval(loadLivePauseStatuses, 30_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
+
   const handleProviderPageChange = (nextPage: number) => {
     const boundedPage = Math.min(Math.max(nextPage, 1), providerTotalPages)
     if (boundedPage === providerPage) return
@@ -1465,6 +1516,15 @@ export default function IntegrationsPage() {
       (displayedSyncStatus === 'syncing' || displayedSyncStatus === 'starting' || displayedSyncStatus === 'logging-in') ? 'badge-blue' : 'badge-gray'
     const displayedSyncTime = toValidDate(displayedSyncAt)
     const isScraperFresh = displayedSyncTime ? (Date.now() - displayedSyncTime.getTime()) <= 5 * 60 * 1000 : false
+    const liveStatus = isExternalScraperManaged
+      ? livePauseStatuses[getStoreIdentityKey({
+          source: integ.provider === 'be' ? 'be' : 'grab',
+          integrationId: integ._id,
+          storeId: normalizeStoreId(integ.externalStoreId),
+          username: integ.loginUsername,
+          label: integ.externalStoreName || integ.externalStoreId || integ.loginUsername || 'Unknown store',
+        })]
+      : undefined
 
     const syncLabel = isPendingSetup ? 'Chờ cấu hình' :
       isExternalScraperManaged
@@ -1479,6 +1539,24 @@ export default function IntegrationsPage() {
 
     const sessionBadge = integ.loginMode === 'auto' ? (() => {
       if (isExternalScraperManaged) {
+        if (liveStatus) {
+          const liveTone = !liveStatus.loggedIn
+            ? 'offline'
+            : liveStatus.isUnknown
+              ? 'unknown'
+              : liveStatus.paused
+                ? 'paused'
+                : 'active'
+          const liveTitle = !liveStatus.loggedIn
+            ? 'Offline'
+            : liveStatus.isUnknown
+              ? (liveStatus.platformStatus ?? 'Unknown')
+              : liveStatus.paused
+                ? (liveStatus.pauseLabel ?? liveStatus.platformStatus ?? 'Paused')
+                : (liveStatus.platformStatus ?? 'Active')
+          return <PlatformStatusIcon status={liveTone} title={liveTitle} />
+        }
+
         if (displayedSyncStatus === 'success' && isScraperFresh) {
           return <PlatformStatusIcon status="active" title={displayedSyncAt ? `Active · ${formatDateNative(displayedSyncAt, 'datetime')}` : 'Active'} />
         }

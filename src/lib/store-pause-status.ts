@@ -39,10 +39,11 @@ function normalizePlatformStatusText(value: unknown) {
 function classifyPlatformStatus(source: PauseStoreState['source'], platformStatus: string | null) {
   if (!platformStatus) return null
 
-  if (source === 'be') {
+  if (source === 'be' || source === 'grab') {
     if (/(^|_)(OPEN|ACTIVE|ONLINE|AVAILABLE|RESUME|RESUMED)(_|$)/.test(platformStatus)) return 'active'
-    if (/(^|_)(PAUSE|PAUSED|CLOSE|CLOSED|STOP|STOPPED|SUSPEND|SUSPENDED|DISABLE|DISABLED)(_|$)/.test(platformStatus)) return 'paused'
-    if (/(^|_)(UNKNOWN|PENDING|CHECKING|UNAVAILABLE)(_|$)/.test(platformStatus)) return 'unknown'
+    if (source === 'grab' && /(^|_)(NORMAL|INFERRED_OPEN|STORE_PAGE_LOADED)(_|$)/.test(platformStatus)) return 'active'
+    if (/(^|_)(PAUSE|PAUSED|CLOSE|CLOSED|STOP|STOPPED|BUSY|DISABLE|DISABLED)(_|$)/.test(platformStatus)) return 'paused'
+    if (/(^|_)(UNKNOWN|PENDING|CHECKING|UNAVAILABLE|NO_BUTTON|CANDIDATE_OPEN|SUSPEND|SUSPENDED|INACTIVE)(_|$)/.test(platformStatus)) return 'unknown'
   }
 
   return null
