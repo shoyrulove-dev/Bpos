@@ -8,11 +8,11 @@ async function fetchJSON(url: string, opts?: RequestInit) {
   return res.json()
 }
 
-export function useHubs(params?: { q?: string; brandId?: string }) {
+export function useHubs(params?: { q?: string; brandId?: string }, options?: { enabled?: boolean }) {
   const sp = new URLSearchParams()
   if (params?.q) sp.set('q', params.q)
   if (params?.brandId) sp.set('brandId', params.brandId)
-  return useQuery({ queryKey: ['hubs', params], queryFn: () => fetchJSON(`${BASE}?${sp}`) })
+  return useQuery({ queryKey: ['hubs', params], queryFn: () => fetchJSON(`${BASE}?${sp}`), enabled: options?.enabled ?? true })
 }
 
 export function useCreateHub() {

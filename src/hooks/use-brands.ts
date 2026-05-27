@@ -11,12 +11,12 @@ async function fetchJSON(url: string, opts?: RequestInit) {
   return res.json()
 }
 
-export function useBrands(params?: { q?: string; type?: string }) {
+export function useBrands(params?: { q?: string; type?: string }, options?: { enabled?: boolean }) {
   const sp = new URLSearchParams()
   if (params?.q) sp.set('q', params.q)
   if (params?.type) sp.set('type', params.type)
   const url = `${BASE}?${sp}`
-  return useQuery({ queryKey: ['brands', params], queryFn: () => fetchJSON(url) })
+  return useQuery({ queryKey: ['brands', params], queryFn: () => fetchJSON(url), enabled: options?.enabled ?? true })
 }
 
 export function useCreateBrand() {

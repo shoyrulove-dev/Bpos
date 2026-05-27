@@ -88,11 +88,11 @@ export default function ChannelsPage() {
   const dq = useDebounce(search)
   const { data: rawChannels = [], isLoading } = useChannels({ q: dq })
   const channels = rawChannels as Channel[]
-  const { data: rawBrands = [] } = useBrands()
+  const { data: rawBrands = [] } = useBrands(undefined, { enabled: showForm })
   const brands = rawBrands as { _id: string; name: string }[]
-  const { data: rawHubs = [] } = useHubs()
+  const { data: rawHubs = [] } = useHubs(undefined, { enabled: showForm })
   const hubs = rawHubs as { _id: string; name: string; brandId: string }[]
-  const { data: rawIntegrations = [] } = useIntegrations(undefined)
+  const { data: rawIntegrations = [] } = useIntegrations({ summary: true })
   const integrations = rawIntegrations as { _id: string; provider: string; externalStoreName?: string; externalStoreId?: string; loginUsername?: string; brandId: string | { _id: string; name: string } }[]
 
   const createMutation = useCreateChannel()

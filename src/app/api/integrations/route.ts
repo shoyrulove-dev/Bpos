@@ -61,15 +61,24 @@ export async function GET(req: NextRequest) {
   await connectDB()
   const { searchParams } = new URL(req.url)
   const brandId = searchParams.get('brandId') || ''
+  const summaryOnly = searchParams.get('summary') === '1'
   const filter: Record<string, unknown> = {}
   if (brandId) filter.brandId = brandId
-  const integrations = await IntegrationModel.find(filter)
-    .populate('brandId', 'name')
-    .populate('hubId', 'name')
-    .populate('createdBy', 'name')
-    .sort({ createdAt: -1 }).lean()
+  const baseQuery = IntegrationModel.find(filter).sort({ createdAt: -1 })
+  const integrations = summaryOnly
+    ? await baseQuery
+      .select('provider brandId hubId externalStoreId externalStoreName loginMode loginUsername isActive syncStatus lastSyncAt createdAt updatedAt')
+      .lean()
+    : await baseQuery
+      .populate('brandId', 'name')
+      .populate('hubId', 'name')
+      .populate('createdBy', 'name')
+      .lean()
 
   const typedIntegrations = integrations as Array<Record<string, unknown>>
+  if (summaryOnly) {
+    return ok(typedIntegrations)
+  }
   const externalTargets = typedIntegrations.filter((integration) =>
     usesExternalOrderSync({
       provider: String(integration.provider ?? ''),
