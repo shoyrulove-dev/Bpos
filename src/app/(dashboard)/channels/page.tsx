@@ -7,7 +7,7 @@ import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
 import { useIntegrations } from '@/hooks/use-data'
 import { useDebounce } from '@/hooks/use-debounce'
-import { canonicalizePauseStoreState, getStoreIdentityKey, normalizeStoreId, normalizeStoreSource } from '@/lib/store-pause-status'
+import { canonicalizePauseStoreState, getStoreIdentityKey, normalizeStoreId, normalizeStoreSource, resolvePauseStoreState } from '@/lib/store-pause-status'
 import { cn } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { PlatformStatusIcon } from '@/components/ui/PlatformStatusIcon'
@@ -35,11 +35,11 @@ type PauseStoreStatus = {
   storeId?: string
   paused: boolean
   loggedIn: boolean
+  label?: string
   isUnknown?: boolean
   platformStatus?: string | null
   pauseLabel?: string | null
   username?: string
-  label?: string
 }
 
 function PaginationControls({
@@ -346,13 +346,13 @@ export default function ChannelsPage() {
                 i.provider === channel.source &&
                 i.externalStoreId && i.externalStoreId === (channel as unknown as Record<string, unknown>).externalStoreId
               )
-              const liveStatus = pauseStatuses[getStoreIdentityKey({
+              const liveStatus = resolvePauseStoreState(pauseStatuses, {
                 source: normalizeStoreSource(channel.source) ?? 'grab',
                 integrationId: integ?._id,
                 storeId: normalizeStoreId((channel as unknown as Record<string, unknown>).externalStoreId),
                 username: integ?.loginUsername,
                 label: channel.name,
-              })]
+              })
               const statusTone = liveStatus
                 ? (!liveStatus.loggedIn ? 'offline' : liveStatus.isUnknown ? 'unknown' : liveStatus.paused ? 'paused' : 'active')
                 : channel.scraperLastSeen && !channel.scraperLoggedIn

@@ -534,8 +534,8 @@ export default function SettingsPage() {
 
         <label className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
           <div>
-            <p className="text-sm font-medium text-gray-900">Tá»± Ä‘á»™ng in tem Ä‘Æ¡n má»›i</p>
-            <p className="text-xs text-gray-500">Chá»‰ in khi kÃªnh Ä‘ang báº­t in tem vÃ  store Ä‘ang active.</p>
+            <p className="text-sm font-medium text-gray-900">Tự động in tem đơn mới</p>
+            <p className="text-xs text-gray-500">Chỉ in khi kênh đang bật in tem và store đang active.</p>
           </div>
           <input
             type="checkbox"
