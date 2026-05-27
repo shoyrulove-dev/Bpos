@@ -547,12 +547,15 @@ function getGrabDetailItems(order: Order) {
       ?? record?.specialInstruction
       ?? record?.specialInstructions
     )
+    const dedupedRawItemNote = mergedAddonGroups.length === 0
+      ? rawItemNote
+      : extractFreeformNote(rawItemNote, mergedAddonGroups)
 
     const fallbackAddonNote = mergedAddonGroups.length === 0
       ? authoritativeGrabNote ?? storedItem?.note
       : extractFreeformNote(storedItem?.note, mergedAddonGroups)
 
-    const resolvedNote = cleanOptionalText(rawItemNote ?? fallbackAddonNote)
+    const resolvedNote = cleanOptionalText(dedupedRawItemNote ?? fallbackAddonNote)
 
     return {
       name: itemName,
