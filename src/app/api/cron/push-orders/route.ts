@@ -5,7 +5,7 @@ import OrderModel from '@/models/Order'
 import SyncLogModel from '@/models/SyncLog'
 import { getAdapter } from '@/integrations/registry'
 import { decryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, getComparableDriverName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
+import { buildOrderUpsert, getComparableDriverName, getGrabScraperFinalizedStatus, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
 import { upsertCustomerProfile } from '@/lib/customer-upsert'
 import { getOrderContactProfileCandidates } from '@/lib/order-contact-profiles'
 import DriverModel from '@/models/Driver'
@@ -283,6 +283,7 @@ export async function POST(req: NextRequest) {
       const incomingPageType = String(rawPayloadIncoming?._pageType ?? '').trim()
       const incomingPageStage = String(rawPayloadIncoming?._pageStage ?? '').trim()
       const incomingFetchType = String(rawPayloadIncoming?._fetchType ?? '').trim()
+      const scraperFinalizedStatus = getGrabScraperFinalizedStatus(merged)
       const isFromActiveBucket = ['PreparingV2', 'Ready', 'Upcoming'].includes(incomingPageType)
         || ['preparing', 'ready', 'upcoming'].includes(incomingPageStage.toLowerCase())
         || ['in_progress', 'on_delivery', 'pending'].includes(incomingFetchType)
@@ -303,11 +304,12 @@ export async function POST(req: NextRequest) {
       }
       // Active bucket orders (PreparingV2/Ready/Upcoming) must NEVER be completed
       // — resolveNormalizedOrderStatus may still compute 'completed' from stale timestamps
-      if (isFromActiveBucket && merged.orderStatus === 'completed') {
+      if (isFromActiveBucket && merged.orderStatus === 'completed' && scraperFinalizedStatus !== 'completed') {
         merged.orderStatus = 'waiting_pickup'
       }
-      // Completed orders don't revert to active unless pushed from a live active bucket
-      if (!isIncomingBeCancelledCorrection && !isFromActiveBucket && existingStatus === 'completed' && (merged.orderStatus === 'waiting_pickup' || merged.orderStatus === 'waiting_confirm' || merged.orderStatus === 'delivering')) {
+      // Completed orders don't revert to active unless pushed from a live active bucket,
+      // except when scraper had already confirmed the finalized bucket.
+      if (!isIncomingBeCancelledCorrection && (!isFromActiveBucket || scraperFinalizedStatus === 'completed') && existingStatus === 'completed' && (merged.orderStatus === 'waiting_pickup' || merged.orderStatus === 'waiting_confirm' || merged.orderStatus === 'delivering')) {
         merged.orderStatus = 'completed'
       }
       // Backfill source: never UPGRADE an active order to completed

@@ -474,6 +474,24 @@ function parseDateValue(value: unknown) {
   return date
 }
 
+function getGrabScraperFinalizedStatusFromRaw(rawPayload: Record<string, unknown>) {
+  const explicitStatus = String(rawPayload._scraperFinalizedStatus ?? '').trim().toLowerCase()
+  if (explicitStatus === 'completed' || explicitStatus === 'cancelled') return explicitStatus
+
+  const finalizedStage = String(rawPayload._scraperFinalizedStage ?? '').trim().toLowerCase()
+  if (finalizedStage === 'cancelled') return 'cancelled' as const
+  if (finalizedStage === 'completed') return 'completed' as const
+
+  return null
+}
+
+export function getGrabScraperFinalizedStatus(normalized: Pick<NormalizedOrder, 'source' | 'rawPayload'>) {
+  if (normalized.source !== 'grab') return null
+  const rawPayload = getRecord(normalized.rawPayload)
+  if (!rawPayload) return null
+  return getGrabScraperFinalizedStatusFromRaw(rawPayload)
+}
+
 function extractNestedTimes(rawPayload: Record<string, unknown>) {
   const times = rawPayload.times && typeof rawPayload.times === 'object' && !Array.isArray(rawPayload.times)
     ? rawPayload.times as Record<string, unknown>
@@ -646,6 +664,7 @@ export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
   const nestedTimes = extractNestedTimes(rawPayload)
   const pageStage = String(rawPayload._pageStage ?? '').trim().toLowerCase()
   const pageType = String(rawPayload._pageType ?? rawPayload.pageType ?? '').trim().toLowerCase()
+  const scraperFinalizedStatus = getGrabScraperFinalizedStatusFromRaw(rawPayload)
   const isGrabHistoryBucket = normalized.source === 'grab' && (
     pageStage === 'history'
     || pageStage === 'completed'
@@ -660,8 +679,13 @@ export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
     || parseDateValue(rawPayload.canceledAt)
     || parseDateValue(rawPayload.cancelled_at)
     || rawPayload.cancelCode
+    || scraperFinalizedStatus === 'cancelled'
   ) {
     return 'cancelled' as const
+  }
+
+  if (scraperFinalizedStatus === 'completed') {
+    return 'completed' as const
   }
 
   // Grab history/completed buckets represent finalized orders even when

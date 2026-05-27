@@ -8,7 +8,7 @@ import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/aut
 import { requestAutomationLogin } from '@/lib/automation-login'
 import { upsertCustomerProfile } from '@/lib/customer-upsert'
 import { decrypt, decryptJSON, encryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, getComparableDriverName, hasMeaningfulDriverName, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, resolveNormalizedOrderStatus, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
+import { buildOrderUpsert, getComparableDriverName, getGrabScraperFinalizedStatus, hasMeaningfulDriverName, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, resolveNormalizedOrderStatus, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
 import { getOrderContactProfileCandidates } from '@/lib/order-contact-profiles'
 import DriverModel from '@/models/Driver'
 import { buildSessionStoreId, mergeApiOrdersWithRecentHistory, mergeOrdersByExternalOrderId, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
@@ -290,6 +290,7 @@ export async function GET(req: NextRequest) {
           const incomingPageType = String(rawPayloadIncoming?._pageType ?? '').trim()
           const incomingPageStage = String(rawPayloadIncoming?._pageStage ?? '').trim()
           const incomingFetchType = String(rawPayloadIncoming?._fetchType ?? '').trim()
+          const scraperFinalizedStatus = getGrabScraperFinalizedStatus(mergedNormalized)
           const isFromActiveBucket = ['PreparingV2', 'Ready', 'Upcoming'].includes(incomingPageType)
             || ['preparing', 'ready', 'upcoming'].includes(incomingPageStage.toLowerCase())
             || ['in_progress', 'on_delivery', 'pending'].includes(incomingFetchType)
@@ -309,12 +310,12 @@ export async function GET(req: NextRequest) {
           }
 
           // Active bucket orders should not be forced to completed by stale timestamps.
-          if (isFromActiveBucket && mergedNormalized.orderStatus === 'completed') {
+          if (isFromActiveBucket && mergedNormalized.orderStatus === 'completed' && scraperFinalizedStatus !== 'completed') {
             mergedNormalized.orderStatus = 'waiting_pickup'
           }
 
           // Completed orders should not revert back to active unless we truly see active bucket data.
-          if (!isIncomingBeCancelledCorrection && !isFromActiveBucket && existingDbStatus === 'completed' && ACTIVE_ORDER_STATUSES.has(mergedNormalized.orderStatus)) {
+          if (!isIncomingBeCancelledCorrection && (!isFromActiveBucket || scraperFinalizedStatus === 'completed') && existingDbStatus === 'completed' && ACTIVE_ORDER_STATUSES.has(mergedNormalized.orderStatus)) {
             mergedNormalized.orderStatus = 'completed'
           }
 
