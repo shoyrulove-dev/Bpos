@@ -68,11 +68,11 @@ export async function GET(req: NextRequest) {
   const baseQuery = IntegrationModel.find(filter).sort({ createdAt: -1 })
   const integrations = summaryOnly
     ? await baseQuery
-      .select('provider brandId hubId externalStoreId externalStoreName loginMode loginUsername isActive syncStatus lastSyncAt createdAt updatedAt')
+      .select('provider brandId hubId externalStoreId externalStoreName loginMode loginUsername isActive syncStatus lastSyncAt scraperPaused scraperPausedUntil scraperLoggedIn scraperLastSeen scraperPauseMode scraperPauseLabel scraperIsUnknown scraperPlatformStatus createdAt updatedAt')
       .lean()
     : listOnly
       ? await baseQuery
-        .select('provider brandId hubId externalStoreId externalStoreName syncStatus lastSyncAt isActive loginMode sessionRefreshMode loginUsername sessionStatus sessionCapturedAt sessionExpiresAt sessionError automationRunning createdAt updatedAt')
+        .select('provider brandId hubId externalStoreId externalStoreName syncStatus lastSyncAt isActive loginMode sessionRefreshMode loginUsername sessionStatus sessionCapturedAt sessionExpiresAt sessionError automationRunning scraperPaused scraperPausedUntil scraperLoggedIn scraperLastSeen scraperPauseMode scraperPauseLabel scraperIsUnknown scraperPlatformStatus createdAt updatedAt')
         .populate('brandId', 'name')
         .populate('hubId', 'name')
         .lean()

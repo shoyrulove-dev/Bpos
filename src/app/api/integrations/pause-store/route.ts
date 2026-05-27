@@ -3,13 +3,14 @@ import { requireAdmin } from '@/lib/api-helpers'
 import { connectDB } from '@/lib/db'
 import {
   canonicalizePauseStoreState,
-  getStoreIdentityKey,
+  getStoreIdentityKeys,
   normalizeStoreId,
   normalizeStoreSource,
   type PauseStoreState,
 } from '@/lib/store-pause-status'
 
 const SCRAPER_URL = process.env.SCRAPER_CONTROL_URL ?? 'http://127.0.0.1:3845'
+const SCRAPER_STATUS_STALE_MS = 5 * 60 * 1000
 
 function normalizePauseDuration(source: unknown, duration: unknown) {
   if (source === 'be') {
@@ -97,17 +98,22 @@ export async function GET(req: NextRequest) {
       const { default: Integration } = await import('@/models/Integration')
       const integrations = await Integration
         .find({ provider: { $in: ['grab', 'be'] }, isActive: true })
-        .select('_id provider externalStoreId externalStoreName loginUsername')
+        .select('_id provider externalStoreId externalStoreName loginUsername scraperPaused scraperPausedUntil scraperLoggedIn scraperLastSeen scraperPauseMode scraperPauseLabel scraperIsUnknown scraperPlatformStatus')
         .lean()
-        .exec() as unknown as Array<{ _id: unknown; provider: string; externalStoreId?: string; externalStoreName?: string; loginUsername?: string }>
+        .exec() as unknown as Array<{ _id: unknown; provider: string; externalStoreId?: string; externalStoreName?: string; loginUsername?: string; scraperPaused?: boolean; scraperPausedUntil?: Date | string | null; scraperLoggedIn?: boolean; scraperLastSeen?: Date | string | null; scraperPauseMode?: 'tomorrow' | 'until-reopen' | null; scraperPauseLabel?: string | null; scraperIsUnknown?: boolean; scraperPlatformStatus?: string | null }>
       const stores = integrations.map(integ => ({
         integrationId: String(integ._id),
         source: integ.provider === 'be' ? 'be' : 'grab',
         label: integ.externalStoreName || integ.externalStoreId || 'Unknown store',
         storeId: integ.externalStoreId,
-        paused: false,
-        loggedIn: false,
+        paused: Boolean(integ.scraperPaused),
+        loggedIn: Boolean(integ.scraperLoggedIn && integ.scraperLastSeen && (Date.now() - new Date(integ.scraperLastSeen).getTime()) <= SCRAPER_STATUS_STALE_MS),
+        pausedUntil: integ.scraperPausedUntil ? new Date(integ.scraperPausedUntil).toISOString() : null,
+        pauseMode: integ.scraperPauseMode ?? null,
+        pauseLabel: integ.scraperPauseLabel ?? null,
         username: integ.loginUsername || undefined,
+        isUnknown: Boolean(integ.scraperIsUnknown),
+        platformStatus: integ.scraperPlatformStatus ?? null,
       }))
       return NextResponse.json({ ok: true, stores })
     } catch (err) {
@@ -153,15 +159,17 @@ export async function GET(req: NextRequest) {
       const { default: Integration } = await import('@/models/Integration')
       return Integration
         .find({ provider: { $in: ['grab', 'be'] }, isActive: true })
-        .select('_id provider externalStoreId externalStoreName loginUsername')
+        .select('_id provider externalStoreId externalStoreName loginUsername scraperPaused scraperPausedUntil scraperLoggedIn scraperLastSeen scraperPauseMode scraperPauseLabel scraperIsUnknown scraperPlatformStatus')
         .lean()
         .exec()
     })(),
   ])
 
   let scraperStores: PauseStoreState[] = []
+  let scraperVersion: string | null = null
   if (scraperResult.status === 'fulfilled' && scraperResult.value) {
     const data = scraperResult.value
+    scraperVersion = typeof data?.version === 'string' ? data.version : null
     if (data && data.ok !== false && Array.isArray(data.stores)) {
       scraperStores = data.stores
         .map((store: unknown) => toPauseStoreRow(store))
@@ -170,22 +178,28 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const integrations = dbResult.status === 'fulfilled' ? dbResult.value as unknown as Array<{ _id: { toString(): string }; provider: string; externalStoreId?: string; externalStoreName?: string; loginUsername?: string }> : []
+    const integrations = dbResult.status === 'fulfilled' ? dbResult.value as unknown as Array<{ _id: { toString(): string }; provider: string; externalStoreId?: string; externalStoreName?: string; loginUsername?: string; scraperPaused?: boolean; scraperPausedUntil?: Date | string | null; scraperLoggedIn?: boolean; scraperLastSeen?: Date | string | null; scraperPauseMode?: 'tomorrow' | 'until-reopen' | null; scraperPauseLabel?: string | null; scraperIsUnknown?: boolean; scraperPlatformStatus?: string | null }> : []
 
     const dbStores: PauseStoreState[] = integrations.map((integ) => canonicalizePauseStoreState({
       integrationId: integ._id.toString(),
       source: integ.provider === 'be' ? 'be' : 'grab',
       label: integ.externalStoreName || integ.externalStoreId || 'Unknown store',
       storeId: integ.externalStoreId,
-      paused: false,
-      loggedIn: false,
+      paused: Boolean(integ.scraperPaused),
+      loggedIn: Boolean(integ.scraperLoggedIn && integ.scraperLastSeen && (Date.now() - new Date(integ.scraperLastSeen).getTime()) <= SCRAPER_STATUS_STALE_MS),
+      pausedUntil: integ.scraperPausedUntil ? new Date(integ.scraperPausedUntil).toISOString() : null,
+      pauseMode: integ.scraperPauseMode ?? null,
+      pauseLabel: integ.scraperPauseLabel ?? null,
       username: integ.loginUsername || undefined,
+      isUnknown: Boolean(integ.scraperIsUnknown),
+      platformStatus: integ.scraperPlatformStatus ?? null,
     }))
 
     if (scraperStores.length === 0) {
       return NextResponse.json({
         ok: true,
         scraperOnline: false,
+        version: scraperVersion,
         stores: dbStores,
         message: 'Không lấy được trạng thái từ scraper, đang hiển thị danh sách từ DB',
       })
@@ -194,29 +208,31 @@ export async function GET(req: NextRequest) {
     const mergedByKey = new Map<string, PauseStoreState>()
 
     for (const store of dbStores) {
-      mergedByKey.set(getStoreIdentityKey(store), store)
+      for (const key of getStoreIdentityKeys(store)) {
+        mergedByKey.set(key, store)
+      }
     }
 
     for (const scraperStore of scraperStores) {
-      const key = getStoreIdentityKey(scraperStore)
-      const existing = mergedByKey.get(key)
-      if (existing) {
-        mergedByKey.set(key, canonicalizePauseStoreState({
+      const keys = getStoreIdentityKeys(scraperStore)
+      const existing = keys.map((key) => mergedByKey.get(key)).find(Boolean)
+      const mergedStore = existing ? canonicalizePauseStoreState({
           ...existing,
           ...scraperStore,
           label: scraperStore.label || existing.label,
           storeId: scraperStore.storeId || existing.storeId,
           username: scraperStore.username || existing.username,
-        }))
-      } else {
-        mergedByKey.set(key, scraperStore)
+        }) : scraperStore
+      for (const key of keys) {
+        mergedByKey.set(key, mergedStore)
       }
     }
 
-    const stores = Array.from(mergedByKey.values())
+    const stores = Array.from(new Map(Array.from(mergedByKey.values()).map((store) => [store.integrationId || `${store.source}:${store.storeId || store.label}`, store])).values())
     return NextResponse.json({
       ok: true,
       scraperOnline: true,
+      version: scraperVersion,
       stores,
       message: `Merged ${scraperStores.length} trạng thái scraper với ${dbStores.length} cửa hàng DB`,
     })
@@ -225,6 +241,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         ok: true,
         scraperOnline: true,
+        version: scraperVersion,
         stores: scraperStores,
         message: 'Không tải được DB, đang hiển thị trạng thái từ scraper',
       })
@@ -233,6 +250,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: false,
       scraperOnline: false,
+      version: scraperVersion,
       stores: [],
       message: 'Scraper offline và không tải được danh sách từ DB',
     })

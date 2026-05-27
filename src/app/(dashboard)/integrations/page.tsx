@@ -11,7 +11,7 @@ import { useIntegrations, useCreateIntegration, useDeleteIntegration, useUpdateI
 import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
 import { getDefaultSessionRefreshMode } from '@/lib/session-refresh-mode'
-import { canonicalizePauseStoreState, getStoreIdentityKey, normalizeStoreId, normalizeStoreSource } from '@/lib/store-pause-status'
+import { canonicalizePauseStoreState, getStoreIdentityKeys, normalizeStoreId, normalizeStoreSource, resolvePauseStoreState } from '@/lib/store-pause-status'
 import { cn, formatDateNative, toValidDate } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { PlatformStatusIcon } from '@/components/ui/PlatformStatusIcon'
@@ -67,6 +67,14 @@ type Integ = {
   scraperLastSyncAt?: string
   scraperSyncSource?: string
   scraperSyncMessage?: string
+  scraperPaused?: boolean
+  scraperPausedUntil?: string | null
+  scraperLoggedIn?: boolean
+  scraperLastSeen?: string
+  scraperPauseMode?: 'tomorrow' | 'until-reopen' | null
+  scraperPauseLabel?: string | null
+  scraperIsUnknown?: boolean
+  scraperPlatformStatus?: string | null
   isActive?: boolean
   loginMode?: 'api' | 'auto'
   sessionRefreshMode?: 'auto' | 'browser'
@@ -449,7 +457,7 @@ function PauseStoreSection() {
   const [scraperVersion, setScraperVersion] = useState<string | null>(null)
   const [pausePage, setPausePage] = useState(1)
 
-  const getKey = (s: StoreStatus) => getStoreIdentityKey(s)
+  const getKey = (s: StoreStatus) => getStoreIdentityKeys(s)[0] ?? `${s.source}:${s.storeId ?? s.label}`
 
   const normalizeStores = (input: unknown): StoreStatus[] => {
     if (!Array.isArray(input)) return []
@@ -480,36 +488,16 @@ function PauseStoreSection() {
   const load = async (live = false) => {
     setLoading(true)
     try {
-      // Gọi scraper trực tiếp từ browser (scraper đã có CORS + Private-Network header)
-      // Gọi DB API riêng để lấy danh sách integration đã đăng ký
-      const scraperPath = live ? '/store-status?live=1' : '/store-status'
-      const [scraperResult, dbResult] = await Promise.allSettled([
-        fetch(`${SCRAPER_DIRECT}${scraperPath}`, {
-          signal: AbortSignal.timeout(live ? 30_000 : 5_000),
-        }).then(r => r.json()).catch(() => null),
-        fetch(`${PAUSE_STORE_API}?dbonly=1`, {
-          signal: AbortSignal.timeout(8_000),
-        }).then(r => r.json()).catch(() => null),
-      ])
-
-      const scraperData = (scraperResult.status === 'fulfilled' ? scraperResult.value : null) as { ok?: boolean; stores?: unknown[]; version?: string } | null
-      const dbData = (dbResult.status === 'fulfilled' ? dbResult.value : null) as { ok?: boolean; stores?: unknown[] } | null
-
-      const scraperOnlineNow = Boolean(scraperData && scraperData.ok !== false)
+      const response = await fetch(`${PAUSE_STORE_API}${live ? '?live=1' : ''}`, {
+        signal: AbortSignal.timeout(live ? 30_000 : 8_000),
+        cache: 'no-store',
+      })
+      const payload = await response.json().catch(() => null) as { ok?: boolean; stores?: unknown[]; scraperOnline?: boolean; version?: string } | null
+      const scraperOnlineNow = Boolean(payload?.scraperOnline)
       setScraperOnline(scraperOnlineNow)
-      if (scraperData?.version) setScraperVersion(String(scraperData.version))
+      if (payload?.version) setScraperVersion(String(payload.version))
 
-      // Merge: DB stores là base (luôn hiện), scraper overlay status thực tế
-      const dbStores = normalizeStores(dbData?.stores)
-      const scraperStores = normalizeStores(scraperData?.stores)
-      const mergedMap = new Map<string, StoreStatus>()
-      for (const s of dbStores) mergedMap.set(getKey(s), s)
-      for (const s of scraperStores) {
-        const key = getKey(s)
-        const existing = mergedMap.get(key)
-        mergedMap.set(key, existing ? canonicalizePauseStoreState({ ...existing, ...s, label: s.label || existing.label }) : s)
-      }
-      const merged = Array.from(mergedMap.values())
+      const merged = normalizeStores(payload?.stores)
       if (merged.length > 0 || scraperOnlineNow) {
         setStores(merged)
         setSelected(new Set())
@@ -538,10 +526,9 @@ function PauseStoreSection() {
   useEffect(() => {
     const checkVersion = async () => {
       try {
-        const r = await fetch(`${SCRAPER_DIRECT}/version`, { signal: AbortSignal.timeout(3_000) })
+        const r = await fetch(`${PAUSE_STORE_API}?live=1`, { signal: AbortSignal.timeout(8_000), cache: 'no-store' })
         const d = await r.json().catch(() => null)
-        if (d?.version) setScraperVersion(String(d.version))
-        setScraperOnline(true)
+        if (typeof d?.scraperOnline === 'boolean') setScraperOnline(Boolean(d.scraperOnline))
       } catch {
         // version endpoint optional — đồng bộ từ load() là chính
       }
@@ -1436,7 +1423,9 @@ export default function IntegrationsPage() {
             platformStatus: typeof store.platformStatus === 'string' ? store.platformStatus : null,
           })
 
-          acc[getStoreIdentityKey(normalized)] = normalized
+          for (const key of getStoreIdentityKeys(normalized)) {
+            acc[key] = normalized
+          }
           return acc
         }, {})
 
@@ -1518,14 +1507,31 @@ export default function IntegrationsPage() {
     const displayedSyncTime = toValidDate(displayedSyncAt)
     const isScraperFresh = displayedSyncTime ? (Date.now() - displayedSyncTime.getTime()) <= 5 * 60 * 1000 : false
     const liveStatus = isExternalScraperManaged
-      ? livePauseStatuses[getStoreIdentityKey({
+      ? resolvePauseStoreState(livePauseStatuses, {
           source: integ.provider === 'be' ? 'be' : 'grab',
           integrationId: integ._id,
           storeId: normalizeStoreId(integ.externalStoreId),
           username: integ.loginUsername,
           label: integ.externalStoreName || integ.externalStoreId || integ.loginUsername || 'Unknown store',
-        })]
+        })
       : undefined
+    const persistedScraperStatus = isExternalScraperManaged
+      ? canonicalizePauseStoreState({
+          integrationId: integ._id,
+          source: integ.provider === 'be' ? 'be' : 'grab',
+          storeId: normalizeStoreId(integ.externalStoreId),
+          label: integ.externalStoreName || integ.externalStoreId || integ.loginUsername || 'Unknown store',
+          username: integ.loginUsername,
+          paused: Boolean(integ.scraperPaused),
+          loggedIn: Boolean(integ.scraperLoggedIn && integ.scraperLastSeen && (Date.now() - new Date(integ.scraperLastSeen).getTime()) <= 5 * 60 * 1000),
+          pausedUntil: integ.scraperPausedUntil ?? null,
+          pauseMode: integ.scraperPauseMode ?? null,
+          pauseLabel: integ.scraperPauseLabel ?? null,
+          isUnknown: Boolean(integ.scraperIsUnknown),
+          platformStatus: integ.scraperPlatformStatus ?? null,
+        })
+      : undefined
+    const effectiveStatus = liveStatus ?? persistedScraperStatus
 
     const syncLabel = isPendingSetup ? 'Chờ cấu hình' :
       isExternalScraperManaged
@@ -1540,21 +1546,21 @@ export default function IntegrationsPage() {
 
     const sessionBadge = integ.loginMode === 'auto' ? (() => {
       if (isExternalScraperManaged) {
-        if (liveStatus) {
-          const liveTone = !liveStatus.loggedIn
+        if (effectiveStatus) {
+          const liveTone = !effectiveStatus.loggedIn
             ? 'offline'
-            : liveStatus.isUnknown
+            : effectiveStatus.isUnknown
               ? 'unknown'
-              : liveStatus.paused
+              : effectiveStatus.paused
                 ? 'paused'
                 : 'active'
-          const liveTitle = !liveStatus.loggedIn
+          const liveTitle = !effectiveStatus.loggedIn
             ? 'Offline'
-            : liveStatus.isUnknown
-              ? (liveStatus.platformStatus ?? 'Unknown')
-              : liveStatus.paused
-                ? (liveStatus.pauseLabel ?? liveStatus.platformStatus ?? 'Paused')
-                : (liveStatus.platformStatus ?? 'Active')
+            : effectiveStatus.isUnknown
+              ? (effectiveStatus.platformStatus ?? 'Unknown')
+              : effectiveStatus.paused
+                ? (effectiveStatus.pauseLabel ?? effectiveStatus.platformStatus ?? 'Paused')
+                : (effectiveStatus.platformStatus ?? 'Active')
           return <PlatformStatusIcon status={liveTone} title={liveTitle} />
         }
 

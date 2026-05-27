@@ -34,6 +34,14 @@ export interface IIntegration extends Document {
   sessionFailureCount?: number
   /** Whether automation is currently running for this integration. */
   automationRunning: boolean
+  scraperPaused?: boolean
+  scraperPausedUntil?: Date | null
+  scraperLoggedIn?: boolean
+  scraperLastSeen?: Date
+  scraperPauseMode?: 'tomorrow' | 'until-reopen' | null
+  scraperPauseLabel?: string | null
+  scraperIsUnknown?: boolean
+  scraperPlatformStatus?: string | null
   // ──────────────────────────────────────────────────────────────────────────
 
   isActive: boolean
@@ -64,6 +72,14 @@ const IntegrationSchema = new Schema<IIntegration>({
   sessionError:      { type: String },
   sessionFailureCount: { type: Number, default: 0 },
   automationRunning: { type: Boolean, default: false },
+  scraperPaused:     { type: Boolean },
+  scraperPausedUntil:{ type: Date },
+  scraperLoggedIn:   { type: Boolean },
+  scraperLastSeen:   { type: Date },
+  scraperPauseMode:  { type: String, default: null },
+  scraperPauseLabel: { type: String, default: null },
+  scraperIsUnknown:  { type: Boolean, default: false },
+  scraperPlatformStatus: { type: String, default: null },
 
   isActive:          { type: Boolean, default: true },
   lastSyncAt:        { type: Date },
