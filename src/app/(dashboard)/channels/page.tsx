@@ -29,6 +29,73 @@ const SOURCES = [
 const PAGE_SIZE = 20
 const emptyForm = { name: '', source: 'grab', brandId: '', hubId: '', externalStoreId: '' }
 
+type SharedAccountGroup<T> = {
+  key: string
+  username: string | null
+  grouped: boolean
+  items: T[]
+}
+
+function buildSharedAccountGroups<T extends { username?: string | null }>(items: T[]) {
+  const counts = items.reduce<Record<string, number>>((acc, item) => {
+    const username = String(item.username ?? '').trim().toLowerCase()
+    if (!username) return acc
+    acc[username] = (acc[username] ?? 0) + 1
+    return acc
+  }, {})
+
+  const groups: SharedAccountGroup<T>[] = []
+  let currentGroup: SharedAccountGroup<T> | null = null
+
+  for (const item of items) {
+    const rawUsername = String(item.username ?? '').trim()
+    const normalizedUsername = rawUsername.toLowerCase()
+    const grouped = Boolean(normalizedUsername) && (counts[normalizedUsername] ?? 0) > 1
+    const key = grouped ? normalizedUsername : `single:${groups.length}:${rawUsername || 'none'}`
+
+    if (!currentGroup || currentGroup.key !== key) {
+      currentGroup = { key, username: rawUsername || null, grouped, items: [item] }
+      groups.push(currentGroup)
+    } else {
+      currentGroup.items.push(item)
+    }
+  }
+
+  return groups
+}
+
+function paginateGroupedItems<T>(groups: SharedAccountGroup<T>[], pageSize: number, page: number) {
+  if (groups.length === 0) {
+    return { totalPages: 1, pageGroups: [] as SharedAccountGroup<T>[], totalItems: 0 }
+  }
+
+  const pages: SharedAccountGroup<T>[][] = []
+  let currentPage: SharedAccountGroup<T>[] = []
+  let currentCount = 0
+
+  for (const group of groups) {
+    const groupSize = group.items.length
+    if (currentPage.length > 0 && currentCount + groupSize > pageSize) {
+      pages.push(currentPage)
+      currentPage = []
+      currentCount = 0
+    }
+    currentPage.push(group)
+    currentCount += groupSize
+  }
+
+  if (currentPage.length > 0) pages.push(currentPage)
+
+  const totalPages = Math.max(1, pages.length)
+  const boundedPage = Math.min(Math.max(page, 1), totalPages)
+
+  return {
+    totalPages,
+    pageGroups: pages[boundedPage - 1] ?? [],
+    totalItems: groups.reduce((sum, group) => sum + group.items.length, 0),
+  }
+}
+
 type PauseStoreStatus = {
   source: 'grab' | 'be'
   integrationId?: string
@@ -113,11 +180,33 @@ export default function ChannelsPage() {
     () => channels.filter((channel) => !tabSourceSet.has(channel.source)),
     [channels, tabSourceSet]
   )
-  const totalPages = Math.max(1, Math.ceil(activeChannels.length / PAGE_SIZE))
-  const paginatedChannels = useMemo(
-    () => activeChannels.slice((channelPage - 1) * PAGE_SIZE, channelPage * PAGE_SIZE),
-    [activeChannels, channelPage]
+  const activeChannelRows = useMemo(() => {
+    return activeChannels
+      .map((channel) => {
+        const integration = integrations.find((i) =>
+          i.provider === channel.source &&
+          i.externalStoreId &&
+          i.externalStoreId === (channel as unknown as Record<string, unknown>).externalStoreId
+        )
+        return {
+          channel,
+          username: integration?.loginUsername ?? null,
+          integration,
+        }
+      })
+      .sort((a, b) => {
+        const aUser = String(a.username ?? '').trim().toLowerCase()
+        const bUser = String(b.username ?? '').trim().toLowerCase()
+        if (aUser !== bUser) return aUser.localeCompare(bUser, 'vi')
+        return a.channel.name.localeCompare(b.channel.name, 'vi')
+      })
+  }, [activeChannels, integrations])
+  const channelGroups = useMemo(() => buildSharedAccountGroups(activeChannelRows), [activeChannelRows])
+  const channelPagination = useMemo(
+    () => paginateGroupedItems(channelGroups, PAGE_SIZE, channelPage),
+    [channelGroups, channelPage]
   )
+  const totalPages = channelPagination.totalPages
 
   const filteredHubs = hubs
 
@@ -337,22 +426,28 @@ export default function ChannelsPage() {
         <PaginationControls
           page={channelPage}
           totalPages={totalPages}
-          totalItems={activeChannels.length}
+          totalItems={channelPagination.totalItems}
           onPageChange={handlePageChange}
         />
 
-        {paginatedChannels.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            {paginatedChannels.map((channel: Channel) => {
-              const integ = integrations.find(i =>
-                i.provider === channel.source &&
-                i.externalStoreId && i.externalStoreId === (channel as unknown as Record<string, unknown>).externalStoreId
-              )
+        {channelPagination.totalItems > 0 ? (
+          <div className="space-y-4">
+            {channelPagination.pageGroups.map((group) => (
+              <div key={group.key} className={group.grouped ? 'overflow-hidden rounded-2xl border border-green-200 bg-green-50/40' : ''}>
+                {group.grouped && group.username && (
+                  <div className="flex items-center gap-1.5 border-b border-green-100 bg-green-50 px-4 py-2 text-xs font-bold text-green-800">
+                    <span>Tài khoản</span>
+                    <span>{group.username}</span>
+                    <span className="font-normal text-green-600">· {group.items.length} store chung 1 tài khoản</span>
+                  </div>
+                )}
+                <div className={cn('grid gap-4 md:grid-cols-2', group.grouped && 'p-3')}>
+                  {group.items.map(({ channel, integration: integ, username }) => {
               const liveStatus = resolvePauseStoreState(pauseStatuses, {
                 source: normalizeStoreSource(channel.source) ?? 'grab',
                 integrationId: integ?._id,
                 storeId: normalizeStoreId((channel as unknown as Record<string, unknown>).externalStoreId),
-                username: integ?.loginUsername,
+                username: username ?? undefined,
                 label: channel.name,
               })
               const statusTone = liveStatus
@@ -444,8 +539,11 @@ export default function ChannelsPage() {
                     </div>
                   </div>
                 </div>
-              )
-            })}
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div className="rounded-3xl border border-gray-200 bg-white py-12 text-center text-gray-400 shadow-sm">
@@ -457,7 +555,7 @@ export default function ChannelsPage() {
         <PaginationControls
           page={channelPage}
           totalPages={totalPages}
-          totalItems={activeChannels.length}
+          totalItems={channelPagination.totalItems}
           onPageChange={handlePageChange}
         />
       </div>

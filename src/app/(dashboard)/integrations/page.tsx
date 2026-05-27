@@ -663,7 +663,12 @@ function PauseStoreSection() {
     setSelected(checked ? new Set(tabStores.map(getKey)) : new Set())
   }
 
-  const tabStores = stores.filter(s => s.source === activeTab)
+  const tabStores = [...stores.filter(s => s.source === activeTab)].sort((a, b) => {
+    const aUser = String(a.username ?? '').trim().toLowerCase()
+    const bUser = String(b.username ?? '').trim().toLowerCase()
+    if (aUser !== bUser) return aUser.localeCompare(bUser, 'vi')
+    return String(a.label ?? '').localeCompare(String(b.label ?? ''), 'vi')
+  })
   const pauseTotalPages = Math.max(1, Math.ceil(tabStores.length / PAUSE_PAGE_SIZE))
   const paginatedTabStores = tabStores.slice((pausePage - 1) * PAUSE_PAGE_SIZE, pausePage * PAUSE_PAGE_SIZE)
   const grabCount = stores.filter(s => s.source === 'grab').length
