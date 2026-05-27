@@ -432,7 +432,7 @@ function getGrabDetailItems(order: Order) {
       ...(Array.isArray(record?.addons) ? record.addons : []),
     ]
     const quantity = Number(record?.quantity ?? 1)
-    const sellingPrice = Number(
+    const displayedUnitTotal = Number(
       fare?.priceFloat ??
       fare?.priceInMin ??
       parseAmount(fare?.priceDisplay) ??
@@ -442,18 +442,48 @@ function getGrabDetailItems(order: Order) {
       storedItem?.price ??
       0
     )
+    const addonUnitTotal = [...modifierGroups, ...legacyModifierGroups].reduce((sum, group) => {
+      const groupRecord = getRecord(group)
+      const modifiers = Array.isArray(groupRecord?.modifiers)
+        ? groupRecord.modifiers
+        : Array.isArray(groupRecord?.modifierItems)
+        ? groupRecord.modifierItems
+        : Array.isArray(groupRecord?.items)
+        ? groupRecord.items
+        : []
+
+      return sum + modifiers.reduce((groupSum, modifier) => {
+        const modifierRecord = getRecord(modifier)
+        const modifierQuantity = Number(modifierRecord?.quantity ?? 1)
+        const modifierPrice = parseAmount(
+          modifierRecord?.priceDisplay
+          ?? modifierRecord?.revampedPriceDisplay
+          ?? modifierRecord?.price
+        ) ?? 0
+        return groupSum + (modifierPrice * Math.max(modifierQuantity, 1))
+      }, 0)
+    }, 0)
     const itemDiscountTotal = discountInfo.reduce((sum, discount) => {
       const discountRecord = getRecord(discount)
       const amount = parseAmount(discountRecord?.itemDiscountPriceDisplay ?? discountRecord?.discountAmount ?? discountRecord?.amount)
       return sum + (typeof amount === 'number' ? amount : 0)
     }, 0)
+    const baseOriginalPrice = Number(
+      parseAmount(fare?.originalItemPriceDisplay) ??
+      parseAmount(fare?.beforeAdjustedPriceDisplay) ??
+      record?.originalPrice ??
+      record?.basePrice ??
+      storedItem?.price ??
+      0
+    )
+    const sellingPrice = Math.max(0, displayedUnitTotal - addonUnitTotal)
     const fallbackStrikePrice = storedItem
       ? Math.max(0, Number(storedItem.price ?? 0) - sellingPrice)
       : 0
     const strikePrice = quantity > 0
       ? Math.round(itemDiscountTotal / quantity) || fallbackStrikePrice
       : itemDiscountTotal || fallbackStrikePrice
-    const originalPrice = sellingPrice + strikePrice
+    const originalPrice = Math.max(baseOriginalPrice, sellingPrice + strikePrice)
     const itemName = cleanText(record?.name)
     const authoritativeGrabNote = raw
       ? extractGrabItemNote(raw as Record<string, unknown>, itemName, rawItems.indexOf(item))
