@@ -5,7 +5,7 @@ import OrderModel from '@/models/Order'
 import SyncLogModel from '@/models/SyncLog'
 import { getAdapter } from '@/integrations/registry'
 import { decryptJSON } from '@/lib/crypto'
-import { buildOrderUpsert, getComparableDriverName, hasGrabDefinitiveCompletionSignal, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
+import { buildOrderUpsert, getComparableDriverName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
 import { upsertCustomerProfile } from '@/lib/customer-upsert'
 import { getOrderContactProfileCandidates } from '@/lib/order-contact-profiles'
 import DriverModel from '@/models/Driver'
@@ -296,7 +296,7 @@ export async function POST(req: NextRequest) {
       }
       // Active bucket orders (PreparingV2/Ready/Upcoming) must NEVER be completed
       // — resolveNormalizedOrderStatus may still compute 'completed' from stale timestamps
-      if (isFromActiveBucket && merged.orderStatus === 'completed' && !hasGrabDefinitiveCompletionSignal(merged)) {
+      if (isFromActiveBucket && merged.orderStatus === 'completed') {
         merged.orderStatus = 'waiting_pickup'
       }
       // Completed orders don't revert to active unless pushed from a live active bucket
