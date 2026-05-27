@@ -86,8 +86,6 @@ function getComparableSnapshot(order: StoredGrabOrder) {
     discount: Number(order.discount ?? 0),
     total: Number(order.total ?? 0),
     platformFee: Number(order.platformFee ?? 0),
-    status: String(order.status ?? ''),
-    deliveredAt: order.deliveredAt ? toIsoString(order.deliveredAt) : '',
   })
 }
 
@@ -131,6 +129,17 @@ export async function runRecentGrabEnrich(options: RecentGrabEnrichOptions) {
     )
 
     const nextSet = (upsert.$set ?? {}) as Record<string, unknown>
+    // This enrich job is intentionally detail-only.
+    // Never regress finalized or active status based on stale raw payload snapshots.
+    nextSet.status = String(order.status ?? '')
+    if (order.deliveredAt) nextSet.deliveredAt = order.deliveredAt
+    else delete nextSet.deliveredAt
+    if (upsert.$unset && typeof upsert.$unset === 'object') {
+      delete (upsert.$unset as Record<string, unknown>).deliveredAt
+      delete (upsert.$unset as Record<string, unknown>).cancelledAt
+      delete (upsert.$unset as Record<string, unknown>).cancelReason
+    }
+
     const beforeSnapshot = getComparableSnapshot(order)
     const afterSnapshot = JSON.stringify({
       items: nextSet.items ?? [],
@@ -138,8 +147,6 @@ export async function runRecentGrabEnrich(options: RecentGrabEnrichOptions) {
       discount: Number(nextSet.discount ?? 0),
       total: Number(nextSet.total ?? 0),
       platformFee: Number(nextSet.platformFee ?? 0),
-      status: String(nextSet.status ?? ''),
-      deliveredAt: nextSet.deliveredAt ? toIsoString(nextSet.deliveredAt as Date | string) : '',
     })
 
     if (beforeSnapshot === afterSnapshot) {
@@ -153,7 +160,6 @@ export async function runRecentGrabEnrich(options: RecentGrabEnrichOptions) {
     if (Number(order.discount ?? 0) !== Number(nextSet.discount ?? 0)) changed.push('discount')
     if (Number(order.total ?? 0) !== Number(nextSet.total ?? 0)) changed.push('total')
     if (Number(order.platformFee ?? 0) !== Number(nextSet.platformFee ?? 0)) changed.push('platformFee')
-    if (String(order.status ?? '') !== String(nextSet.status ?? '')) changed.push('status')
 
     await OrderModel.updateOne({ _id: order._id }, upsert)
     updated += 1
