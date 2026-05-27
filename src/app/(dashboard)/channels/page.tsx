@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Search, Edit, Trash2, Loader2, Link2, ChevronLeft, ChevronRight, Info, Printer, PrinterCheck, PowerOff } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Loader2, Link2, ChevronLeft, ChevronRight, Info, Printer, PrinterCheck, PowerOff, Ticket } from 'lucide-react'
 import { useChannels, useCreateChannel, useUpdateChannel, useDeleteChannel } from '@/hooks/use-orders-channels'
 import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
@@ -80,7 +80,7 @@ export default function ChannelsPage() {
   const [editId, setEditId]   = useState<string | null>(null)
   const [form, setForm]       = useState(emptyForm)
   const [saveError, setSaveError] = useState('')
-  const [togglingPrinterId, setTogglingPrinterId] = useState<string | null>(null)
+  const [togglingPrinterKey, setTogglingPrinterKey] = useState<string | null>(null)
   const [bulkPrinterMode, setBulkPrinterMode] = useState<'enable' | 'disable' | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
   const [pauseStatuses, setPauseStatuses] = useState<Record<string, PauseStoreStatus>>({})
@@ -222,20 +222,29 @@ export default function ChannelsPage() {
     if (confirm('Xóa kênh bán này?')) deleteMutation.mutate(id)
   }
 
-  const handleTogglePrinter = async (channel: Channel) => {
+  const handleTogglePrinter = async (channel: Channel, type: 'receipt' | 'label') => {
     try {
-      setTogglingPrinterId(channel._id)
+      const key = `${channel._id}:${type}`
+      setTogglingPrinterKey(key)
+      const field = type === 'receipt' ? 'printerReceiptEnabled' : 'printerLabelEnabled'
+      const current = type === 'receipt'
+        ? (channel.printerReceiptEnabled ?? channel.printerEnabled ?? true)
+        : (channel.printerLabelEnabled ?? channel.printerEnabled ?? true)
       await updateMutation.mutateAsync({
         id: channel._id,
-        printerEnabled: channel.printerEnabled !== false ? false : true,
+        [field]: !current,
       })
     } finally {
-      setTogglingPrinterId(null)
+      setTogglingPrinterKey(null)
     }
   }
 
   const handleBulkTogglePrinter = async (enabled: boolean) => {
-    const targets = channels.filter((channel) => (channel.printerEnabled !== false) !== enabled)
+    const targets = channels.filter((channel) => {
+      const receiptEnabled = channel.printerReceiptEnabled ?? channel.printerEnabled ?? true
+      const labelEnabled = channel.printerLabelEnabled ?? channel.printerEnabled ?? true
+      return receiptEnabled !== enabled || labelEnabled !== enabled
+    })
     if (!targets.length) return
 
     try {
@@ -243,6 +252,8 @@ export default function ChannelsPage() {
       await Promise.all(targets.map((channel) => updateMutation.mutateAsync({
         id: channel._id,
         printerEnabled: enabled,
+        printerReceiptEnabled: enabled,
+        printerLabelEnabled: enabled,
       })))
     } finally {
       setBulkPrinterMode(null)
@@ -369,8 +380,10 @@ export default function ChannelsPage() {
                 channel.hubName,
                 (channel as unknown as Record<string, unknown>).externalStoreId as string | undefined,
               ].filter(Boolean)
-              const printerEnabled = channel.printerEnabled !== false
-              const isTogglingPrinter = togglingPrinterId === channel._id
+              const receiptEnabled = channel.printerReceiptEnabled ?? channel.printerEnabled ?? true
+              const labelEnabled = channel.printerLabelEnabled ?? channel.printerEnabled ?? true
+              const isTogglingReceipt = togglingPrinterKey === `${channel._id}:receipt`
+              const isTogglingLabel = togglingPrinterKey === `${channel._id}:label`
 
               return (
                 <div key={channel._id} className="relative rounded-2xl border border-gray-200 bg-white">
@@ -386,16 +399,29 @@ export default function ChannelsPage() {
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        onClick={() => void handleTogglePrinter(channel)}
-                        disabled={isTogglingPrinter}
+                        onClick={() => void handleTogglePrinter(channel, 'receipt')}
+                        disabled={isTogglingReceipt}
                         className={cn(
                           'rounded-lg p-1.5 transition-colors disabled:opacity-50',
-                          printerEnabled ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                          receiptEnabled ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
                         )}
-                        title={printerEnabled ? 'Máy in bật cho kênh này' : 'Máy in tắt cho kênh này'}
-                        aria-label={printerEnabled ? 'Máy in bật cho kênh này' : 'Máy in tắt cho kênh này'}
+                        title={receiptEnabled ? 'Tự động in đơn đang bật' : 'Tự động in đơn đang tắt'}
+                        aria-label={receiptEnabled ? 'Tự động in đơn đang bật' : 'Tự động in đơn đang tắt'}
                       >
-                        {isTogglingPrinter ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+                        {isTogglingReceipt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleTogglePrinter(channel, 'label')}
+                        disabled={isTogglingLabel}
+                        className={cn(
+                          'rounded-lg p-1.5 transition-colors disabled:opacity-50',
+                          labelEnabled ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                        )}
+                        title={labelEnabled ? 'Tự động in tem đang bật' : 'Tự động in tem đang tắt'}
+                        aria-label={labelEnabled ? 'Tự động in tem đang bật' : 'Tự động in tem đang tắt'}
+                      >
+                        {isTogglingLabel ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ticket className="h-3.5 w-3.5" />}
                       </button>
                       {detailParts.length > 0 && (
                         <details className="group">

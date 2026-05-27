@@ -523,8 +523,29 @@ export default function SettingsPage() {
           <input
             type="checkbox"
             className="h-4 w-4"
-            checked={orderSettings.autoPrintEnabled}
-            onChange={(event) => setOrderSettings((previous) => ({ ...previous, autoPrintEnabled: event.target.checked }))}
+            checked={orderSettings.autoPrintReceiptEnabled}
+            onChange={(event) => setOrderSettings((previous) => ({
+              ...previous,
+              autoPrintReceiptEnabled: event.target.checked,
+              autoPrintEnabled: event.target.checked || previous.autoPrintLabelEnabled,
+            }))}
+          />
+        </label>
+
+        <label className="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-gray-900">Tá»± Ä‘á»™ng in tem Ä‘Æ¡n má»›i</p>
+            <p className="text-xs text-gray-500">Chá»‰ in khi kÃªnh Ä‘ang báº­t in tem vÃ  store Ä‘ang active.</p>
+          </div>
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={orderSettings.autoPrintLabelEnabled}
+            onChange={(event) => setOrderSettings((previous) => ({
+              ...previous,
+              autoPrintLabelEnabled: event.target.checked,
+              autoPrintEnabled: previous.autoPrintReceiptEnabled || event.target.checked,
+            }))}
           />
         </label>
 

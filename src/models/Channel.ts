@@ -29,6 +29,8 @@ export interface IChannel extends Document {
   scraperLoggedIn?: boolean
   scraperLastSeen?: Date
   printerEnabled?: boolean
+  printerReceiptEnabled?: boolean
+  printerLabelEnabled?: boolean
 }
 
 const ChannelSchema = new Schema<IChannel>({
@@ -52,6 +54,8 @@ const ChannelSchema = new Schema<IChannel>({
   scraperLoggedIn:   { type: Boolean },
   scraperLastSeen:   { type: Date },
   printerEnabled:    { type: Boolean, default: true },
+  printerReceiptEnabled: { type: Boolean, default: true },
+  printerLabelEnabled:   { type: Boolean, default: true },
 }, { timestamps: true })
 
 export default mongoose.models.Channel || mongoose.model<IChannel>('Channel', ChannelSchema)

@@ -1,6 +1,8 @@
 export interface OrderAlertSettings {
   soundEnabled: boolean
   autoPrintEnabled: boolean
+  autoPrintReceiptEnabled: boolean
+  autoPrintLabelEnabled: boolean
   printerName: string
   printerPaperSize: '80mm' | '58mm' | 'A4'
   voiceMessage: string
@@ -15,6 +17,8 @@ const ORDER_ALERT_AUDIO_URL = '/audio/order-alert-vi.mp3?v=20260508'
 
 const SOUND_SETTING_KEY = 'bpos.order-alert.sound-enabled'
 const AUTO_PRINT_SETTING_KEY = 'bpos.order-alert.auto-print-enabled'
+const AUTO_PRINT_RECEIPT_SETTING_KEY = 'bpos.order-alert.auto-print-receipt-enabled'
+const AUTO_PRINT_LABEL_SETTING_KEY = 'bpos.order-alert.auto-print-label-enabled'
 const PRINTER_NAME_SETTING_KEY = 'bpos.order-alert.printer-name'
 const PRINTER_PAPER_SIZE_SETTING_KEY = 'bpos.order-alert.printer-paper-size'
 const VOICE_MESSAGE_SETTING_KEY = 'bpos.order-alert.voice-message'
@@ -25,6 +29,8 @@ const MAX_RECENT_PRINTED_IDS = 120
 export const DEFAULT_ORDER_ALERT_SETTINGS: OrderAlertSettings = {
   soundEnabled: true,
   autoPrintEnabled: false,
+  autoPrintReceiptEnabled: false,
+  autoPrintLabelEnabled: false,
   printerName: PRINTER_MODEL_LABEL,
   printerPaperSize: '80mm',
   voiceMessage: ORDER_ALERT_VOICE_MESSAGE,
@@ -90,6 +96,11 @@ export function loadOrderAlertSettings(): OrderAlertSettings {
   return {
     soundEnabled: readBooleanSetting(SOUND_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.soundEnabled),
     autoPrintEnabled: readBooleanSetting(AUTO_PRINT_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.autoPrintEnabled),
+    autoPrintReceiptEnabled: readBooleanSetting(
+      AUTO_PRINT_RECEIPT_SETTING_KEY,
+      readBooleanSetting(AUTO_PRINT_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.autoPrintReceiptEnabled)
+    ),
+    autoPrintLabelEnabled: readBooleanSetting(AUTO_PRINT_LABEL_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.autoPrintLabelEnabled),
     printerName: readStringSetting(PRINTER_NAME_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.printerName),
     printerPaperSize: printerPaperSize === '58mm' || printerPaperSize === 'A4' ? printerPaperSize : '80mm',
     voiceMessage: readStringSetting(VOICE_MESSAGE_SETTING_KEY, DEFAULT_ORDER_ALERT_SETTINGS.voiceMessage).trim() || DEFAULT_ORDER_ALERT_SETTINGS.voiceMessage,
@@ -99,7 +110,10 @@ export function loadOrderAlertSettings(): OrderAlertSettings {
 
 export function persistOrderAlertSettings(settings: OrderAlertSettings) {
   writeBooleanSetting(SOUND_SETTING_KEY, settings.soundEnabled)
-  writeBooleanSetting(AUTO_PRINT_SETTING_KEY, settings.autoPrintEnabled)
+  const autoPrintEnabled = settings.autoPrintEnabled || settings.autoPrintReceiptEnabled || settings.autoPrintLabelEnabled
+  writeBooleanSetting(AUTO_PRINT_SETTING_KEY, autoPrintEnabled)
+  writeBooleanSetting(AUTO_PRINT_RECEIPT_SETTING_KEY, settings.autoPrintReceiptEnabled)
+  writeBooleanSetting(AUTO_PRINT_LABEL_SETTING_KEY, settings.autoPrintLabelEnabled)
   writeStringSetting(PRINTER_NAME_SETTING_KEY, settings.printerName.trim() || DEFAULT_ORDER_ALERT_SETTINGS.printerName)
   writeStringSetting(PRINTER_PAPER_SIZE_SETTING_KEY, settings.printerPaperSize)
   writeStringSetting(VOICE_MESSAGE_SETTING_KEY, settings.voiceMessage.trim() || DEFAULT_ORDER_ALERT_SETTINGS.voiceMessage)
@@ -338,5 +352,19 @@ export function rememberPrintedOrders(orderIds: string[]) {
     }
   })
 
+  writeRecentPrintedIds(nextIds)
+}
+
+export function getRecentPrintedJobIds() {
+  return readRecentPrintedIds()
+}
+
+export function rememberPrintedJobs(jobIds: string[]) {
+  const nextIds = [...readRecentPrintedIds()]
+  jobIds.forEach((jobId) => {
+    if (!nextIds.includes(jobId)) {
+      nextIds.push(jobId)
+    }
+  })
   writeRecentPrintedIds(nextIds)
 }

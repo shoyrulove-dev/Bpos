@@ -6,15 +6,17 @@ import { Bell, X, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 import {
   DEFAULT_ORDER_ALERT_SETTINGS,
-  getRecentPrintedOrderIds,
+  getRecentPrintedJobIds,
   loadOrderAlertSettings,
   ORDER_ALERT_POLL_INTERVAL_MS,
   persistOrderAlertSettings,
   playOrderAlert,
   primeOrderAlertAudio,
-  rememberPrintedOrders,
+  rememberPrintedJobs,
 } from '@/lib/order-alerts'
-import { buildFallbackPrintUrl, isBridgePrintingEnabled, printOrderWithHtmlTemplate } from '@/lib/local-printer'
+import { buildFallbackPrintUrl, isBridgePrintingEnabled, printItemLabels, printOrderWithHtmlTemplate } from '@/lib/local-printer'
+import type { LocalPrinterType } from '@/lib/local-printer'
+import type { Channel } from '@/types'
 
 interface Notification {
   id: string
@@ -47,7 +49,16 @@ type AlertOrder = {
   customerName?: string
   placedAt?: string
   status?: string
+  source?: string
+  channelId?: string
 }
+
+type PrintJob = {
+  orderId: string
+  type: LocalPrinterType
+}
+
+type ChannelPrintState = Pick<Channel, '_id' | 'source' | 'status' | 'scraperPaused' | 'scraperLoggedIn' | 'scraperLastSeen' | 'printerEnabled' | 'printerReceiptEnabled' | 'printerLabelEnabled'>
 
 const NEW_ORDER_STATUSES = ['waiting_confirm', 'waiting_pickup']
 
@@ -102,8 +113,9 @@ export default function NotificationProvider({ children }: { children: React.Rea
   const queryClient = useQueryClient()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [settings, setSettings] = useState(DEFAULT_ORDER_ALERT_SETTINGS)
-  const [printQueue, setPrintQueue] = useState<string[]>([])
-  const [embeddedPrintOrderId, setEmbeddedPrintOrderId] = useState<string | null>(null)
+  const [printQueue, setPrintQueue] = useState<PrintJob[]>([])
+  const [embeddedPrintJob, setEmbeddedPrintJob] = useState<PrintJob | null>(null)
+  const [channelPrintMap, setChannelPrintMap] = useState<Record<string, ChannelPrintState>>({})
   const seenIds = useRef<Set<string>>(new Set())
   const initialized = useRef(false)
 
@@ -135,6 +147,43 @@ export default function NotificationProvider({ children }: { children: React.Rea
   }, [settings.soundEnabled, settings.soundRepeatCount, settings.voiceMessage])
 
   useEffect(() => {
+    let cancelled = false
+
+    const loadChannels = async () => {
+      try {
+        const response = await fetch('/api/channels')
+        if (!response.ok) return
+        const payload = await response.json() as Channel[]
+        if (cancelled || !Array.isArray(payload)) return
+        const nextMap = payload.reduce((acc, channel) => {
+          acc[channel._id] = {
+            _id: channel._id,
+            source: channel.source,
+            status: channel.status,
+            scraperPaused: channel.scraperPaused,
+            scraperLoggedIn: channel.scraperLoggedIn,
+            scraperLastSeen: channel.scraperLastSeen,
+            printerEnabled: channel.printerEnabled,
+            printerReceiptEnabled: channel.printerReceiptEnabled,
+            printerLabelEnabled: channel.printerLabelEnabled,
+          }
+          return acc
+        }, {} as Record<string, ChannelPrintState>)
+        setChannelPrintMap(nextMap)
+      } catch {
+        if (!cancelled) setChannelPrintMap({})
+      }
+    }
+
+    void loadChannels()
+    const interval = window.setInterval(loadChannels, 30_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [])
+
+  useEffect(() => {
     const nextSettings = loadOrderAlertSettings()
     setSettings(nextSettings)
     persistOrderAlertSettings(nextSettings)
@@ -159,6 +208,33 @@ export default function NotificationProvider({ children }: { children: React.Rea
       .catch(() => null)
   }, [])
 
+  const isChannelPrintable = useCallback((order: AlertOrder) => {
+    const channelId = String(order.channelId ?? '').trim()
+    if (!channelId) return false
+    const channel = channelPrintMap[channelId]
+    if (!channel) return false
+    if (channel.status !== 'active') return false
+    if (channel.source === 'grab' || channel.source === 'be') {
+      const lastSeenAt = channel.scraperLastSeen ? new Date(channel.scraperLastSeen).getTime() : 0
+      const isFresh = Number.isFinite(lastSeenAt) && (Date.now() - lastSeenAt) < 5 * 60_000
+      if (!channel.scraperLoggedIn || channel.scraperPaused || !isFresh) return false
+    }
+    return true
+  }, [channelPrintMap])
+
+  const buildPrintJobs = useCallback((order: AlertOrder) => {
+    if (!isChannelPrintable(order)) return [] as PrintJob[]
+    const channel = channelPrintMap[String(order.channelId ?? '')]
+    if (!channel) return [] as PrintJob[]
+
+    const receiptEnabled = channel.printerReceiptEnabled ?? channel.printerEnabled ?? true
+    const labelEnabled = channel.printerLabelEnabled ?? channel.printerEnabled ?? true
+    const jobs: PrintJob[] = []
+    if (settings.autoPrintReceiptEnabled && receiptEnabled) jobs.push({ orderId: order._id, type: 'receipt' })
+    if (settings.autoPrintLabelEnabled && labelEnabled) jobs.push({ orderId: order._id, type: 'label' })
+    return jobs
+  }, [channelPrintMap, isChannelPrintable, settings.autoPrintLabelEnabled, settings.autoPrintReceiptEnabled])
+
   const pollOrders = useCallback(async () => {
     try {
       const searchParams = new URLSearchParams({
@@ -176,22 +252,24 @@ export default function NotificationProvider({ children }: { children: React.Rea
       })
       if (newOrders.length > 0) {
         if (initialized.current) {
-          const newOrderIds = newOrders.map(o => o._id)
           // Mark as seen immediately so repeated polls don't re-notify/re-print
           newOrders.forEach(o => seenIds.current.add(o._id))
           addNotification(newOrders)
           void queryClient.invalidateQueries({ queryKey: ['orders'] })
           void queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
 
-          if (settings.autoPrintEnabled) {
-            const alreadyPrinted = new Set(getRecentPrintedOrderIds())
-            const printableIds = [...newOrderIds].reverse().filter(orderId => !alreadyPrinted.has(orderId))
+          if (settings.autoPrintReceiptEnabled || settings.autoPrintLabelEnabled) {
+            const alreadyPrinted = new Set(getRecentPrintedJobIds())
+            const nextJobs = [...newOrders]
+              .reverse()
+              .flatMap((order) => buildPrintJobs(order))
+              .filter((job) => !alreadyPrinted.has(`${job.type}:${job.orderId}`))
 
-            if (printableIds.length > 0) {
-              rememberPrintedOrders(printableIds)
+            if (nextJobs.length > 0) {
+              rememberPrintedJobs(nextJobs.map((job) => `${job.type}:${job.orderId}`))
               setPrintQueue(prev => {
-                const queuedIds = new Set(prev)
-                return [...prev, ...printableIds.filter(orderId => !queuedIds.has(orderId))]
+                const queuedIds = new Set(prev.map((job) => `${job.type}:${job.orderId}`))
+                return [...prev, ...nextJobs.filter((job) => !queuedIds.has(`${job.type}:${job.orderId}`))]
               })
             }
           }
@@ -205,7 +283,7 @@ export default function NotificationProvider({ children }: { children: React.Rea
         initialized.current = true
       }
     } catch { /* network error — ignore */ }
-  }, [addNotification, queryClient, settings.autoPrintEnabled])
+  }, [addNotification, buildPrintJobs, queryClient, settings.autoPrintLabelEnabled, settings.autoPrintReceiptEnabled])
 
   useEffect(() => {
     pollOrders()
@@ -225,8 +303,8 @@ export default function NotificationProvider({ children }: { children: React.Rea
       if (payload.type !== 'bpos-receipt-printed' && payload.type !== 'bpos-receipt-print-failed') return
       if (!payload.orderId) return
 
-      setEmbeddedPrintOrderId(null)
-      setPrintQueue(prev => prev.filter(orderId => orderId !== payload.orderId))
+      setEmbeddedPrintJob(null)
+      setPrintQueue(prev => prev.filter((job) => !(job.orderId === payload.orderId && job.type === 'receipt')))
     }
 
     window.addEventListener('storage', onStorage)
@@ -260,48 +338,56 @@ export default function NotificationProvider({ children }: { children: React.Rea
 
   useEffect(() => {
     if (!printQueue.length) {
-      setEmbeddedPrintOrderId(null)
+      setEmbeddedPrintJob(null)
       return
     }
 
-    const activeOrderId = printQueue[0]
-    if (embeddedPrintOrderId === activeOrderId) return
+    const activeJob = printQueue[0]
+    if (embeddedPrintJob && embeddedPrintJob.orderId === activeJob.orderId && embeddedPrintJob.type === activeJob.type) return
 
     let cancelled = false
 
-    if (!isBridgePrintingEnabled('receipt')) {
-      setEmbeddedPrintOrderId(activeOrderId)
+    if (!isBridgePrintingEnabled(activeJob.type)) {
+      setEmbeddedPrintJob(activeJob)
       return
     }
 
-    void printOrderWithHtmlTemplate(activeOrderId, 'receipt')
+    const jobPromise = activeJob.type === 'label'
+      ? printItemLabels(activeJob.orderId)
+      : printOrderWithHtmlTemplate(activeJob.orderId, 'receipt')
+
+    void jobPromise
       .then((printed) => {
         if (cancelled) return
         if (printed) {
-          setEmbeddedPrintOrderId(null)
-          setPrintQueue(prev => prev[0] === activeOrderId ? prev.slice(1) : prev.filter(orderId => orderId !== activeOrderId))
+          setEmbeddedPrintJob(null)
+          setPrintQueue(prev => prev[0]?.orderId === activeJob.orderId && prev[0]?.type === activeJob.type
+            ? prev.slice(1)
+            : prev.filter((job) => !(job.orderId === activeJob.orderId && job.type === activeJob.type)))
           return
         }
-        setEmbeddedPrintOrderId(activeOrderId)
+        setEmbeddedPrintJob(activeJob)
       })
       .catch(() => {
         if (!cancelled) {
-          setEmbeddedPrintOrderId(activeOrderId)
+          setEmbeddedPrintJob(activeJob)
         }
       })
 
     return () => {
       cancelled = true
     }
-  }, [embeddedPrintOrderId, printQueue])
+  }, [embeddedPrintJob, printQueue])
 
   useEffect(() => {
     if (!printQueue.length) return
 
-    const activeOrderId = printQueue[0]
+    const activeJob = printQueue[0]
     const timeout = window.setTimeout(() => {
-      setEmbeddedPrintOrderId(null)
-      setPrintQueue(prev => prev[0] === activeOrderId ? prev.slice(1) : prev.filter(orderId => orderId !== activeOrderId))
+      setEmbeddedPrintJob(null)
+      setPrintQueue(prev => prev[0]?.orderId === activeJob.orderId && prev[0]?.type === activeJob.type
+        ? prev.slice(1)
+        : prev.filter((job) => !(job.orderId === activeJob.orderId && job.type === activeJob.type)))
     }, 20_000)
 
     return () => window.clearTimeout(timeout)
@@ -322,10 +408,10 @@ export default function NotificationProvider({ children }: { children: React.Rea
     <NotificationContext.Provider value={{ notifications, dismiss, dismissAll }}>
       {children}
 
-      {embeddedPrintOrderId && (
+      {embeddedPrintJob?.type === 'receipt' && (
         <iframe
-          title={`receipt-print-${embeddedPrintOrderId}`}
-          src={buildFallbackPrintUrl(embeddedPrintOrderId, 'receipt', { autoprint: true }) + '&embedded=1'}
+          title={`receipt-print-${embeddedPrintJob.orderId}`}
+          src={buildFallbackPrintUrl(embeddedPrintJob.orderId, 'receipt', { autoprint: true }) + '&embedded=1'}
           style={{ position: 'fixed', width: 0, height: 0, border: 0, opacity: 0, pointerEvents: 'none' }}
         />
       )}
