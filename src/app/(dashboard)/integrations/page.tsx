@@ -539,25 +539,24 @@ function PauseStoreSection() {
   }, [])
 
   const doAction = async (action: 'pause' | 'resume', storeList: StoreStatus[], dur?: string) => {
-    // Gọi scraper trực tiếp từ browser — Vercel không thể proxy đến localhost scraper
-    const scraperEndpoint = action === 'pause' ? '/pause-store' : '/resume-store'
     const isMultiBe = storeList.length > 1 && storeList.every(s => s.source === 'be')
     const buildPayload = (store: StoreStatus) => ({
       integrationId: store.integrationId,
       storeId: store.storeId,
       source: store.source,
       username: store.username,
+      action,
       ...(dur ? { duration: dur } : {}),
     })
 
     if (isMultiBe) {
-      // Be: xử lý nối tiếp vì scraper thực hiện automation Be portal theo từng store
+      // Be: xử lý nối tiếp để tránh đè thao tác trên cùng scraper session
       let ok = 0
       for (let i = 0; i < storeList.length; i++) {
         const s = storeList[i]
         setStatusMsg(`${action === 'pause' ? 'Đang dừng' : 'Đang mở lại'} ${i + 1}/${storeList.length}: ${s.label}…`)
         try {
-          const r = await fetch(`${SCRAPER_DIRECT}${scraperEndpoint}`, {
+          const r = await fetch(PAUSE_STORE_API, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(buildPayload(s)),
@@ -568,15 +567,15 @@ function PauseStoreSection() {
         } catch { /* tiếp tục store kế tiếp */ }
       }
       setStatusMsg(`${action === 'pause' ? 'Đã dừng' : 'Đã mở lại'} ${ok}/${storeList.length} cửa hàng Be`)
-      // Be scraper cập nhật async — poll 2 lần để bắt trạng thái mới nhất
+      // Poll 2 lần để bắt trạng thái DB + live overlay mới nhất
       for (let p = 0; p < 2; p++) {
         await new Promise<void>(resolve => setTimeout(resolve, 5_000))
         await load(true)
       }
     } else {
-      // Grab hoặc single-store: parallel như cũ
+      // Grab hoặc single-store: gọi song song qua API BPOS
       const results = await Promise.allSettled(storeList.map(s =>
-        fetch(`${SCRAPER_DIRECT}${scraperEndpoint}`, {
+        fetch(PAUSE_STORE_API, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildPayload(s)),
