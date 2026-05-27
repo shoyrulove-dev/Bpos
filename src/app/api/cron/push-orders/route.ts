@@ -9,7 +9,7 @@ import { buildOrderUpsert, getComparableDriverName, hasMeaningfulDriverName, has
 import { upsertCustomerProfile } from '@/lib/customer-upsert'
 import { getOrderContactProfileCandidates } from '@/lib/order-contact-profiles'
 import DriverModel from '@/models/Driver'
-import { buildSessionStoreId } from '@/lib/realtime-order-sync'
+import { buildSessionStoreId, mergeSessionOrdersWithRecentHistory } from '@/lib/realtime-order-sync'
 import type { NormalizedOrder } from '@/types'
 import type { SessionData } from '@/integrations/types'
 
@@ -179,41 +179,48 @@ export async function POST(req: NextRequest) {
     })
     .filter((o): o is NormalizedOrder => o !== null && Boolean(o.externalOrderId))
 
-  if (source === 'browser-scraper' && intg.provider === 'grab' && adapter.fetchOrderDetailWithSession) {
+  if (source === 'browser-scraper' && intg.provider === 'grab') {
     const sessionData = typeof intgDoc.sessionData === 'string' ? intgDoc.sessionData : ''
 
     if (sessionData) {
       try {
         const session = decryptJSON<SessionData>(sessionData)
         const storeId = buildSessionStoreId(intg.externalStoreId, session)
-        const detailCandidates = normalized.filter(needsGrabSessionDetailEnrichment)
 
-        if (storeId && detailCandidates.length) {
-          const detailMap = new Map<string, NormalizedOrder>()
+        if (storeId) {
+          normalized = await mergeSessionOrdersWithRecentHistory(adapter, session, storeId, normalized)
+        }
 
-          for (let index = 0; index < detailCandidates.length; index += 5) {
-            const batch = detailCandidates.slice(index, index + 5)
-            const details = await Promise.all(batch.map(async (order) => {
-              try {
-                return await adapter.fetchOrderDetailWithSession!(String(order.externalOrderId), session, storeId)
-              } catch {
-                return null
+        if (adapter.fetchOrderDetailWithSession && storeId) {
+          const detailCandidates = normalized.filter(needsGrabSessionDetailEnrichment)
+
+          if (detailCandidates.length) {
+            const detailMap = new Map<string, NormalizedOrder>()
+
+            for (let index = 0; index < detailCandidates.length; index += 5) {
+              const batch = detailCandidates.slice(index, index + 5)
+              const details = await Promise.all(batch.map(async (order) => {
+                try {
+                  return await adapter.fetchOrderDetailWithSession!(String(order.externalOrderId), session, storeId)
+                } catch {
+                  return null
+                }
+              }))
+
+              for (const detail of details) {
+                if (!detail?.externalOrderId) continue
+                detailMap.set(detail.externalOrderId, detail)
               }
-            }))
-
-            for (const detail of details) {
-              if (!detail?.externalOrderId) continue
-              detailMap.set(detail.externalOrderId, detail)
             }
-          }
 
-          normalized = normalized.map((order) => {
-            const detail = detailMap.get(String(order.externalOrderId ?? ''))
-            return detail ? mergeNormalizedOrderPreservingDetail(order, detail) : order
-          })
+            normalized = normalized.map((order) => {
+              const detail = detailMap.get(String(order.externalOrderId ?? ''))
+              return detail ? mergeNormalizedOrderPreservingDetail(order, detail) : order
+            })
+          }
         }
       } catch {
-        // Fall back to the browser-pushed summary payload when stored session detail fetch fails.
+        // Fall back to the browser-pushed summary payload when stored session history/detail fetch fails.
       }
     }
   }
