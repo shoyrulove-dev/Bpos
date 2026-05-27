@@ -274,6 +274,29 @@ function dedupeAddonGroups(groups: { title: string; lines: string[] }[]) {
   return Array.from(deduped.values())
 }
 
+function parseStoredNoteToAddonGroups(note?: string) {
+  const normalized = cleanOptionalText(note)
+  if (!normalized) return []
+
+  const lines = normalized
+    .split(/\r?\n+/)
+    .map((line) => cleanText(line))
+    .filter(Boolean)
+
+  if (!lines.length) return []
+
+  return dedupeAddonGroups(lines.map((line) => {
+    const separatorIndex = line.indexOf(':')
+    if (separatorIndex > 0) {
+      return {
+        title: cleanText(line.slice(0, separatorIndex), 'Tùy chọn'),
+        lines: [cleanText(line.slice(separatorIndex + 1))],
+      }
+    }
+    return { title: '', lines: [line] }
+  }))
+}
+
 function getOrderPlacedAtCandidate(order: Order) {
   const raw = getRecord(order.rawPayload)
   const times = getRecord(raw?.times)
@@ -397,6 +420,10 @@ function getGrabDetailItems(order: Order) {
 
   return rawItems.map((item): GrabDetailItem => {
     const record = getRecord(item)
+    const storedItem = order.items.find((candidate, candidateIndex) => {
+      if (candidateIndex === rawItems.indexOf(item)) return true
+      return cleanText(candidate?.name).toLowerCase() === cleanText(record?.name).toLowerCase()
+    })
     const fare = getRecord(record?.fare)
     const discountInfo = Array.isArray(record?.discountInfo) ? record.discountInfo : []
     const modifierGroups = Array.isArray(record?.modifierGroups) ? record.modifierGroups : []
@@ -412,6 +439,7 @@ function getGrabDetailItems(order: Order) {
       record?.price ??
       record?.itemPrice ??
       record?.unitPrice ??
+      storedItem?.price ??
       0
     )
     const itemDiscountTotal = discountInfo.reduce((sum, discount) => {
@@ -419,7 +447,12 @@ function getGrabDetailItems(order: Order) {
       const amount = parseAmount(discountRecord?.itemDiscountPriceDisplay ?? discountRecord?.discountAmount ?? discountRecord?.amount)
       return sum + (typeof amount === 'number' ? amount : 0)
     }, 0)
-    const strikePrice = quantity > 0 ? Math.round(itemDiscountTotal / quantity) : itemDiscountTotal
+    const fallbackStrikePrice = storedItem
+      ? Math.max(0, Number(storedItem.price ?? 0) - sellingPrice)
+      : 0
+    const strikePrice = quantity > 0
+      ? Math.round(itemDiscountTotal / quantity) || fallbackStrikePrice
+      : itemDiscountTotal || fallbackStrikePrice
     const originalPrice = sellingPrice + strikePrice
     const itemName = cleanText(record?.name)
     const authoritativeGrabNote = raw
@@ -449,13 +482,17 @@ function getGrabDetailItems(order: Order) {
       return { title, lines }
     }))
 
+    const mergedAddonGroups = addonGroups.length > 0
+      ? addonGroups
+      : parseStoredNoteToAddonGroups(storedItem?.note)
+
     return {
       name: itemName,
       quantity,
       originalPrice,
       strikePrice,
       sellingPrice,
-      total: Number(record?.total ?? (quantity * sellingPrice)),
+      total: Number(record?.total ?? storedItem?.total ?? (quantity * sellingPrice)),
       note: cleanOptionalText(
         record?.comment
         ?? record?.remarks
@@ -463,8 +500,9 @@ function getGrabDetailItems(order: Order) {
         ?? record?.specialInstruction
         ?? record?.specialInstructions
         ?? authoritativeGrabNote
+        ?? storedItem?.note
       ),
-      addonGroups: addonGroups.filter((group) => group.lines.length > 0),
+      addonGroups: mergedAddonGroups.filter((group) => group.lines.length > 0),
     }
   })
 }
