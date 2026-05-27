@@ -12,10 +12,8 @@ export const metadata: Metadata = {
   title: 'BPOS Portal',
   description: 'Hệ thống quản lý bán hàng đa kênh BPOS',
   icons: {
-    icon: [
-      { url: '/favicon.svg', type: 'image/svg+xml' },
-      { url: '/favicon.ico', type: 'image/x-icon' },
-    ],
+    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+    shortcut: '/favicon.ico',
   },
 }
 
