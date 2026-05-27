@@ -7,6 +7,7 @@ import { useOrder } from '@/hooks/use-orders-channels'
 import { getActualReceived as getSettlementActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown as getSettlementFinancialBreakdown, getGrabMoneyBreakdown as getSettlementGrabMoneyBreakdown } from '@/lib/order-financials'
 import { buildReceiptPrintUrl } from '@/lib/order-alerts'
 import { buildOrderPrintHtml, printItemLabels, printOrderWithFallback, printOrderWithHtmlTemplate } from '@/lib/local-printer'
+import { extractGrabItemNote } from '@/lib/print-template'
 import { repairVietnameseText } from '@/lib/text-normalizer'
 import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCode, ORDER_STATUS_COLOR, ORDER_STATUS_LABEL, PAYMENT_METHOD_LABEL } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
@@ -420,6 +421,10 @@ function getGrabDetailItems(order: Order) {
     }, 0)
     const strikePrice = quantity > 0 ? Math.round(itemDiscountTotal / quantity) : itemDiscountTotal
     const originalPrice = sellingPrice + strikePrice
+    const itemName = cleanText(record?.name)
+    const authoritativeGrabNote = raw
+      ? extractGrabItemNote(raw as Record<string, unknown>, itemName, rawItems.indexOf(item))
+      : undefined
 
     const addonGroups = dedupeAddonGroups([...modifierGroups, ...legacyModifierGroups].map((group) => {
       const groupRecord = getRecord(group)
@@ -445,13 +450,20 @@ function getGrabDetailItems(order: Order) {
     }))
 
     return {
-      name: cleanText(record?.name),
+      name: itemName,
       quantity,
       originalPrice,
       strikePrice,
       sellingPrice,
       total: Number(record?.total ?? (quantity * sellingPrice)),
-      note: cleanOptionalText(record?.comment ?? record?.remarks ?? record?.note ?? record?.specialInstruction ?? record?.specialInstructions),
+      note: cleanOptionalText(
+        record?.comment
+        ?? record?.remarks
+        ?? record?.note
+        ?? record?.specialInstruction
+        ?? record?.specialInstructions
+        ?? authoritativeGrabNote
+      ),
       addonGroups: addonGroups.filter((group) => group.lines.length > 0),
     }
   })

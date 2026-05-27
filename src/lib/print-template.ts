@@ -387,7 +387,7 @@ function cleanGrabGroupTitle(raw: string): string {
  *  modifierGroups. rawPayload.items may be stale DOM-scraped placeholders without modifiers.
  *  Returns a "\n"-joined string "GroupTitle: OptionName" per selected modifier, or undefined.
  */
-function extractGrabItemNote(rawPayload: Record<string, unknown>, itemName: string, itemIdx: number): string | undefined {
+export function extractGrabItemNote(rawPayload: Record<string, unknown>, itemName: string, itemIdx: number): string | undefined {
   // 1. rawPayload.itemInfo.items — Grab API canonical (portal-preferred, has modifierGroups)
   const itemInfoItems = (() => {
     const ii = rawPayload.itemInfo
