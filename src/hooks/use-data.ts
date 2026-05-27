@@ -117,10 +117,11 @@ export function useCreateEInvoice() {
 }
 
 // ---- Integrations (admin) ----
-export function useIntegrations(params?: { brandId?: string; summary?: boolean }) {
+export function useIntegrations(params?: { brandId?: string; summary?: boolean; list?: boolean }) {
   const sp = new URLSearchParams()
   if (params?.brandId) sp.set('brandId', params.brandId)
   if (params?.summary) sp.set('summary', '1')
+  if (params?.list) sp.set('list', '1')
   return useQuery({
     queryKey: ['integrations', params],
     queryFn: () => fetchJSON(`/api/integrations?${sp}`),

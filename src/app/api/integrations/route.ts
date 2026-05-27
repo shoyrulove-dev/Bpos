@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const brandId = searchParams.get('brandId') || ''
   const summaryOnly = searchParams.get('summary') === '1'
+  const listOnly = searchParams.get('list') === '1'
   const filter: Record<string, unknown> = {}
   if (brandId) filter.brandId = brandId
   const baseQuery = IntegrationModel.find(filter).sort({ createdAt: -1 })
@@ -69,6 +70,12 @@ export async function GET(req: NextRequest) {
     ? await baseQuery
       .select('provider brandId hubId externalStoreId externalStoreName loginMode loginUsername isActive syncStatus lastSyncAt createdAt updatedAt')
       .lean()
+    : listOnly
+      ? await baseQuery
+        .select('provider brandId hubId externalStoreId externalStoreName syncStatus lastSyncAt isActive loginMode sessionRefreshMode loginUsername sessionStatus sessionCapturedAt sessionExpiresAt sessionError automationRunning createdAt updatedAt')
+        .populate('brandId', 'name')
+        .populate('hubId', 'name')
+        .lean()
     : await baseQuery
       .populate('brandId', 'name')
       .populate('hubId', 'name')

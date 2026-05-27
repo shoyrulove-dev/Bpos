@@ -1270,12 +1270,8 @@ export default function IntegrationsPage() {
   const isAdmin = (session?.user as { role?: string })?.role === 'admin'
   const qc = useQueryClient()
 
-  const { data: rawInteg = [], isLoading } = useIntegrations(undefined)
+  const { data: rawInteg = [], isLoading } = useIntegrations({ list: true })
   const integrations = rawInteg as Integ[]
-  const { data: rawBrands = [] } = useBrands()
-  const brands = rawBrands as Record<string, string>[]
-  const { data: rawHubs = [] } = useHubs()
-  const hubs = rawHubs as Record<string, string>[]
 
   const createMutation = useCreateIntegration()
   const deleteMutation = useDeleteIntegration()
@@ -1289,6 +1285,11 @@ export default function IntegrationsPage() {
   const [settingsId, setSettingsId] = useState<string | null>(null)
   const [creds, setCreds]           = useState<Record<string, string>>({})
   const settingsInteg = settingsId ? integrations.find(i => i._id === settingsId) ?? null : null
+  const metadataEnabled = showForm || !!settingsId
+  const { data: rawBrands = [] } = useBrands(undefined, { enabled: metadataEnabled })
+  const brands = rawBrands as Record<string, string>[]
+  const { data: rawHubs = [] } = useHubs(undefined, { enabled: metadataEnabled })
+  const hubs = rawHubs as Record<string, string>[]
 
   // Per-card test / sync results
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
