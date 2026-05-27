@@ -19,12 +19,15 @@ export async function GET(req: NextRequest) {
 
   await connectDB()
 
-  const placedAfter = new Date(Date.now() - (hours * 60 * 60 * 1000))
+  const activeAfter = new Date(Date.now() - (hours * 60 * 60 * 1000))
   const query: Record<string, unknown> = {
     source: 'grab',
     status: { $in: ACTIVE_STATUSES },
-    placedAt: { $gte: placedAfter },
     externalOrderId: { $exists: true, $ne: '' },
+    $or: [
+      { updatedAt: { $gte: activeAfter } },
+      { placedAt: { $gte: activeAfter } },
+    ],
   }
 
   if (storeId) {
