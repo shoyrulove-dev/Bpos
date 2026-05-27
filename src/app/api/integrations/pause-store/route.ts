@@ -12,6 +12,13 @@ import {
 const SCRAPER_URL = process.env.SCRAPER_CONTROL_URL ?? 'http://127.0.0.1:3845'
 const SCRAPER_STATUS_STALE_MS = 5 * 60 * 1000
 
+function isFreshScraperSeenAt(value: unknown) {
+  if (!value) return false
+  const seenAt = new Date(value as string | Date)
+  const time = seenAt.getTime()
+  return Number.isFinite(time) && (Date.now() - time) <= SCRAPER_STATUS_STALE_MS
+}
+
 function normalizePauseDuration(source: unknown, duration: unknown) {
   if (source === 'be') {
     const value = String(duration ?? '').trim()
@@ -107,7 +114,7 @@ export async function GET(req: NextRequest) {
         label: integ.externalStoreName || integ.externalStoreId || 'Unknown store',
         storeId: integ.externalStoreId,
         paused: Boolean(integ.scraperPaused),
-        loggedIn: Boolean(integ.scraperLoggedIn && integ.scraperLastSeen && (Date.now() - new Date(integ.scraperLastSeen).getTime()) <= SCRAPER_STATUS_STALE_MS),
+        loggedIn: Boolean(integ.scraperLoggedIn && isFreshScraperSeenAt(integ.scraperLastSeen)),
         pausedUntil: integ.scraperPausedUntil ? new Date(integ.scraperPausedUntil).toISOString() : null,
         pauseMode: integ.scraperPauseMode ?? null,
         pauseLabel: integ.scraperPauseLabel ?? null,
@@ -179,6 +186,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const integrations = dbResult.status === 'fulfilled' ? dbResult.value as unknown as Array<{ _id: { toString(): string }; provider: string; externalStoreId?: string; externalStoreName?: string; loginUsername?: string; scraperPaused?: boolean; scraperPausedUntil?: Date | string | null; scraperLoggedIn?: boolean; scraperLastSeen?: Date | string | null; scraperPauseMode?: 'tomorrow' | 'until-reopen' | null; scraperPauseLabel?: string | null; scraperIsUnknown?: boolean; scraperPlatformStatus?: string | null }> : []
+    const freshestDbSeenAt = integrations
+      .map((integ) => integ.scraperLastSeen ? new Date(integ.scraperLastSeen) : null)
+      .filter((value): value is Date => Boolean(value && Number.isFinite(value.getTime())))
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? null
+    const hasFreshDbHeartbeat = integrations.some((integ) => isFreshScraperSeenAt(integ.scraperLastSeen))
 
     const dbStores: PauseStoreState[] = integrations.map((integ) => canonicalizePauseStoreState({
       integrationId: integ._id.toString(),
@@ -186,7 +198,7 @@ export async function GET(req: NextRequest) {
       label: integ.externalStoreName || integ.externalStoreId || 'Unknown store',
       storeId: integ.externalStoreId,
       paused: Boolean(integ.scraperPaused),
-      loggedIn: Boolean(integ.scraperLoggedIn && integ.scraperLastSeen && (Date.now() - new Date(integ.scraperLastSeen).getTime()) <= SCRAPER_STATUS_STALE_MS),
+      loggedIn: Boolean(integ.scraperLoggedIn && isFreshScraperSeenAt(integ.scraperLastSeen)),
       pausedUntil: integ.scraperPausedUntil ? new Date(integ.scraperPausedUntil).toISOString() : null,
       pauseMode: integ.scraperPauseMode ?? null,
       pauseLabel: integ.scraperPauseLabel ?? null,
@@ -198,10 +210,13 @@ export async function GET(req: NextRequest) {
     if (scraperStores.length === 0) {
       return NextResponse.json({
         ok: true,
-        scraperOnline: false,
+        scraperOnline: hasFreshDbHeartbeat,
         version: scraperVersion,
+        scraperLastSeenAt: freshestDbSeenAt?.toISOString() ?? null,
         stores: dbStores,
-        message: 'Không lấy được trạng thái từ scraper, đang hiển thị danh sách từ DB',
+        message: hasFreshDbHeartbeat
+          ? 'Scraper heartbeat còn mới trong BPOS DB, đang hiển thị trạng thái persisted'
+          : 'Không lấy được trạng thái từ scraper, đang hiển thị danh sách từ DB',
       })
     }
 
@@ -233,6 +248,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       scraperOnline: true,
       version: scraperVersion,
+      scraperLastSeenAt: freshestDbSeenAt?.toISOString() ?? null,
       stores,
       message: `Merged ${scraperStores.length} trạng thái scraper với ${dbStores.length} cửa hàng DB`,
     })
@@ -242,6 +258,7 @@ export async function GET(req: NextRequest) {
         ok: true,
         scraperOnline: true,
         version: scraperVersion,
+        scraperLastSeenAt: null,
         stores: scraperStores,
         message: 'Không tải được DB, đang hiển thị trạng thái từ scraper',
       })
@@ -251,6 +268,7 @@ export async function GET(req: NextRequest) {
       ok: false,
       scraperOnline: false,
       version: scraperVersion,
+      scraperLastSeenAt: null,
       stores: [],
       message: 'Scraper offline và không tải được danh sách từ DB',
     })

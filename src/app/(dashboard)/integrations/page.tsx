@@ -496,7 +496,6 @@ function PauseStoreSection() {
       const scraperOnlineNow = Boolean(payload?.scraperOnline)
       setScraperOnline(scraperOnlineNow)
       if (payload?.version) setScraperVersion(String(payload.version))
-
       const merged = normalizeStores(payload?.stores)
       if (merged.length > 0 || scraperOnlineNow) {
         setStores(merged)
