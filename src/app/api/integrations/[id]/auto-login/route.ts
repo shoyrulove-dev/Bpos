@@ -17,7 +17,7 @@ import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { requestAutomationLogin } from '@/lib/automation-login'
 import { encryptJSON, encrypt, decrypt } from '@/lib/crypto'
 import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/automation-session'
-import { buildSessionClearUpdate, buildSessionSuccessUpdate } from '@/lib/session-health'
+import { buildSessionSuccessUpdate } from '@/lib/session-health'
 import { isSessionValid } from '@/services/automation/runner'
 import type { SessionData } from '@/integrations/types'
 

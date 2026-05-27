@@ -43,8 +43,8 @@ export default function OrderCreateModal({ open, onClose }: { open: boolean; onC
   const { data: hubsData } = useHubs({ brandId })
   const createOrder = useCreateOrder()
 
-  const brands = (brandsData ?? []) as BrandOption[]
-  const hubs = (hubsData ?? []) as HubOption[]
+  const brands = useMemo(() => (brandsData ?? []) as BrandOption[], [brandsData])
+  const hubs = useMemo(() => (hubsData ?? []) as HubOption[], [hubsData])
 
   useEffect(() => {
     if (open) setError('')

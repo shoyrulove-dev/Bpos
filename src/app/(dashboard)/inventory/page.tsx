@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Plus, Search, AlertTriangle, ArrowDown, ArrowUp, RefreshCw, Loader2, History } from 'lucide-react'
 import { useInventory, useCreateInventory, useInventoryMovement, useStockMovements } from '@/hooks/use-data'
 import { useDebounce } from '@/hooks/use-debounce'
-import { cn, formatCurrency, formatDate, MOVEMENT_TYPE_LABEL, MOVEMENT_TYPE_COLOR } from '@/lib/utils'
+import { cn, formatDate, MOVEMENT_TYPE_LABEL, MOVEMENT_TYPE_COLOR } from '@/lib/utils'
 import type { Inventory, StockMovement, MovementType } from '@/types'
 
 const MOVEMENT_ICONS: Record<string, React.ReactNode> = {

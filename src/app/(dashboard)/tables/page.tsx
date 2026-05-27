@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Grid3X3, List, Edit, Trash2, Loader2, QrCode, Users } from 'lucide-react'
+import { Plus, Grid3X3, List, Edit, Trash2, Loader2, Users } from 'lucide-react'
 import { useTables, useCreateTable, useUpdateTable, useDeleteTable } from '@/hooks/use-data'
 import { cn, TABLE_STATUS_LABEL, TABLE_STATUS_COLOR } from '@/lib/utils'
 import type { Table, TableStatus } from '@/types'

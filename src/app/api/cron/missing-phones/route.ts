@@ -233,12 +233,9 @@ export async function GET(req: NextRequest) {
     .map((order) => {
       const rawPayload = getRecord(order.rawPayload)
       const storedStage = getGrabStoredPageStage(rawPayload)
-      const isFinalizedStage = ['history', 'completed', 'cancelled'].includes(storedStage)
       const isFinalizedStatus = ['completed', 'cancelled'].includes(String(order.status ?? '').trim().toLowerCase())
       const normalizedStatus = String(order.status ?? '').trim().toLowerCase()
       // Grab không còn dùng 'delivering' — tất cả đang giao vẫn là waiting_pickup
-      const isActivelyDelivering = storedStage === 'history' && !isFinalizedStatus
-      const skipFinalizedRetry = (isFinalizedStage || isFinalizedStatus) && !isActivelyDelivering
       const placedAtMs = order.placedAt ? new Date(String(order.placedAt)).getTime() : 0
       const isOlderThan24h = placedAtMs > 0 && Date.now() - placedAtMs > AGE_24H_MS
       const isActiveStatus = ACTIVE_STATUSES.has(normalizedStatus)

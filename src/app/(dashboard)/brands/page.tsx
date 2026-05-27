@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useRef, useState } from 'react'
 import { Plus, Search, Building2, Phone, MapPin, Tag, Edit, Trash2, Loader2, Upload, X } from 'lucide-react'
 import { useBrands, useCreateBrand, useUpdateBrand, useDeleteBrand } from '@/hooks/use-brands'
@@ -22,11 +23,13 @@ function BrandLogoCard({ name, logo }: { name: string; logo?: string }) {
   const showImage = Boolean(logo) && !hasError
 
   return (
-    <div className="relative aspect-[16/9] w-full overflow-hidden rounded-2xl border border-gray-100 bg-gradient-to-br from-primary-50 via-white to-orange-50">
+      <div className="relative aspect-[16/9] w-full overflow-hidden rounded-2xl border border-gray-100 bg-gradient-to-br from-primary-50 via-white to-orange-50">
       {showImage ? (
-        <img
-          src={logo}
+        <Image
+          src={logo ?? ''}
           alt={name}
+          fill
+          unoptimized
           className="h-full w-full object-contain p-4"
           onError={() => setHasError(true)}
         />
@@ -67,8 +70,6 @@ export default function BrandsPage() {
   const updateMutation = useUpdateBrand()
   const deleteMutation = useDeleteBrand()
   const saving = createMutation.isPending || updateMutation.isPending
-
-  const filtered = brands
 
   const openCreate = () => {
     setEditBrand(null)
@@ -234,7 +235,16 @@ export default function BrandsPage() {
                 </div>
                 {form.logo && (
                   <div className="mt-2 flex items-center gap-2">
-                    <img src={form.logo} alt="preview" className="h-14 w-14 rounded-xl border object-contain bg-white p-1" onError={e => (e.currentTarget.style.display = 'none')} />
+                    <div className="relative h-14 w-14 overflow-hidden rounded-xl border bg-white p-1">
+                      <Image
+                        src={form.logo}
+                        alt="preview"
+                        fill
+                        unoptimized
+                        className="object-contain"
+                        onError={e => (e.currentTarget.style.display = 'none')}
+                      />
+                    </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-gray-500 truncate">
                         {form.logo.startsWith('data:') ? '📁 Ảnh đã tải lên từ thiết bị' : form.logo.length > 50 ? `${form.logo.slice(0, 30)}...${form.logo.slice(-17)}` : form.logo}

@@ -459,7 +459,7 @@ function PauseStoreSection() {
 
   const getKey = (s: StoreStatus) => getStoreIdentityKeys(s)[0] ?? `${s.source}:${s.storeId ?? s.label}`
 
-  const normalizeStores = (input: unknown): StoreStatus[] => {
+  const normalizeStores = useCallback((input: unknown): StoreStatus[] => {
     if (!Array.isArray(input)) return []
     const next: StoreStatus[] = []
     for (const entry of input) {
@@ -483,9 +483,9 @@ function PauseStoreSection() {
       }))
     }
     return next
-  }
+  }, [])
 
-  const load = async (live = false) => {
+  const load = useCallback(async (live = false) => {
     setLoading(true)
     try {
       const response = await fetch(`${PAUSE_STORE_API}${live ? '?live=1' : ''}`, {
@@ -511,15 +511,15 @@ function PauseStoreSection() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [normalizeStores])
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void load() }, [load])
 
   // Real-time polling — tự refresh trạng thái mỗi 15 giây
   useEffect(() => {
     const timer = window.setInterval(() => void load(), 15_000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [load])
 
   // Kiểm tra version scraper trực tiếp (port 3845) — refresh mỗi 30 giây
   useEffect(() => {
@@ -966,6 +966,7 @@ function PauseStoreSection() {
 // ─── PrinterSection: kiểm tra + in thử máy in nhiệt LAN ────────────────────
 const SCRAPER_CONTROL = 'http://127.0.0.1:3846'
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function PrinterSection() {
   const [refreshingConfig, setRefreshingConfig] = useState(false)
   const [checking, setChecking]     = useState(false)

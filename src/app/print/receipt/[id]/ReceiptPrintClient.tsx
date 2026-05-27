@@ -1,5 +1,7 @@
 'use client'
 
+/* eslint-disable @next/next/no-img-element */
+
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, renderPrintTemplateHtml } from '@/lib/print-template'

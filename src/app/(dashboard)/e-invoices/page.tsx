@@ -50,7 +50,7 @@ function openTestPrint(printerSize: string) {
 }
 
 export default function EInvoicesPage() {
-  const { data: rawConns = [], isLoading } = useEInvoices()
+  const { data: rawConns = [] } = useEInvoices()
   const connections = rawConns as EInvoiceConnection[]
   const createMutation = useCreateEInvoice()
   const [showForm, setShowForm] = useState(false)

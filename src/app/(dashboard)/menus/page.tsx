@@ -1,13 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Edit, Trash2, Loader2 } from 'lucide-react'
+import { Plus, Edit, Trash2 } from 'lucide-react'
 import { useMenus, useCreateMenu, useUpdateMenu, useDeleteMenu } from '@/hooks/use-data'
 import { cn, formatDate } from '@/lib/utils'
 import type { Menu } from '@/types'
 
 export default function MenusPage() {
-  const { data: rawMenus = [], isLoading } = useMenus()
+  const { data: rawMenus = [] } = useMenus()
   const menus = rawMenus as Menu[]
   const createMutation = useCreateMenu()
   const updateMutation = useUpdateMenu()
@@ -15,8 +15,6 @@ export default function MenusPage() {
   const [showForm, setShowForm] = useState(false)
   const [editMenu, setEditMenu] = useState<Menu | null>(null)
   const [form, setForm] = useState({ name: '', description: '', status: 'active', brandId: '' })
-  const saving = createMutation.isPending || updateMutation.isPending
-
   const openEdit = (m: Menu) => {
     setEditMenu(m)
     setForm({ name: m.name, description: m.description ?? '', status: m.status, brandId: m.brandId })

@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import { useState } from 'react'
-import { Plus, Calendar, Tag, Loader2, Truck, ShoppingBag, Percent, DollarSign, Gift, Package2 } from 'lucide-react'
+import { Plus, Calendar, Loader2, Truck, ShoppingBag, Percent, DollarSign, Gift, Package2 } from 'lucide-react'
 import { usePromotions, useCreatePromotion } from '@/hooks/use-data'
 import { cn, formatDate, formatNumber, PROMOTION_TYPE_LABEL, PROMOTION_TYPE_COLOR } from '@/lib/utils'
 import type { Promotion, PromotionStatus, PromotionType } from '@/types'

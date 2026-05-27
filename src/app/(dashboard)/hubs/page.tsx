@@ -16,7 +16,7 @@ export default function HubsPage() {
   const [form, setForm] = useState({ code: '', name: '', address: '', brandId: '', servicePackage: 'basic', status: 'active' })
 
   const dq = useDebounce(search)
-  const { data: rawHubs = [], isLoading, error } = useHubs({ q: dq })
+  const { data: rawHubs = [], isLoading } = useHubs({ q: dq })
   const { data: rawBrands = [] } = useBrands()
   const brands = rawBrands as { _id: string; name: string }[]
   const hubs = rawHubs as Hub[]

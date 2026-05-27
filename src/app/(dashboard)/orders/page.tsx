@@ -102,23 +102,6 @@ function isOrderNew(order: Order) {
   return Date.now() - placedAt <= 30 * 60 * 1000
 }
 
-function needsMarketplaceResync(order: Order) {
-  const source = String(order.source ?? '')
-  if (source !== 'grab' && source !== 'be') return false
-
-  const customerName = order.customerName || getDisplayCustomerName(order) || ''
-  const customerPhone = order.customerPhone || getDisplayCustomerPhone(order) || ''
-  const placedAt = resolveOrderPlacedAtValue(order) ?? order.placedAt
-  const deliveredAt = resolveOrderDeliveredAtValue(order) ?? order.deliveredAt ?? order.deliveryInfo?.estimatedTime
-
-  const missingName = !String(customerName).trim() || String(customerName).trim() === '-'
-  const missingPhone = !String(customerPhone).trim() || String(customerPhone).trim() === '-'
-  const missingPlacedAt = formatMaybeDate(placedAt) === '-'
-  const missingDeliveredAt = order.status === 'completed' && formatMaybeDate(deliveredAt) === '-'
-
-  return missingName || missingPhone || missingPlacedAt || missingDeliveredAt
-}
-
 function SourceIcon({ source }: { source: Order['source'] }) {
   return <PlatformIcon source={source} size="lg" />
 }

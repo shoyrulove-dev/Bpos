@@ -10,8 +10,6 @@ import { requestAutomationLogin } from '@/lib/automation-login'
 import { decrypt, encryptJSON } from '@/lib/crypto'
 import { applySessionStoreDefaults, normalizeAutomationSession } from '@/lib/automation-session'
 import { buildSessionFailureUpdate, buildSessionSuccessUpdate } from '@/lib/session-health'
-import type { SessionData } from '@/integrations/types'
-
 const AUTOMATION_URL    = process.env.AUTOMATION_SERVICE_URL ?? ''
 const AUTOMATION_SECRET = process.env.AUTOMATION_SECRET ?? ''
 const SESSION_REFRESH_BATCH_SIZE = Math.max(1, Number(process.env.SESSION_REFRESH_BATCH_SIZE ?? 2))

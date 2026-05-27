@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Edit, Eye, Loader2, Plus, Printer, Sparkles } from 'lucide-react'
+import { Loader2, Plus, Printer, Sparkles } from 'lucide-react'
 import { useBillTemplates, useCreateBillTemplate, useUpdateBillTemplate } from '@/hooks/use-data'
 import { printDemoTemplateWithBridge } from '@/lib/local-printer'
 import { buildDemoPrintTemplateContext, buildLabelUnitTemplateData, buildPrintTemplateContext, getDefaultTemplateContent, getTemplateTypeForPaperSize, PRINT_TEMPLATE_VARIABLES, renderPrintTemplateHtml } from '@/lib/print-template'

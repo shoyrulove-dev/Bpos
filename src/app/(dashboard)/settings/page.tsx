@@ -7,7 +7,6 @@ import { CheckCircle2, Loader2, Printer, Receipt, RefreshCw, Save, Ticket, Volum
 import { cn } from '@/lib/utils'
 import { DEFAULT_ORDER_ALERT_SETTINGS, loadOrderAlertSettings, persistOrderAlertSettings, playOrderAlert, type OrderAlertSettings } from '@/lib/order-alerts'
 import {
-  DEFAULT_LOCAL_PRINTER_SETTINGS,
   checkBridgePrinter,
   discoverBridgePrinters,
   getBridgePrinterConfig,

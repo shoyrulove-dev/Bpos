@@ -1,14 +1,14 @@
 'use client'
 
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts'
-import { ShoppingCart, DollarSign, Building2, MapPin, Clock, TrendingUp, AlertCircle, Loader2 } from 'lucide-react'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { ShoppingCart, DollarSign, Building2, MapPin, Clock, TrendingUp, AlertCircle } from 'lucide-react'
 import { useStats, useRevenueReport } from '@/hooks/use-data'
 import { useOrders } from '@/hooks/use-orders-channels'
 import { formatCurrency, formatNumber, ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, CHANNEL_SOURCE_LABEL, CHANNEL_SOURCE_COLOR } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
 export default function DashboardPage() {
-  const { data: statsData, isLoading: statsLoading } = useStats()
+  const { data: statsData } = useStats()
   const { data: revenueData } = useRevenueReport({ days: 14 })
   const { data: ordersData } = useOrders({ q: '', status: '', source: '', limit: 10, pollingEnabled: false })
 
