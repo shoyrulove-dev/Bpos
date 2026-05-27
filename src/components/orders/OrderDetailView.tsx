@@ -240,6 +240,14 @@ function parseAmount(value: unknown) {
   return Number.isFinite(amount) ? amount : undefined
 }
 
+function stripTrailingPriceLabel(value: string) {
+  return cleanText(
+    value
+      .replace(/\s+\d[\d.\s,]*\s*(?:₫|VND)?$/i, '')
+      .replace(/\s{2,}/g, ' ')
+  )
+}
+
 function getRecord(value: unknown) {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
 }
@@ -307,7 +315,10 @@ function extractFreeformNote(note: unknown, addonGroups: { title: string; lines:
       const normalizedLine = cleanText(line)
       if (!normalizedLine) continue
       duplicateLines.add(normalizedLine.toLowerCase())
+      const strippedLine = stripTrailingPriceLabel(normalizedLine)
+      if (strippedLine) duplicateLines.add(strippedLine.toLowerCase())
       if (title) duplicateLines.add(`${title}: ${normalizedLine}`.toLowerCase())
+      if (title && strippedLine) duplicateLines.add(`${title}: ${strippedLine}`.toLowerCase())
     }
   }
 

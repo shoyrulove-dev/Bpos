@@ -7,7 +7,7 @@ import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
 import { useIntegrations } from '@/hooks/use-data'
 import { useDebounce } from '@/hooks/use-debounce'
-import { canonicalizePauseStoreState, getStoreIdentityKey, normalizeStoreId, normalizeStoreSource, resolvePauseStoreState } from '@/lib/store-pause-status'
+import { canonicalizePauseStoreState, getStoreIdentityKeys, normalizeStoreId, normalizeStoreSource, resolvePauseStoreState } from '@/lib/store-pause-status'
 import { cn } from '@/lib/utils'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { PlatformStatusIcon } from '@/components/ui/PlatformStatusIcon'
@@ -150,7 +150,9 @@ export default function ChannelsPage() {
             username: store.username ? String(store.username) : undefined,
             label: String(store.label ?? ''),
           })
-          acc[getStoreIdentityKey(normalized)] = normalized
+          for (const key of getStoreIdentityKeys(normalized)) {
+            acc[key] = normalized
+          }
           return acc
         }, {} as Record<string, PauseStoreStatus>)
 
