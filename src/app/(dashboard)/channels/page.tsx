@@ -81,6 +81,7 @@ export default function ChannelsPage() {
   const [form, setForm]       = useState(emptyForm)
   const [saveError, setSaveError] = useState('')
   const [togglingPrinterId, setTogglingPrinterId] = useState<string | null>(null)
+  const [bulkPrinterMode, setBulkPrinterMode] = useState<'enable' | 'disable' | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
   const [pauseStatuses, setPauseStatuses] = useState<Record<string, PauseStoreStatus>>({})
 
@@ -233,6 +234,21 @@ export default function ChannelsPage() {
     }
   }
 
+  const handleBulkTogglePrinter = async (enabled: boolean) => {
+    const targets = channels.filter((channel) => (channel.printerEnabled !== false) !== enabled)
+    if (!targets.length) return
+
+    try {
+      setBulkPrinterMode(enabled ? 'enable' : 'disable')
+      await Promise.all(targets.map((channel) => updateMutation.mutateAsync({
+        id: channel._id,
+        printerEnabled: enabled,
+      })))
+    } finally {
+      setBulkPrinterMode(null)
+    }
+  }
+
   return (
     <div className="space-y-5" style={{ fontFamily: 'Tahoma, Verdana, sans-serif' }}>
       <div className="page-header">
@@ -246,10 +262,34 @@ export default function ChannelsPage() {
       </div>
 
       <div className="card card-body">
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input className="input pl-9 w-full" placeholder="Tìm kênh bán..."
-            value={search} onChange={e => setSearch(e.target.value)} />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative max-w-sm flex-1 min-w-[240px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input className="input pl-9 w-full" placeholder="Tìm kênh bán..."
+              value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleBulkTogglePrinter(true)}
+              disabled={bulkPrinterMode !== null}
+              className="btn-outline btn-sm disabled:opacity-50"
+              title="Bật máy in cho tất cả kênh bán"
+            >
+              {bulkPrinterMode === 'enable' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+              Bật hết in
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleBulkTogglePrinter(false)}
+              disabled={bulkPrinterMode !== null}
+              className="btn-outline btn-sm disabled:opacity-50"
+              title="Tắt máy in cho tất cả kênh bán"
+            >
+              {bulkPrinterMode === 'disable' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+              Tắt hết in
+            </button>
+          </div>
         </div>
       </div>
 
