@@ -268,25 +268,54 @@ const PLATFORM_ACCOUNTS: {
   { brand: '30B', hub: 'Ò Ó O', provider: 'be',     username: 'deliveryapp+ooods3@nexdor.tech',      password: 'Be@99379' },
 ]
 
+type PlatformAccountGroup = {
+  key: string
+  provider: string
+  username: string
+  password: string
+  entries: {
+    brand: string
+    hub: string
+    note?: string
+  }[]
+}
+
 function PlatformAccountsSection() {
-  const [revealed, setRevealed] = useState<Set<number>>(new Set())
+  const [revealed, setRevealed] = useState<Set<string>>(new Set())
   const [showSection, setShowSection] = useState(false)
   const [activeProvider, setActiveProvider] = useState(PROVIDERS[0].value)
   const [accountPage, setAccountPage] = useState(1)
   const listRef = useRef<HTMLDivElement | null>(null)
 
-  const toggle = (idx: number) =>
+  const toggle = (key: string) =>
     setRevealed(prev => {
       const next = new Set(prev)
-      if (next.has(idx)) next.delete(idx); else next.add(idx)
+      if (next.has(key)) next.delete(key); else next.add(key)
       return next
     })
 
   const sortedAccounts = useMemo(
-    () => [...PLATFORM_ACCOUNTS].sort((a, b) => {
+    () => Array.from(
+      PLATFORM_ACCOUNTS.reduce((acc, account) => {
+        const key = `${account.provider}::${account.username}`.toLowerCase()
+        const existing = acc.get(key)
+        if (existing) {
+          existing.entries.push({ brand: account.brand, hub: account.hub, note: account.note })
+          return acc
+        }
+
+        acc.set(key, {
+          key,
+          provider: account.provider,
+          username: account.username,
+          password: account.password,
+          entries: [{ brand: account.brand, hub: account.hub, note: account.note }],
+        })
+        return acc
+      }, new Map<string, PlatformAccountGroup>()).values()
+    ).sort((a, b) => {
       if (a.provider !== b.provider) return a.provider.localeCompare(b.provider)
-      if (a.brand !== b.brand) return a.brand.localeCompare(b.brand)
-      return a.hub.localeCompare(b.hub)
+      return a.username.localeCompare(b.username, 'vi')
     }),
     []
   )
@@ -294,7 +323,7 @@ function PlatformAccountsSection() {
     () => PROVIDERS.reduce((acc, provider) => {
       acc[provider.value] = sortedAccounts.filter((account) => account.provider === provider.value)
       return acc
-    }, {} as Record<string, typeof PLATFORM_ACCOUNTS>),
+    }, {} as Record<string, PlatformAccountGroup[]>),
     [sortedAccounts]
   )
   const visibleAccounts = groupedAccounts[activeProvider] ?? []
@@ -326,7 +355,7 @@ function PlatformAccountsSection() {
           <KeyRound className="w-5 h-5 text-gray-400" />
           <div className="text-left">
             <p className="font-semibold text-gray-900 text-sm">Tài khoản đăng nhập sàn</p>
-            <p className="text-xs text-gray-400 mt-0.5">{PLATFORM_ACCOUNTS.length} tài khoản · chia theo từng sàn · 20 tài khoản mỗi trang</p>
+            <p className="text-xs text-gray-400 mt-0.5">{sortedAccounts.length} tài khoản · gộp theo username/email · 10 tài khoản mỗi trang</p>
           </div>
           <PaginationControls
             page={accountPage}
@@ -378,17 +407,19 @@ function PlatformAccountsSection() {
           {paginatedAccounts.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2">
               {paginatedAccounts.map((acc) => {
-                const idx = PLATFORM_ACCOUNTS.indexOf(acc)
-                const show = revealed.has(idx)
+                const show = revealed.has(acc.key)
                 return (
-                  <div key={idx} className="rounded-2xl border border-gray-100 bg-white">
+                  <div key={acc.key} className="rounded-2xl border border-gray-100 bg-white">
                     <div className="flex items-center gap-3 px-3 py-3">
                       <PlatformIcon source={acc.provider} size="sm" />
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-mono text-sm font-semibold text-gray-800">{acc.username}</p>
+                        {acc.entries.length > 1 && (
+                          <p className="truncate pt-0.5 text-xs text-gray-500">{acc.entries.length} store chung 1 tài khoản</p>
+                        )}
                       </div>
                       <button
-                        onClick={() => toggle(idx)}
+                        onClick={() => toggle(acc.key)}
                         className="shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
                         title={show ? 'Ẩn chi tiết' : 'Hiện chi tiết'}
                       >
@@ -397,7 +428,13 @@ function PlatformAccountsSection() {
                     </div>
                     {show && (
                       <div className="border-t border-gray-100 px-3 py-2 text-xs text-gray-500">
-                        <p>{[acc.brand, acc.hub, acc.note].filter(Boolean).join(' · ')}</p>
+                        <div className="space-y-1">
+                          {acc.entries.map((entry) => (
+                            <p key={`${entry.brand}-${entry.hub}-${entry.note ?? ''}`}>
+                              {[entry.brand, entry.hub, entry.note].filter(Boolean).join(' · ')}
+                            </p>
+                          ))}
+                        </div>
                         <p className="pt-1 font-mono tracking-wide text-gray-700">{acc.password}</p>
                       </div>
                     )}

@@ -161,6 +161,14 @@ export default function ChannelsPage() {
   const hubs = rawHubs as { _id: string; name: string; brandId: string }[]
   const { data: rawIntegrations = [] } = useIntegrations({ summary: true })
   const integrations = rawIntegrations as { _id: string; provider: string; externalStoreName?: string; externalStoreId?: string; loginUsername?: string; brandId: string | { _id: string; name: string } }[]
+  const integrationByStoreKey = useMemo(
+    () => integrations.reduce((acc, integration) => {
+      const key = `${integration.provider}:${String(integration.externalStoreId ?? '')}`
+      acc[key] = integration
+      return acc
+    }, {} as Record<string, (typeof integrations)[number]>),
+    [integrations]
+  )
 
   const createMutation = useCreateChannel()
   const updateMutation = useUpdateChannel()
@@ -183,11 +191,7 @@ export default function ChannelsPage() {
   const activeChannelRows = useMemo(() => {
     return activeChannels
       .map((channel) => {
-        const integration = integrations.find((i) =>
-          i.provider === channel.source &&
-          i.externalStoreId &&
-          i.externalStoreId === (channel as unknown as Record<string, unknown>).externalStoreId
-        )
+        const integration = integrationByStoreKey[`${channel.source}:${String((channel as unknown as Record<string, unknown>).externalStoreId ?? '')}`]
         return {
           channel,
           username: integration?.loginUsername ?? null,
@@ -200,7 +204,7 @@ export default function ChannelsPage() {
         if (aUser !== bUser) return aUser.localeCompare(bUser, 'vi')
         return a.channel.name.localeCompare(b.channel.name, 'vi')
       })
-  }, [activeChannels, integrations])
+  }, [activeChannels, integrationByStoreKey])
   const channelGroups = useMemo(() => buildSharedAccountGroups(activeChannelRows), [activeChannelRows])
   const channelPagination = useMemo(
     () => paginateGroupedItems(channelGroups, PAGE_SIZE, channelPage),
