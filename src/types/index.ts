@@ -246,6 +246,7 @@ export interface Channel {
   scraperPausedUntil?: string | null
   scraperLoggedIn?: boolean
   scraperLastSeen?: string
+  printerEnabled?: boolean
 }
 
 export interface WorkingHour {

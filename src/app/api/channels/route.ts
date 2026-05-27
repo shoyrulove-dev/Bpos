@@ -27,8 +27,16 @@ export async function POST(req: NextRequest) {
   if (res) return res
   await connectDB()
   const body = await req.json()
-  const { name, source, brandId, hubId, externalStoreId } = body
+  const { name, source, brandId, hubId, externalStoreId, printerEnabled } = body
   if (!name || !source || !brandId) return err('Thiếu thông tin bắt buộc')
-  const channel = await ChannelModel.create({ name, source, brandId, hubId, externalStoreId, connectedAt: new Date() })
+  const channel = await ChannelModel.create({
+    name,
+    source,
+    brandId,
+    hubId,
+    externalStoreId,
+    printerEnabled: printerEnabled !== false,
+    connectedAt: new Date(),
+  })
   return ok(channel, 201)
 }

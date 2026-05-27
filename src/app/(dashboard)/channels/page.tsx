@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Search, Edit, Trash2, Loader2, Link2, ChevronLeft, ChevronRight, Info } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Loader2, Link2, ChevronLeft, ChevronRight, Info, Printer } from 'lucide-react'
 import { useChannels, useCreateChannel, useUpdateChannel, useDeleteChannel } from '@/hooks/use-orders-channels'
 import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
@@ -80,6 +80,7 @@ export default function ChannelsPage() {
   const [editId, setEditId]   = useState<string | null>(null)
   const [form, setForm]       = useState(emptyForm)
   const [saveError, setSaveError] = useState('')
+  const [togglingPrinterId, setTogglingPrinterId] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
   const [pauseStatuses, setPauseStatuses] = useState<Record<string, PauseStoreStatus>>({})
 
@@ -220,6 +221,18 @@ export default function ChannelsPage() {
     if (confirm('Xóa kênh bán này?')) deleteMutation.mutate(id)
   }
 
+  const handleTogglePrinter = async (channel: Channel) => {
+    try {
+      setTogglingPrinterId(channel._id)
+      await updateMutation.mutateAsync({
+        id: channel._id,
+        printerEnabled: channel.printerEnabled !== false ? false : true,
+      })
+    } finally {
+      setTogglingPrinterId(null)
+    }
+  }
+
   return (
     <div className="space-y-5" style={{ fontFamily: 'Tahoma, Verdana, sans-serif' }}>
       <div className="page-header">
@@ -316,6 +329,8 @@ export default function ChannelsPage() {
                 channel.hubName,
                 (channel as unknown as Record<string, unknown>).externalStoreId as string | undefined,
               ].filter(Boolean)
+              const printerEnabled = channel.printerEnabled !== false
+              const isTogglingPrinter = togglingPrinterId === channel._id
 
               return (
                 <div key={channel._id} className="relative rounded-2xl border border-gray-200 bg-white">
@@ -329,6 +344,19 @@ export default function ChannelsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => void handleTogglePrinter(channel)}
+                        disabled={isTogglingPrinter}
+                        className={cn(
+                          'rounded-lg p-1.5 transition-colors disabled:opacity-50',
+                          printerEnabled ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                        )}
+                        title={printerEnabled ? 'Máy in bật cho kênh này' : 'Máy in tắt cho kênh này'}
+                        aria-label={printerEnabled ? 'Máy in bật cho kênh này' : 'Máy in tắt cho kênh này'}
+                      >
+                        {isTogglingPrinter ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+                      </button>
                       {detailParts.length > 0 && (
                         <details className="group">
                           <summary className="list-none rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
