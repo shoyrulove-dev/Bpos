@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Search, Edit, Trash2, Loader2, Link2, ChevronLeft, ChevronRight, Info, Printer } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Loader2, Link2, ChevronLeft, ChevronRight, Info, Printer, PrinterCheck, PowerOff } from 'lucide-react'
 import { useChannels, useCreateChannel, useUpdateChannel, useDeleteChannel } from '@/hooks/use-orders-channels'
 import { useBrands } from '@/hooks/use-brands'
 import { useHubs } from '@/hooks/use-hubs'
@@ -273,21 +273,21 @@ export default function ChannelsPage() {
               type="button"
               onClick={() => void handleBulkTogglePrinter(true)}
               disabled={bulkPrinterMode !== null}
-              className="btn-outline btn-sm disabled:opacity-50"
+              className="rounded-lg border border-gray-200 bg-white p-2 text-green-600 transition-colors hover:bg-green-50 disabled:opacity-50"
               title="Bật máy in cho tất cả kênh bán"
+              aria-label="Bật máy in cho tất cả kênh bán"
             >
-              {bulkPrinterMode === 'enable' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-              Bật hết in
+              {bulkPrinterMode === 'enable' ? <Loader2 className="h-4 w-4 animate-spin" /> : <PrinterCheck className="h-4 w-4" />}
             </button>
             <button
               type="button"
               onClick={() => void handleBulkTogglePrinter(false)}
               disabled={bulkPrinterMode !== null}
-              className="btn-outline btn-sm disabled:opacity-50"
+              className="rounded-lg border border-gray-200 bg-white p-2 text-gray-500 transition-colors hover:bg-gray-100 disabled:opacity-50"
               title="Tắt máy in cho tất cả kênh bán"
+              aria-label="Tắt máy in cho tất cả kênh bán"
             >
-              {bulkPrinterMode === 'disable' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-              Tắt hết in
+              {bulkPrinterMode === 'disable' ? <Loader2 className="h-4 w-4 animate-spin" /> : <PowerOff className="h-4 w-4" />}
             </button>
           </div>
         </div>
