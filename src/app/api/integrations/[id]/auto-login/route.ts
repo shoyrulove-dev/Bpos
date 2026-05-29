@@ -71,6 +71,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     username?: string; password?: string; otp?: string; sessionKey?: string
     // Manual mode: user pastes JWT token directly from browser DevTools
     manualJwt?: string; storeId?: string
+    includeOrders?: boolean
   }
 
   // ─── Manual session mode (no Playwright needed) ─────────────────────────
@@ -136,6 +137,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         sessionKey,
         preferredStoreId: integ.externalStoreId ?? body.storeId ?? undefined,
         preferredStoreName: integ.externalStoreName ?? undefined,
+        includeOrders: body.includeOrders ?? false,
       },
     })
 

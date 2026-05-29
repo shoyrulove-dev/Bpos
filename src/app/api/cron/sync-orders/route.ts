@@ -154,7 +154,7 @@ export async function GET(req: NextRequest) {
         if (!adapter.fetchOrdersWithSession) {
           throw new Error('Provider này không hỗ trợ session auto-login')
         }
-        const shouldFetchLiveOrders = intg.provider === 'grab'
+        const shouldFetchLiveOrders = intg.provider === 'grab' || intg.provider === 'shopee'
         let refreshed: AutomationRefreshResult | null = null
         let session = intg.sessionData ? decryptJSON(intg.sessionData) as SessionData : null
         const isExpired = intg.sessionExpiresAt ? new Date(intg.sessionExpiresAt) < new Date() : false

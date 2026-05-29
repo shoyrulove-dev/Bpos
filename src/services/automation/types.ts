@@ -1,9 +1,11 @@
 import type { PlaywrightCookie, SessionData } from '@/integrations/types'
+import type { NormalizedOrder } from '@/types'
 
 /** Result returned by a platform automation after login. */
 export interface AutomationResult {
   success: boolean
   session?: SessionData
+  orders?: NormalizedOrder[]
   /** 'otp_required' → caller must supply OTP and call again. */
   requiresOtp?: boolean
   otpTarget?: string  // phone number OTP was sent to
@@ -16,6 +18,7 @@ export interface AutomationCredentials {
   password: string
   otp?: string       // if platform requires OTP on this attempt
   storeId?: string   // optional: pre-select store after login
+  includeOrders?: boolean
 }
 
 /** Common interface every platform automation must implement. */

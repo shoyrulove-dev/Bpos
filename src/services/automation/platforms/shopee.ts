@@ -11,6 +11,7 @@
  */
 import type { PlatformAutomation, AutomationCredentials, AutomationResult } from '../types'
 import type { SessionData, PlaywrightCookie } from '@/integrations/types'
+import type { NormalizedOrder } from '@/types'
 
 const PARTNER_LOGIN_URL = 'https://partner.business.accounts.shopee.vn/'
 const PARTNER_HOME_URL = 'https://partner.shopee.vn/'
@@ -138,6 +139,89 @@ export class ShopeeAutomation implements PlatformAutomation {
     }
 
     await merchantCards.first().click().catch(() => null)
+  }
+
+  private mapVisibleOrderStatus(statusText: string): NormalizedOrder['orderStatus'] {
+    const normalized = statusText.trim().toLowerCase()
+    if (!normalized) return 'waiting_confirm'
+    if (normalized.includes('hủy') || normalized.includes('huy') || normalized.includes('cancel')) return 'cancelled'
+    if (normalized.includes('hoàn thành') || normalized.includes('hoan thanh') || normalized.includes('completed')) return 'completed'
+    if (normalized.includes('đang giao') || normalized.includes('dang giao') || normalized.includes('delivering')) return 'delivering'
+    if (
+      normalized.includes('chuẩn bị')
+      || normalized.includes('chuan bi')
+      || normalized.includes('sẵn sàng')
+      || normalized.includes('san sang')
+      || normalized.includes('ready')
+      || normalized.includes('processing')
+      || normalized.includes('xác nhận')
+      || normalized.includes('xac nhan')
+    ) return 'waiting_pickup'
+    return 'waiting_confirm'
+  }
+
+  private parseCurrencyText(value: string) {
+    const digits = value.replace(/[^\d-]/g, '')
+    return digits ? Number(digits) : 0
+  }
+
+  private async extractVisibleOrders(page: import('playwright').Page, storeInfo: {
+    storeId?: string | null
+    storeName?: string | null
+  }): Promise<NormalizedOrder[]> {
+    const rows = await page.evaluate(() => {
+      const tableRows = Array.from(document.querySelectorAll('tbody tr'))
+      return tableRows.map((row) => {
+        const cells = Array.from(row.querySelectorAll('td')).map((cell) => (cell.textContent || '').trim().replace(/\s+/g, ' '))
+        return cells
+      }).filter((cells) => cells.length >= 6)
+    }).catch(() => [] as string[][])
+
+    const orders: NormalizedOrder[] = []
+    for (const cells of rows) {
+        const orderCode = String(cells[0] ?? '').trim()
+        const deliveryType = String(cells[1] ?? '').trim()
+        const statusText = String(cells[2] ?? '').trim()
+        const completedAt = String(cells[3] ?? '').trim()
+        const cancelledAt = String(cells[4] ?? '').trim()
+        const storeName = String(cells[5] ?? '').trim() || String(storeInfo.storeName ?? '')
+        const totalText = String(cells[6] ?? '').trim()
+        if (!orderCode) continue
+
+        const orderStatus = this.mapVisibleOrderStatus(statusText)
+        const total = this.parseCurrencyText(totalText)
+        const placedAtFallback = new Date().toISOString()
+
+        orders.push({
+          source: 'shopee' as const,
+          externalOrderId: orderCode,
+          externalStoreId: String(storeInfo.storeId ?? ''),
+          customerName: 'Khach hang',
+          customerPhone: '',
+          items: [],
+          subtotal: total,
+          discount: 0,
+          total,
+          platformFee: 0,
+          paymentMethod: deliveryType || '',
+          deliveryInfo: { address: '' },
+          driverInfo: { name: '', phone: '' },
+          orderStatus,
+          placedAt: placedAtFallback,
+          deliveredAt: orderStatus === 'completed' && completedAt ? completedAt : undefined,
+          rawPayload: {
+            _browserVisible: true,
+            orderCode,
+            deliveryType,
+            statusText,
+            completedAt,
+            cancelledAt,
+            storeName,
+            totalText,
+          },
+        } satisfies NormalizedOrder)
+    }
+    return orders
   }
 
   async login(credentials: AutomationCredentials): Promise<AutomationResult> {
@@ -317,8 +401,23 @@ export class ShopeeAutomation implements PlatformAutomation {
         },
       }
 
+      let orders: NormalizedOrder[] | undefined
+      if (credentials.includeOrders) {
+        await page.goto(PARTNER_ORDER_MANAGEMENT_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => null)
+        await page.waitForTimeout(6000)
+        const applyButton = page.getByRole('button', { name: /áp dụng/i })
+        if (await applyButton.count()) {
+          await applyButton.first().click().catch(() => null)
+          await page.waitForTimeout(5000)
+        }
+        orders = await this.extractVisibleOrders(page, {
+          storeId: currentStoreId || null,
+          storeName: currentStoreName,
+        })
+      }
+
       await browser.close()
-      return { success: true, session }
+      return { success: true, session, ...(orders ? { orders } : {}) }
     } catch (error) {
       if (browser) await browser.close().catch(() => null)
       return { success: false, error: error instanceof Error ? error.message : String(error) }
