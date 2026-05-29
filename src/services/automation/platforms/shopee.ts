@@ -61,6 +61,19 @@ export class ShopeeAutomation implements PlatformAutomation {
   provider = 'shopee' as const
   sessionTtlSeconds = SESSION_TTL
 
+  private extractPartnerOrders(data: unknown): Record<string, unknown>[] | null {
+    if (!data || typeof data !== 'object') return null
+    const root = data as Record<string, unknown>
+    const candidates = [root.data, root.result, root.response, root.payload, root]
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate !== 'object') continue
+      const current = candidate as Record<string, unknown>
+      const list = current.order_list ?? current.orders ?? current.items ?? current.data ?? current.list ?? current.records ?? current.result
+      if (Array.isArray(list)) return list as Record<string, unknown>[]
+    }
+    return Array.isArray(data) ? data as Record<string, unknown>[] : null
+  }
+
   private async getFirstVisibleLocator(page: import('playwright').Page, selectors: string) {
     const locator = page.locator(selectors)
     const count = await locator.count()
@@ -163,6 +176,163 @@ export class ShopeeAutomation implements PlatformAutomation {
   private parseCurrencyText(value: string) {
     const digits = value.replace(/[^\d-]/g, '')
     return digits ? Number(digits) : 0
+  }
+
+  private normalizePortalOrder(raw: Record<string, unknown>, storeInfo: {
+    storeId?: string | null
+    storeName?: string | null
+  }): NormalizedOrder {
+    const rawDelivery = (raw.delivery_info ?? raw.delivery ?? {}) as Record<string, unknown>
+    const rawCustomer = (raw.customer_info ?? raw.customer ?? {}) as Record<string, unknown>
+    const rawDriver = (raw.driver_info ?? raw.driver ?? {}) as Record<string, unknown>
+    const rawItems = (raw.order_items ?? raw.item_list ?? raw.items ?? raw.foods ?? []) as Record<string, unknown>[]
+
+    const items = rawItems.map((item) => {
+      const quantity = Number(item.quantity ?? item.model_quantity_purchased ?? item.count ?? 1)
+      const unitPrice = Number(item.unit_price ?? item.price ?? item.model_discounted_price ?? item.discount_price ?? 0)
+      const total = Number(item.subtotal ?? item.total ?? unitPrice * quantity)
+      const optionGroups = Array.isArray(item.options_groups)
+        ? (item.options_groups as Record<string, unknown>[]).map((group) => {
+            const title = String(group.name ?? '').trim()
+            const values = Array.isArray(group.options)
+              ? (group.options as Record<string, unknown>[])
+                  .map((option) => {
+                    const optionName = String(option.name ?? '').trim()
+                    const optionPrice = Number(option.discount_price ?? option.original_price ?? 0)
+                    if (!optionName) return ''
+                    return optionPrice > 0 ? `${optionName} ${optionPrice}` : optionName
+                  })
+                  .filter(Boolean)
+              : []
+            return [title, values.join(', ')].filter(Boolean).join(': ')
+          }).filter(Boolean)
+        : []
+      const note = [String(item.note ?? '').trim(), ...optionGroups].filter(Boolean).join('\n').trim()
+      return {
+        name: String(
+          (item.dish && typeof item.dish === 'object' ? (item.dish as Record<string, unknown>).name : undefined)
+          ?? item.name
+          ?? item.item_name
+          ?? item.food_name
+          ?? item.product_name
+          ?? ''
+        ),
+        quantity,
+        price: unitPrice,
+        total,
+        ...(note ? { note } : {}),
+      }
+    })
+
+    const orderId = String(raw.code ?? raw.order_sn ?? raw.order_id ?? raw.id ?? '')
+    const status = this.mapVisibleOrderStatus(String(raw.order_status ?? raw.status ?? raw.state ?? raw.orderStatus ?? ''))
+    const createTime = Number(raw.order_time ?? raw.create_time ?? raw.created_at ?? 0)
+    const subtotal = Number(raw.customer_bill && typeof raw.customer_bill === 'object' ? ((raw.customer_bill as Record<string, unknown>).sub_total ?? (raw.customer_bill as Record<string, unknown>).total_amount ?? 0) : (raw.order_value_amount ?? raw.total_amount ?? raw.sub_total ?? raw.amount ?? 0))
+    const total = Number(raw.customer_bill && typeof raw.customer_bill === 'object' ? ((raw.customer_bill as Record<string, unknown>).total_amount ?? 0) : (raw.total_value_amount ?? raw.total ?? raw.order_total ?? subtotal))
+    const discount = Number(raw.customer_bill && typeof raw.customer_bill === 'object' ? ((raw.customer_bill as Record<string, unknown>).total_discount ?? 0) : (raw.discount ?? raw.voucher_from_seller ?? 0))
+    const platformFee = Number(raw.commission && typeof raw.commission === 'object' ? ((raw.commission as Record<string, unknown>).amount ?? 0) : (raw.platform_fee ?? raw.commission_fee ?? 0))
+    const paymentMethod = String(raw.payment_method ?? raw.payment_type ?? raw.customer_pay_type ?? '')
+    const deliveryAddress = String(rawDelivery.address ?? raw.delivery_address ?? rawCustomer.address ?? '')
+    const customerName = String(rawDelivery.contact_name ?? rawCustomer.name ?? rawCustomer.user_name ?? rawCustomer.display_name ?? 'Khach hang')
+    const customerPhone = String(rawDelivery.phone ?? rawCustomer.phone ?? rawCustomer.phone_number ?? rawCustomer.mobile ?? '')
+    const driverName = String(rawDriver.name ?? rawDriver.driver_name ?? rawDelivery.shipper_name ?? '')
+    const driverPhone = String(rawDriver.phone ?? rawDriver.driver_phone ?? rawDelivery.shipper_phone ?? '')
+    const deliveredAt = raw.actual_deliver_time ?? raw.delivery_complete_time ?? raw.delivered_at ?? raw.completed_at ?? raw.complete_time
+
+    return {
+      source: 'shopee',
+      externalOrderId: orderId,
+      externalStoreId: String(raw.store_id ?? raw.shop_id ?? raw.restaurant_id ?? raw.food_delivery_id ?? storeInfo.storeId ?? ''),
+      customerName,
+      customerPhone,
+      items,
+      subtotal,
+      discount,
+      total,
+      platformFee,
+      paymentMethod,
+      deliveryInfo: { address: deliveryAddress },
+      driverInfo: { name: driverName, phone: driverPhone },
+      orderStatus: status,
+      placedAt: createTime > 0 ? new Date(createTime * 1000).toISOString() : new Date().toISOString(),
+      deliveredAt: deliveredAt && Number(deliveredAt) > 0 ? new Date(Number(deliveredAt) * 1000).toISOString() : undefined,
+      rawPayload: raw,
+    }
+  }
+
+  private async fetchOrdersInBrowserContext(page: import('playwright').Page, storeInfo: {
+    storeId?: string | null
+    storeName?: string | null
+    merchantId?: string
+    restaurantId?: string
+  }): Promise<NormalizedOrder[]> {
+    if (!storeInfo.restaurantId) return []
+    const now = Math.floor(Date.now() / 1000)
+    const fromTime = now - 86400
+    const rawBatches = await page.evaluate(async ({ restaurantId, merchantId, storeId, fromTime, toTime }) => {
+      const endpoint = 'https://gmerchant.deliverynow.vn/api/v5/order/get_list_with_pagination'
+      const filterTypes = [30, 31, 43, 44, 45, 46, 40, 41, 42]
+      const outputs: unknown[] = []
+
+      function extract(data: unknown) {
+        if (!data || typeof data !== 'object') return null
+        const envelope = data as Record<string, unknown>
+        const candidates = [envelope.data, envelope.result, envelope.response, envelope.payload, envelope]
+        for (const candidate of candidates) {
+          if (!candidate || typeof candidate !== 'object') continue
+          const current = candidate as Record<string, unknown>
+          const list = current.order_list ?? current.orders ?? current.items ?? current.data ?? current.list ?? current.records ?? current.result
+          if (Array.isArray(list)) return list
+        }
+        return Array.isArray(data) ? data : null
+      }
+
+      for (const orderFilterType of filterTypes) {
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'content-type': 'application/json',
+              accept: 'application/json, text/plain, */*',
+              'x-store-id': String(storeId ?? ''),
+              'x-merchant-id': String(merchantId ?? ''),
+              'x-requested-with': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+              restaurantIds: [Number(restaurantId)],
+              orderFilterType,
+              page: 1,
+              pageSize: 50,
+              fromTime,
+              toTime,
+            }),
+          })
+          if (!response.ok) continue
+          const payload = await response.json().catch(() => null)
+          const rows = extract(payload)
+          if (Array.isArray(rows) && rows.length > 0) outputs.push(...rows)
+        } catch {
+          // best effort
+        }
+      }
+      return outputs
+    }, {
+      restaurantId: storeInfo.restaurantId,
+      merchantId: storeInfo.merchantId ?? '',
+      storeId: storeInfo.storeId ?? '',
+      fromTime,
+      toTime: now,
+    }).catch(() => [] as Record<string, unknown>[])
+
+    const seen = new Set<string>()
+    return (rawBatches as Record<string, unknown>[])
+      .map((raw) => this.normalizePortalOrder(raw, storeInfo))
+      .filter((order) => {
+        if (!order.externalOrderId || seen.has(order.externalOrderId)) return false
+        seen.add(order.externalOrderId)
+        return true
+      })
   }
 
   private async extractVisibleOrders(page: import('playwright').Page, storeInfo: {
@@ -410,10 +580,18 @@ export class ShopeeAutomation implements PlatformAutomation {
           await applyButton.first().click().catch(() => null)
           await page.waitForTimeout(5000)
         }
-        orders = await this.extractVisibleOrders(page, {
+        orders = await this.fetchOrdersInBrowserContext(page, {
           storeId: currentStoreId || null,
           storeName: currentStoreName,
+          merchantId: resolvedMerchantId,
+          restaurantId: discoveredRestaurant?.restaurant_id ? String(discoveredRestaurant.restaurant_id) : undefined,
         })
+        if (!orders.length) {
+          orders = await this.extractVisibleOrders(page, {
+            storeId: currentStoreId || null,
+            storeName: currentStoreName,
+          })
+        }
       }
 
       await browser.close()
