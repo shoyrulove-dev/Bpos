@@ -15,7 +15,6 @@ import type { SessionData, PlaywrightCookie } from '@/integrations/types'
 const PARTNER_LOGIN_URL = 'https://partner.business.accounts.shopee.vn/'
 const PARTNER_HOME_URL = 'https://partner.shopee.vn/'
 const PARTNER_ORDER_MANAGEMENT_URL = 'https://partner.shopee.vn/shopee-food/order-management'
-const ORDERS_API_URL = 'https://partner.food.shopee.vn/api/seller/web/orders/action/search'
 const SESSION_TTL = 24 * 3600
 
 const OTP_INPUT_SELECTORS = [
@@ -42,6 +41,19 @@ type MerchantCandidate = {
   merchantId?: string | number
   isActive?: boolean
   staffTobUid?: string | number
+}
+
+type StoreRestaurantInfo = {
+  store_id?: string | number
+  restaurant_id?: string | number
+  delivery_id?: string | number
+  name?: string
+}
+
+type StoreBasicsResponse = {
+  data?: {
+    restaurants?: StoreRestaurantInfo[]
+  }
 }
 
 export class ShopeeAutomation implements PlatformAutomation {
@@ -135,6 +147,8 @@ export class ShopeeAutomation implements PlatformAutomation {
       const { chromium } = await import('playwright')
       let userInfo: PartnerUserInfo | null = null
       let merchantCandidates: MerchantCandidate[] = []
+      let capturedGmerchantHeaders: Record<string, string> | null = null
+      let discoveredRestaurants: StoreRestaurantInfo[] = []
 
       browser = await chromium.launch({
         headless: true,
@@ -153,6 +167,21 @@ export class ShopeeAutomation implements PlatformAutomation {
       })
 
       const page = await context.newPage()
+      page.on('request', async (request) => {
+        if (!capturedGmerchantHeaders && request.url().includes('get_basic_infos_for_partner_web')) {
+          const headers = await request.allHeaders().catch(() => ({} as Record<string, string>))
+          capturedGmerchantHeaders = Object.fromEntries(
+            Object.entries(headers).filter(([key]) => (
+              key.startsWith('x-foody-')
+              || key === 'x-sap-ri'
+              || key === 'x-sap-sec'
+              || key === 'spc-b-oft'
+              || key === 'accept-language'
+              || key === 'user-agent'
+            ))
+          )
+        }
+      })
       page.on('response', async (response) => {
         const url = response.url()
         try {
@@ -164,12 +193,17 @@ export class ShopeeAutomation implements PlatformAutomation {
             const payload = await response.json().catch(() => null) as { data?: { merchantList?: MerchantCandidate[] } } | null
             merchantCandidates = payload?.data?.merchantList ?? merchantCandidates
           }
+          if (url.includes('get_basic_infos_for_partner_web')) {
+            const payload = await response.json().catch(() => null) as StoreBasicsResponse | null
+            discoveredRestaurants = payload?.data?.restaurants ?? discoveredRestaurants
+          }
         } catch {
           // best-effort telemetry only
         }
       })
 
       await page.goto(PARTNER_LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+      await page.waitForSelector('input[placeholder*="Email"], input[autocomplete="username"]', { timeout: 20_000 }).catch(() => null)
       await page.waitForTimeout(1200)
 
       const inputs = page.locator('input')
@@ -199,12 +233,18 @@ export class ShopeeAutomation implements PlatformAutomation {
       }
 
       // Some partner flows show an extra "continue" button after password login.
-      await this.clickFirstVisibleButton(page)
+      const continueButton = page.getByRole('button', { name: /tiếp tục/i })
+      if (await continueButton.count()) {
+        await continueButton.first().click().catch(() => null)
+      } else {
+        await this.clickFirstVisibleButton(page)
+      }
       await page.waitForTimeout(4000)
 
       const resolvedUserInfo = userInfo as PartnerUserInfo | null
 
       if (page.url().includes('/account/onboarding')) {
+        await page.waitForSelector('.listItem', { timeout: 20_000 }).catch(() => null)
         await this.selectMerchant(page, credentials, resolvedUserInfo?.merchantName)
         await page.waitForTimeout(8000)
       }
@@ -239,10 +279,19 @@ export class ShopeeAutomation implements PlatformAutomation {
         return snapshot
       }).catch(() => ({} as Record<string, string>))
 
+      const discoveredRestaurant = discoveredRestaurants[0]
       const currentStoreId = localStorage.currentStoreId
-        ?? localStorage.shopee_tob_entity_id
-        ?? (resolvedUserInfo?.store_id ? String(resolvedUserInfo.store_id) : '')
-      const currentStoreName = resolvedUserInfo?.merchantName ?? null
+        || localStorage.shopee_tob_entity_id
+        || (resolvedUserInfo?.store_id ? String(resolvedUserInfo.store_id) : '')
+        || (discoveredRestaurant?.store_id ? String(discoveredRestaurant.store_id) : '')
+      const currentStoreName = resolvedUserInfo?.merchantName
+        || discoveredRestaurant?.name
+        || null
+      const merchantId = resolvedUserInfo?.merchantId
+        ? String(resolvedUserInfo.merchantId)
+        : undefined
+      const cookieMerchantId = cookies.find((cookie) => cookie.name === 'shopee_foody_mid')?.value
+      const resolvedMerchantId = merchantId || cookieMerchantId || undefined
 
       const session: SessionData = {
         cookies,
@@ -252,12 +301,18 @@ export class ShopeeAutomation implements PlatformAutomation {
         storeInfo: {
           storeId: currentStoreId || null,
           storeName: currentStoreName,
-          ordersApiUrl: ORDERS_API_URL,
-          merchantId: resolvedUserInfo?.merchantId ? String(resolvedUserInfo.merchantId) : undefined,
+          ordersApiUrl: 'https://gmerchant.deliverynow.vn/api/v5/order/get_list_with_pagination',
+          orderDetailApiUrl: 'https://gmerchant.deliverynow.vn/api/v5/order/get_detail',
+          reportApiUrl: 'https://gmerchant.deliverynow.vn/api/v5/seller/store/report/get_by_restaurant_v3',
+          merchantId: resolvedMerchantId,
+          restaurantId: discoveredRestaurant?.restaurant_id ? String(discoveredRestaurant.restaurant_id) : undefined,
+          deliveryId: discoveredRestaurant?.delivery_id ? String(discoveredRestaurant.delivery_id) : undefined,
           merchantCandidates,
         },
         extraHeaders: {
+          ...(capturedGmerchantHeaders ?? {}),
           ...(currentStoreId ? { 'x-store-id': String(currentStoreId) } : {}),
+          ...(resolvedMerchantId ? { 'x-merchant-id': String(resolvedMerchantId) } : {}),
           ...(currentStoreName ? { 'x-store-name': String(currentStoreName) } : {}),
         },
       }
