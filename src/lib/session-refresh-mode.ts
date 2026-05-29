@@ -1,5 +1,5 @@
 export type SessionRefreshMode = 'auto' | 'browser'
 
 export function getDefaultSessionRefreshMode(provider?: string | null): SessionRefreshMode {
-  return provider === 'be' ? 'browser' : 'auto'
+  return provider === 'be' || provider === 'shopee' ? 'browser' : 'auto'
 }

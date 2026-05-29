@@ -111,6 +111,7 @@ const AUTO_PROVIDERS = ['grab', 'be']
 const SESSION_LOGIN_PROVIDERS = ['shopee', 'grab', 'xanh_sm', 'be']
 const SHOPEE_SMS_LOGIN_URL = 'https://gsso.shopeefood.vn/sms_login?app_id=nowotpapp_MCQzBi2SyApYgKGCYWsmVD4t0954cr&app_type=1001&api_version=1&client_type=1&client_version=3.0.0&client_id=1.0&client_language=vi'
 const SHOPEE_MERCHANT_LOGIN_URL = 'https://merchant.shopeefood.vn/account/login'
+const SHOPEE_PARTNER_LOGIN_URL = 'https://partner.business.accounts.shopee.vn/'
 const SHOPEE_PARTNER_OTP_URL = 'https://partner.business.accounts.shopee.vn/authenticate/login/otp?client_id=5&next=https%3A%2F%2Fpartner.shopee.vn%2Faccount%2Flogin%2Fauth&state=https%3A%2F%2Fpartner.shopee.vn%2F%3Fbusiness_next%3Dhttps%253A%252F%252Fpartner.shopee.vn%252Flogin%252Fauth%26business_state%3Dhttps%253A%252F%252Fpartner.shopee.vn%26business_client_id%3D1'
 const LOGIN_PORTAL_LINKS: Record<string, string> = {
   shopee: SHOPEE_MERCHANT_LOGIN_URL,
@@ -219,11 +220,11 @@ const PLATFORM_GUIDES: Record<string, { steps: string[]; link: string; knownStor
   },
   shopee: {
     steps: [
-      '1. Đăng ký tại open.shopeefood.vn',
-      '2. Tạo ứng dụng → lấy partnerId + partnerKey',
-      '3. Đăng nhập Shopee lấy accessToken + shopId',
+      '1. Đăng nhập Shopee Partner bằng email hoặc username',
+      '2. Ưu tiên lưu session browser/manual cho Shopee Merchant',
+      '3. Chỉ dùng partnerId + partnerKey + accessToken nếu có Open API thật',
     ],
-    link: 'https://open.shopeefood.vn/',
+    link: 'https://partner.business.accounts.shopee.vn/',
   },
   xanh_sm: {
     steps: [
@@ -248,12 +249,11 @@ const PLATFORM_ACCOUNTS: {
   // BDT - 3B
   { brand: 'BDT', hub: '3B',   provider: 'grab',    username: 'ketoan@takogroup.com.vn',            password: 'Bdt2026@#' },
   { brand: 'BDT', hub: '3B',   provider: 'be',      username: 'luonghung.sg@gmail.com',             password: 'Hung1712@' },
-  { brand: 'BDT', hub: '3B',   provider: 'shopee',  username: '0869693909',                         password: 'Hungchoidanh1712' },
+  { brand: 'BDT', hub: 'Ò Ó O', provider: 'shopee', username: 'Nguyenduyphuoc25@gmail.com',         password: 'Bin@2521', note: 'Shopee Partner / browser' },
   { brand: 'BDT', hub: '3B',   provider: 'xanh_sm', username: '0393655295',                         password: 'OTP', note: 'Đăng nhập OTP' },
   // BDT - Ò Ó O
   { brand: 'BDT', hub: 'Ò Ó O', provider: 'grab',   username: 'ooo.cashier.ds3',                    password: 'Nexdor@123' },
   { brand: 'BDT', hub: 'Ò Ó O', provider: 'be',     username: 'deliveryapp+ooohub30day@nexdor.tech', password: 'Be@99372' },
-  { brand: 'BDT', hub: 'Ò Ó O', provider: 'shopee', username: '0393655295',                         password: 'Trung2002(OTP)' },
   // BDT - ĐMX
   { brand: 'BDT', hub: 'ĐMX',  provider: 'grab',    username: 'dmx.nexdor.bdt',                     password: 'Nexdor@123' },
   { brand: 'BDT', hub: 'ĐMX',  provider: 'be',      username: 'deliveryapp+dmmbdt@nexdor.tech',      password: 'Be@99347' },
@@ -262,7 +262,6 @@ const PLATFORM_ACCOUNTS: {
   { brand: '30B', hub: '3B Duong so 3', provider: 'grab', username: '1ketoan@takogroup.com.vn', password: 'Bdt2026@',  note: 'chung TK' },
   { brand: '30B', hub: '3B moi',        provider: 'grab', username: '1ketoan@takogroup.com.vn', password: 'Bdt2026@',  note: 'chung TK' },
   { brand: '30B', hub: '3B',   provider: 'be',      username: 'ketoan@takogroup.com.vn',             password: 'Bdt2026@' },
-  { brand: '30B', hub: '3B',   provider: 'shopee',  username: '0393655295',                         password: 'Trung2002' },
   // 30B - Ò Ó O
   { brand: '30B', hub: 'Ò Ó O', provider: 'grab',   username: 'ooo.tech.ds33',                      password: 'Nexdor@123' },
   { brand: '30B', hub: 'Ò Ó O', provider: 'be',     username: 'deliveryapp+ooods3@nexdor.tech',      password: 'Be@99379' },
@@ -2175,7 +2174,7 @@ export default function IntegrationsPage() {
             )}>
               <p>
                 {activeProviderSection.value === 'shopee'
-                  ? 'Shopee đăng nhập bằng số điện thoại và OTP SMS. Dùng nút Login trên card để chạy flow OTP, hoặc vào manual nếu cần tự dán cookie/session.'
+                  ? 'Shopee hiện ưu tiên đăng nhập browser/manual bằng email hoặc username trên Shopee Partner. Khi cần sync order, ưu tiên lấy session browser thay vì trông vào OTP cũ.'
                   : 'Xanh SM cũng dùng flow OTP SMS, không cần mật khẩu ở màn hình login session.'}
               </p>
               <a
@@ -2204,7 +2203,7 @@ export default function IntegrationsPage() {
             <div className="rounded-2xl bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
               <ShoppingBag className="mx-auto mb-3 h-8 w-8 text-gray-300" />
               {activeProviderSection.value === 'shopee'
-                ? 'Chưa tạo bản ghi Shopee nào. Khi có OTP, có thể thêm hoặc cập nhật account ngay trong tab này.'
+                ? 'Chưa tạo bản ghi Shopee nào. Có thể thêm account browser/manual ngay trong tab này, ưu tiên email hoặc username Partner.'
                 : activeProviderSection.value === 'xanh_sm'
                 ? 'Chưa tạo bản ghi Xanh SM nào. Có thể lưu account chờ OTP ngay trong tab này.'
                 : 'Chưa có tích hợp nào trong tab này.'}
@@ -2678,18 +2677,19 @@ export default function IntegrationsPage() {
 
             <div className="p-6 space-y-4">
 
-              {/* ── OTP via automation mode (Shopee Food / Xanh SM – SMS, no password) ── */}
+              {/* ── Session/browser login mode (Shopee Food / Xanh SM) ── */}
               {autoLoginMode === 'otp' && !autoLoginResult && (
                 <div className="space-y-3">
                   <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-700 space-y-1">
-                    <p className="font-medium">📱 Đăng nhập qua SMS OTP bằng automation:</p>
-                    <p>1. Nhập số điện thoại → nhấn <strong>Gửi OTP</strong></p>
-                    <p>2. Hệ thống mở luồng đăng nhập sàn trên VPS và chờ OTP</p>
-                    <p>3. Điền mã SMS nhận được → nhấn <strong>Xác nhận OTP</strong></p>
+                    <p className="font-medium">Đăng nhập session qua browser:</p>
+                    <p>1. Với Shopee, ưu tiên email hoặc username Partner rồi lấy session browser.</p>
+                    <p>2. Nếu flow OTP cũ không còn phù hợp, chuyển sang tab Manual để dán cookie/session.</p>
+                    <p>3. Với Xanh SM vẫn có thể tiếp tục dùng OTP như cũ.</p>
                     {autoLoginInteg?.provider === 'shopee' && (
                       <>
-                        <p>Nếu VPS chưa lấy được phiên, chuyển sang tab Manual và đăng nhập trực tiếp trên Shopee Merchant để dán cookie/session.</p>
+                        <p>Tài khoản Shopee mới hiện login được ở Shopee Partner. Nếu Merchant chưa sinh session tự động, chuyển sang tab Manual và dán cookie/session browser.</p>
                         <div className="flex flex-wrap gap-2 pt-1">
+                          <a href={SHOPEE_PARTNER_LOGIN_URL} target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2">Mở Shopee Partner</a>
                           <a href={SHOPEE_MERCHANT_LOGIN_URL} target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2">Mở Shopee Merchant</a>
                           <a href={SHOPEE_SMS_LOGIN_URL} target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2">Mở Shopee SMS Login</a>
                           <a href={SHOPEE_PARTNER_OTP_URL} target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2">Mở Shopee Partner OTP</a>
@@ -2699,9 +2699,9 @@ export default function IntegrationsPage() {
                   </div>
                   {!autoLoginWaiting && (
                     <div>
-                      <label className="label">Số điện thoại đăng ký tài khoản</label>
-                      <input className="input w-full" type="tel"
-                        placeholder="VD: 0901234567"
+                      <label className="label">{autoLoginInteg?.provider === 'shopee' ? 'Email / username Shopee Partner' : 'Số điện thoại đăng ký tài khoản'}</label>
+                      <input className="input w-full" type={autoLoginInteg?.provider === 'shopee' ? 'text' : 'tel'}
+                        placeholder={autoLoginInteg?.provider === 'shopee' ? 'VD: Nguyenduyphuoc25@gmail.com' : 'VD: 0901234567'}
                         value={autoLoginForm.username}
                         onChange={e => setAutoLoginForm(p => ({ ...p, username: e.target.value }))} />
                     </div>
