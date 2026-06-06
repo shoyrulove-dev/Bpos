@@ -1,12 +1,5 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
-
-const inter = Inter({
-  subsets: ['latin', 'vietnamese'],
-  display: 'swap',
-  fallback: ['Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'system-ui', 'sans-serif'],
-})
 
 export const metadata: Metadata = {
   title: 'BPOS Portal',
@@ -21,7 +14,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="vi" className={inter.className} suppressHydrationWarning>
+    <html lang="vi" suppressHydrationWarning>
       <body>{children}</body>
     </html>
   )
