@@ -941,6 +941,8 @@ const SCRAPER_DIRECT = 'http://127.0.0.1:3845'
 const PAUSE_STORE_API = '/api/integrations/pause-store'
 
 const GRAB_PAUSE_DURATIONS = ['30m', '1h', '24h'] as const
+const GRAB_DEFAULT_PAUSE_DURATION = '24h'
+const BE_DEFAULT_BULK_ACTION = 'pause-until-reopen'
 
 const BE_BULK_ACTIONS = [
 
@@ -964,13 +966,13 @@ function PauseStoreSection() {
 
   const [activeTab, setActiveTab]   = useState<'grab' | 'be'>('grab')
 
-  const [selectedDur, setSelectedDur] = useState<string>('24h')
+  const [selectedDur, setSelectedDur] = useState<string>(GRAB_DEFAULT_PAUSE_DURATION)
 
-  const [selectedBeAction, setSelectedBeAction] = useState<string>('')
+  const [selectedBeAction, setSelectedBeAction] = useState<string>(BE_DEFAULT_BULK_ACTION)
 
   const [busyKey, setBusyKey]       = useState<string | null>(null)
 
-  const [bulkDur, setBulkDur]       = useState<string>('24h')
+  const [bulkDur, setBulkDur]       = useState<string>(GRAB_DEFAULT_PAUSE_DURATION)
 
   const [selected, setSelected]     = useState<Set<string>>(new Set())
 
@@ -1098,6 +1100,21 @@ function PauseStoreSection() {
 
   useEffect(() => { void load() }, [load])
 
+  const refreshAfterAction = useCallback(async (source: 'grab' | 'be', action: 'pause' | 'resume') => {
+    const rounds = source === 'be' ? 3 : 2
+    const delayMs = source === 'be' ? 4_000 : 2_500
+    setStatusMsg(
+      source === 'be'
+        ? `ÄÃ£ gá»­i lá»‡nh ${action === 'pause' ? 'táº¡m dá»«ng' : 'má»Ÿ láº¡i'} Be, Ä‘ang kiá»ƒm tra tráº¡ng thÃ¡i thá»±c táº¿â€¦`
+        : `ÄÃ£ gá»­i lá»‡nh ${action === 'pause' ? 'táº¡m dá»«ng' : 'má»Ÿ láº¡i'} Grab, Ä‘ang xÃ¡c nháº­n tráº¡ng thÃ¡iâ€¦`
+    )
+
+    for (let index = 0; index < rounds; index++) {
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs))
+      await load(true)
+    }
+  }, [load])
+
 
 
   // Real-time polling — tự refresh trạng thái mỗi 15 giây
@@ -1204,13 +1221,7 @@ function PauseStoreSection() {
 
       // Poll 2 lần để bắt trạng thái DB + live overlay mới nhất
 
-      for (let p = 0; p < 2; p++) {
-
-        await new Promise<void>(resolve => setTimeout(resolve, 5_000))
-
-        await load(true)
-
-      }
+      await refreshAfterAction('be', action)
 
     } else {
 
@@ -1236,7 +1247,8 @@ function PauseStoreSection() {
 
       setStatusMsg(`${action === 'pause' ? 'Đã dừng' : 'Đã mở lại'} ${ok}/${storeList.length} cửa hàng`)
 
-      setTimeout(() => void load(action === 'resume' || storeList.some(s => s.source === 'be')), 3000)
+      const refreshSource = storeList.some(s => s.source === 'be') ? 'be' : 'grab'
+      await refreshAfterAction(refreshSource, action)
 
     }
 
@@ -1358,7 +1370,7 @@ function PauseStoreSection() {
 
       }
 
-      setSelectedBeAction('')
+      setSelectedBeAction(BE_DEFAULT_BULK_ACTION)
 
       setSelected(new Set())
 
@@ -1732,7 +1744,7 @@ function PauseStoreSection() {
 
               <option value="">-- Hành động --</option>
 
-              {BE_BULK_ACTIONS.map(action => (
+              {BE_BULK_ACTIONS.filter(action => action.value !== 'pause-tomorrow').map(action => (
 
                 <option key={action.value} value={action.value}>{action.label}</option>
 
