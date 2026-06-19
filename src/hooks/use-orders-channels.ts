@@ -26,10 +26,11 @@ export function useOrders(params?: { q?: string; status?: string; source?: strin
     queryKey: ['orders', params],
     queryFn: () => fetchJSON(`/api/orders?${sp}`, undefined, false),
     placeholderData: keepPreviousData,
-    staleTime: ORDER_ALERT_POLL_INTERVAL_MS,
+    staleTime: 0,
     refetchInterval: params?.pollingEnabled ? ORDER_ALERT_POLL_INTERVAL_MS : false,
     refetchIntervalInBackground: params?.pollingEnabled ?? false,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   })
 }
 
@@ -45,10 +46,11 @@ export function useOrderTodayStatusCounts(params?: { source?: string; brandId?: 
   return useQuery({
     queryKey: ['orders-today-status', params],
     queryFn: () => fetchJSON(`/api/orders/today-status?${sp}`, undefined, false),
-    staleTime: ORDER_ALERT_POLL_INTERVAL_MS,
+    staleTime: 0,
     refetchInterval: params?.pollingEnabled ? ORDER_ALERT_POLL_INTERVAL_MS : false,
     refetchIntervalInBackground: params?.pollingEnabled ?? false,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   })
 }
 
@@ -59,6 +61,8 @@ export function useUpdateOrder() {
       fetchJSON(`/api/orders/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['orders'] })
+      qc.invalidateQueries({ queryKey: ['orders-today-status'] })
+      qc.invalidateQueries({ queryKey: ['order'] })
       qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
     },
   })
@@ -75,6 +79,7 @@ export function useCreateOrder() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['orders'] })
+      qc.invalidateQueries({ queryKey: ['orders-today-status'] })
       qc.invalidateQueries({ queryKey: ['order'] })
       qc.invalidateQueries({ queryKey: ['stats'] })
     },
@@ -87,6 +92,7 @@ export function useMarkGrabOrderReady() {
     mutationFn: (id: string) => fetchJSON(`/api/orders/${id}/grab-ready`, { method: 'POST' }),
     onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ['orders'] })
+      qc.invalidateQueries({ queryKey: ['orders-today-status'] })
       qc.invalidateQueries({ queryKey: ['order', id] })
       qc.invalidateQueries({ queryKey: ['kitchen-orders'] })
     },

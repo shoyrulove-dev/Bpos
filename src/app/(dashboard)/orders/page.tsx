@@ -122,7 +122,7 @@ export default function OrdersPage() {
   const [statusSaving, setStatusSaving] = useState(false)
   const ordersTopRef = useRef<HTMLDivElement>(null)
   const dq = useDebounce(search)
-  const pollingEnabled = page === 1 && !dq && !statusFilter && !sourceFilter
+  const pollingEnabled = true
 
   const { data, isLoading, isFetching, refetch, isRefetching } = useOrders({
     q: dq,

@@ -386,6 +386,10 @@ export function useKitchenOrders(params?: { brandId?: string; hubId?: string }) 
     queryKey: ['kitchen-orders', params],
     queryFn: () => fetchJSON(`/api/orders?${sp}`).then((r: { orders: unknown[] }) => r.orders ?? []),
     refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    staleTime: 0,
   })
 }
 
