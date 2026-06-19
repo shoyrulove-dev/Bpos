@@ -49,10 +49,12 @@ export async function GET(req: NextRequest) {
   ])
 
   const todayStatusCounts = Object.fromEntries(ORDER_STATUS_KEYS.map((status) => [status, 0])) as Record<string, number>
+  let totalCount = 0
   for (const row of rows) {
     const key = String(row?._id ?? '')
+    totalCount += Number(row?.count ?? 0)
     if (key) todayStatusCounts[key] = Number(row?.count ?? 0)
   }
 
-  return ok({ todayStatusCounts })
+  return ok({ todayStatusCounts, totalCount })
 }

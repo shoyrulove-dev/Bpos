@@ -946,7 +946,6 @@ const BE_DEFAULT_BULK_ACTION = 'pause-until-reopen'
 
 const BE_BULK_ACTIONS = [
 
-  { value: 'pause-tomorrow', label: '⏸ Pause đến Ngày mai' },
 
   { value: 'pause-until-reopen', label: '⏸ Pause đến khi mở lại' },
 
@@ -1174,6 +1173,8 @@ function PauseStoreSection() {
       source: store.source,
 
       username: store.username,
+
+      label: store.label,
 
       action,
 
@@ -1744,7 +1745,7 @@ function PauseStoreSection() {
 
               <option value="">-- Hành động --</option>
 
-              {BE_BULK_ACTIONS.filter(action => action.value !== 'pause-tomorrow').map(action => (
+              {BE_BULK_ACTIONS.map(action => (
 
                 <option key={action.value} value={action.value}>{action.label}</option>
 

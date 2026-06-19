@@ -6,6 +6,7 @@ import {
   getStoreIdentityKeys,
   normalizeStoreId,
   normalizeStoreSource,
+  resolvePauseStoreState,
   type PauseStoreState,
 } from '@/lib/store-pause-status'
 
@@ -23,7 +24,6 @@ function normalizePauseDuration(source: unknown, duration: unknown) {
   if (source === 'be') {
     const value = String(duration ?? '').trim()
     if (!value) return 'until-reopen'
-    if (value === 'tomorrow' || value === 'pause-tomorrow') return 'tomorrow'
     if (value === 'until-reopen' || value === 'pause-until-reopen') return 'until-reopen'
     return null
   }
@@ -41,61 +41,169 @@ function getScraperTargetIdentifier(body: Record<string, unknown>) {
   ].find(Boolean)
 }
 
-async function proxyToScraper(path: string, body: unknown) {
-  try {
-    const res = await fetch(`${SCRAPER_URL}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30_000),
-    })
-    const data = await res.json().catch(() => ({ ok: false, message: 'Lỗi parse JSON từ scraper' }))
-    return NextResponse.json(data)
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    return NextResponse.json(
-      { ok: false, message: `Không kết nối được scraper: ${msg}` },
-      { status: 502 },
-    )
+async function requestScraper(path: string, body: unknown) {
+  const res = await fetch(`${SCRAPER_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  })
+  const data = await res.json().catch(() => ({ ok: false, message: 'Loi parse JSON tu scraper' }))
+  return { status: res.status, data }
+}
+
+function normalizePauseStoreRow(value: unknown): PauseStoreState | null {
+  const record = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+  if (!record) return null
+
+  const source = normalizeStoreSource(record.source)
+  if (!source) return null
+
+  return canonicalizePauseStoreState({
+    integrationId: typeof record.integrationId === 'string' ? record.integrationId : undefined,
+    source,
+    label: String(record.label ?? record.storeName ?? record.storeId ?? 'Unknown store'),
+    storeId: normalizeStoreId(record.storeId),
+    paused: Boolean(record.paused),
+    loggedIn: Boolean(record.loggedIn),
+    pausedUntil: typeof record.pausedUntil === 'string' ? record.pausedUntil : null,
+    pauseMode: record.pauseMode === 'tomorrow' || record.pauseMode === 'until-reopen' ? record.pauseMode : null,
+    pauseLabel: typeof record.pauseLabel === 'string' ? record.pauseLabel : null,
+    username: typeof record.username === 'string' ? record.username : undefined,
+    isUnknown: Boolean(record.isUnknown),
+    platformStatus: typeof record.platformStatus === 'string' ? record.platformStatus : null,
+  })
+}
+
+async function fetchLiveScraperStores() {
+  const res = await fetch(`${SCRAPER_URL}/store-status?live=1`, {
+    signal: AbortSignal.timeout(8_000),
+    cache: 'no-store',
+  })
+  const data = await res.json().catch(() => null) as { stores?: unknown[] } | null
+  return Array.isArray(data?.stores)
+    ? data.stores.map((store) => normalizePauseStoreRow(store)).filter((store): store is PauseStoreState => Boolean(store))
+    : []
+}
+
+async function waitForExpectedPauseState(
+  identity: Pick<PauseStoreState, 'source' | 'integrationId' | 'storeId' | 'username' | 'label'>,
+  expectedPaused: boolean,
+) {
+  const attempts = identity.source === 'be' ? 4 : 3
+  const delayMs = identity.source === 'be' ? 4_000 : 2_500
+
+  for (let index = 0; index < attempts; index += 1) {
+    if (index > 0) await new Promise((resolve) => setTimeout(resolve, delayMs))
+
+    try {
+      const stores = await fetchLiveScraperStores()
+      const keyedStores = Object.fromEntries(
+        stores.flatMap((store) => getStoreIdentityKeys(store).map((key) => [key, store] as const)),
+      )
+      const matched = resolvePauseStoreState(keyedStores, identity)
+      if (!matched) continue
+      if (matched.paused === expectedPaused && matched.isUnknown !== true) {
+        return { verified: true, store: matched, attempts: index + 1 }
+      }
+      if (index === attempts - 1) {
+        return { verified: false, store: matched, attempts: index + 1 }
+      }
+    } catch {
+      if (index === attempts - 1) {
+        return { verified: false, store: null, attempts: index + 1 }
+      }
+    }
   }
+
+  return { verified: false, store: null, attempts }
 }
 
 export async function POST(req: NextRequest) {
   const { res: authRes } = await requireAdmin(req)
   if (authRes) return authRes
 
-  const body = await req.json().catch(() => null)
+  const body = await req.json().catch(() => null) as Record<string, unknown> | null
   if (!body || !body.source || !body.action) {
-    return NextResponse.json({ error: 'Thiếu source hoặc action' }, { status: 400 })
+    return NextResponse.json({ error: 'Thieu source hoac action' }, { status: 400 })
   }
 
   const scraperTargetIdentifier = getScraperTargetIdentifier(body)
+  const identity: Pick<PauseStoreState, 'source' | 'integrationId' | 'storeId' | 'username' | 'label'> = {
+    source: normalizeStoreSource(body.source) ?? 'grab',
+    integrationId: typeof body.integrationId === 'string' ? body.integrationId : undefined,
+    storeId: normalizeStoreId(body.storeId),
+    username: typeof body.username === 'string' ? body.username : undefined,
+    label: typeof body.label === 'string' ? body.label : String(body.storeId ?? body.integrationId ?? body.username ?? 'Store'),
+  }
 
-  if (body.action === 'pause') {
-    const normalizedDuration = normalizePauseDuration(body.source, body.duration)
-    if (!normalizedDuration) {
-      return NextResponse.json({ error: 'Thời lượng pause không hợp lệ' }, { status: 400 })
+  try {
+    if (body.action === 'pause') {
+      const normalizedDuration = normalizePauseDuration(body.source, body.duration)
+      if (!normalizedDuration) {
+        return NextResponse.json({ error: 'Thoi luong pause khong hop le' }, { status: 400 })
+      }
+
+      const payload = {
+        integrationId: scraperTargetIdentifier,
+        storeId: normalizeStoreId(body.storeId),
+        source: body.source,
+        username: typeof body.username === 'string' ? body.username : undefined,
+        duration: normalizedDuration,
+      }
+      const scraperResponse = await requestScraper('/pause-store', payload)
+      const scraperBody = scraperResponse.data as { ok?: boolean; message?: string }
+      if (scraperResponse.status >= 400 || scraperBody?.ok === false) {
+        return NextResponse.json(scraperBody, { status: scraperResponse.status >= 400 ? scraperResponse.status : 200 })
+      }
+
+      const verification = await waitForExpectedPauseState(identity, true)
+      return NextResponse.json({
+        ...scraperBody,
+        verified: verification.verified,
+        verificationAttempts: verification.attempts,
+        store: verification.store,
+        message: verification.verified
+          ? (verification.store?.pauseLabel ? `Da xac nhan tam dung: ${verification.store.pauseLabel}` : 'Da xac nhan cua hang dang tam dung')
+          : `${String(scraperBody?.message ?? 'Da gui lenh tam dung')}. Chua xac nhan duoc trang thai that, panel se tiep tuc tu lam moi.`,
+      })
     }
 
-    return proxyToScraper('/pause-store', {
-      integrationId: scraperTargetIdentifier,
-      storeId: normalizeStoreId(body.storeId),
-      source: body.source,
-      username: typeof body.username === 'string' ? body.username : undefined,
-      duration: normalizedDuration,
-    })
+    if (body.action === 'resume') {
+      const payload = {
+        integrationId: scraperTargetIdentifier,
+        storeId: normalizeStoreId(body.storeId),
+        source: body.source,
+        username: typeof body.username === 'string' ? body.username : undefined,
+      }
+      const scraperResponse = await requestScraper('/resume-store', payload)
+      const scraperBody = scraperResponse.data as { ok?: boolean; message?: string }
+      if (scraperResponse.status >= 400 || scraperBody?.ok === false) {
+        return NextResponse.json(scraperBody, { status: scraperResponse.status >= 400 ? scraperResponse.status : 200 })
+      }
+
+      const verification = await waitForExpectedPauseState(identity, false)
+      return NextResponse.json({
+        ...scraperBody,
+        verified: verification.verified,
+        verificationAttempts: verification.attempts,
+        store: verification.store,
+        message: verification.verified
+          ? 'Da xac nhan cua hang dang mo lai'
+          : `${String(scraperBody?.message ?? 'Da gui lenh mo lai')}. Chua xac nhan duoc trang thai that, panel se tiep tuc tu lam moi.`,
+      })
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json(
+      { ok: false, message: `Khong ket noi duoc scraper: ${msg}` },
+      { status: 502 },
+    )
   }
 
-  if (body.action === 'resume') {
-    return proxyToScraper('/resume-store', {
-      integrationId: scraperTargetIdentifier,
-      storeId: normalizeStoreId(body.storeId),
-      source: body.source,
-      username: typeof body.username === 'string' ? body.username : undefined,
-    })
-  }
-
-  return NextResponse.json({ error: 'Action không hợp lệ' }, { status: 400 })
+  return NextResponse.json({ error: 'Action khong hop le' }, { status: 400 })
 }
 
 export async function GET(req: NextRequest) {
@@ -146,31 +254,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const toPauseStoreRow = (value: unknown): PauseStoreState | null => {
-    const record = value && typeof value === 'object' && !Array.isArray(value)
-      ? value as Record<string, unknown>
-      : null
-    if (!record) return null
-
-    const source = normalizeStoreSource(record.source)
-    if (!source) return null
-
-    return canonicalizePauseStoreState({
-      integrationId: typeof record.integrationId === 'string' ? record.integrationId : undefined,
-      source,
-      label: String(record.label ?? record.storeName ?? record.storeId ?? 'Unknown store'),
-      storeId: normalizeStoreId(record.storeId),
-      paused: Boolean(record.paused),
-      loggedIn: Boolean(record.loggedIn),
-      pausedUntil: typeof record.pausedUntil === 'string' ? record.pausedUntil : null,
-      pauseMode: record.pauseMode === 'tomorrow' || record.pauseMode === 'until-reopen' ? record.pauseMode : null,
-      pauseLabel: typeof record.pauseLabel === 'string' ? record.pauseLabel : null,
-      username: typeof record.username === 'string' ? record.username : undefined,
-      isUnknown: Boolean(record.isUnknown),
-      platformStatus: typeof record.platformStatus === 'string' ? record.platformStatus : null,
-    })
-  }
-
   const wantsLive = req.nextUrl.searchParams.get('live') === '1'
   const scraperPath = wantsLive ? '/store-status?live=1' : '/store-status'
   const [scraperResult, dbResult] = await Promise.allSettled([
@@ -195,7 +278,7 @@ export async function GET(req: NextRequest) {
     scraperVersion = typeof data?.version === 'string' ? data.version : null
     if (data && data.ok !== false && Array.isArray(data.stores)) {
       scraperStores = data.stores
-        .map((store: unknown) => toPauseStoreRow(store))
+        .map((store: unknown) => normalizePauseStoreRow(store))
         .filter((store: PauseStoreState | null): store is PauseStoreState => Boolean(store))
     }
   }
@@ -247,8 +330,8 @@ export async function GET(req: NextRequest) {
         scraperLastSeenAt: freshestDbSeenAt?.toISOString() ?? null,
         stores: dbStores,
         message: hasFreshDbHeartbeat
-          ? 'Scraper heartbeat còn mới trong BPOS DB, đang hiển thị trạng thái persisted'
-          : 'Không lấy được trạng thái từ scraper, đang hiển thị danh sách từ DB',
+          ? 'Scraper heartbeat con moi trong BPOS DB, dang hien thi trang thai persisted'
+          : 'Khong lay duoc trang thai tu scraper, dang hien thi danh sach tu DB',
       })
     }
 
@@ -292,7 +375,7 @@ export async function GET(req: NextRequest) {
       version: scraperVersion,
       scraperLastSeenAt: freshestDbSeenAt?.toISOString() ?? null,
       stores,
-      message: `Merged ${scraperStores.length} trạng thái scraper với ${dbStores.length} cửa hàng DB`,
+      message: `Merged ${scraperStores.length} trang thai scraper voi ${dbStores.length} cua hang DB`,
     })
   } catch {
     if (scraperStores.length > 0) {
@@ -302,7 +385,7 @@ export async function GET(req: NextRequest) {
         version: scraperVersion,
         scraperLastSeenAt: null,
         stores: scraperStores,
-        message: 'Không tải được DB, đang hiển thị trạng thái từ scraper',
+        message: 'Khong tai duoc DB, dang hien thi trang thai tu scraper',
       })
     }
 
@@ -312,7 +395,7 @@ export async function GET(req: NextRequest) {
       version: scraperVersion,
       scraperLastSeenAt: null,
       stores: [],
-      message: 'Scraper offline và không tải được danh sách từ DB',
+      message: 'Scraper offline va khong tai duoc danh sach tu DB',
     })
   }
 }

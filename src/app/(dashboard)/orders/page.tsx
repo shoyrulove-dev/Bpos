@@ -168,10 +168,12 @@ export default function OrdersPage() {
   }
 
   const todayCountByStatus = useMemo(() => {
-    const counts = { ...(((todayCountsData as { todayStatusCounts?: Record<string, number> } | undefined)?.todayStatusCounts) ?? {}) }
+    const payload = (todayCountsData as { todayStatusCounts?: Record<string, number>; totalCount?: number } | undefined)
+    const counts = { ...(payload?.todayStatusCounts ?? {}) }
     if (statusFilter && statusFilter !== '' && typeof counts[statusFilter] !== 'number') {
       counts[statusFilter] = 0
     }
+    counts.__all__ = Number(payload?.totalCount ?? Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0))
     return counts
   }, [todayCountsData, statusFilter])
 
@@ -204,7 +206,9 @@ export default function OrdersPage() {
           <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">Trạng thái hôm nay</div>
           <div className="space-y-2">
             {STATUS_ITEMS.map((status) => {
-              const count = status.value ? Number(todayCountByStatus[status.value] || 0) : null
+              const count = status.value
+                ? Number(todayCountByStatus[status.value] || 0)
+                : Number(todayCountByStatus.__all__ || 0)
               const active = statusFilter === status.value
               return (
                 <button
