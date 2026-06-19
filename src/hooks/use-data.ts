@@ -133,7 +133,10 @@ export function useCreateIntegration() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: Record<string, unknown>) => fetchJSON('/api/integrations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['integrations'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['integrations'] })
+      qc.invalidateQueries({ queryKey: ['channels'] })
+    },
   })
 }
 
@@ -141,7 +144,10 @@ export function useDeleteIntegration() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => fetchJSON(`/api/integrations/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['integrations'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['integrations'] })
+      qc.invalidateQueries({ queryKey: ['channels'] })
+    },
   })
 }
 
@@ -149,7 +155,10 @@ export function useUpdateIntegration() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, ...data }: Record<string, unknown>) => fetchJSON(`/api/integrations/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['integrations'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['integrations'] })
+      qc.invalidateQueries({ queryKey: ['channels'] })
+    },
   })
 }
 

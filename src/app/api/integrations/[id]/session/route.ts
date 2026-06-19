@@ -1,21 +1,32 @@
 /**
  * POST /api/integrations/[id]/session
- *   Manually paste session cookies (from browser DevTools) as fallback.
- *   Body: { cookies: PlaywrightCookie[], extraHeaders?: Record<string,string> }
- *
  * DELETE /api/integrations/[id]/session
- *   Clear stored session (force re-login next sync).
  */
 import { NextRequest } from 'next/server'
 import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { ok, err, requireAdmin } from '@/lib/api-helpers'
 import { encryptJSON } from '@/lib/crypto'
+import { ensureChannelForIntegration } from '@/lib/channel-sync'
 import { buildSessionClearUpdate, buildSessionSuccessUpdate } from '@/lib/session-health'
 import { getAutomation } from '@/services/automation/runner'
 import type { SessionData, PlaywrightCookie } from '@/integrations/types'
 
-// ─── POST – manual cookie paste ───────────────────────────────────────────────
+function normalizeStoreIdentity(value: unknown) {
+  const text = String(value ?? '').trim()
+  return text || undefined
+}
+
+function inferStoreIdFromHeaders(extraHeaders: Record<string, string>) {
+  return normalizeStoreIdentity(
+    extraHeaders['x-store-id']
+    ?? extraHeaders['x-grab-store-id']
+    ?? extraHeaders['x-restaurant-id']
+    ?? extraHeaders['store-id']
+    ?? extraHeaders['restaurant-id']
+  )
+}
+
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const { res } = await requireAdmin(req)
   if (res) return res
@@ -27,7 +38,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const body = await req.json() as {
     cookies?: PlaywrightCookie[]
     extraHeaders?: Record<string, string>
-    cookieString?: string  // raw "name=value; name2=value2" format from DevTools
+    cookieString?: string
+    storeId?: string
+    storeName?: string
   }
 
   let cookies: PlaywrightCookie[] = []
@@ -35,7 +48,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (body.cookies && body.cookies.length > 0) {
     cookies = body.cookies
   } else if (body.cookieString) {
-    // Parse simple "name=value; ..." string pasted from DevTools
     cookies = body.cookieString.split(';').map(pair => {
       const [name, ...rest] = pair.trim().split('=')
       return {
@@ -72,26 +84,39 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const capturedAt = new Date()
-  const expiresAt  = new Date(capturedAt.getTime() + ttl * 1000)
+  const expiresAt = new Date(capturedAt.getTime() + ttl * 1000)
+  const resolvedStoreId = normalizeStoreIdentity(body.storeId) ?? inferStoreIdFromHeaders(extraHeaders) ?? normalizeStoreIdentity(integ.externalStoreId)
+  const resolvedStoreName = normalizeStoreIdentity(body.storeName) ?? normalizeStoreIdentity(integ.externalStoreName)
 
-  // Preserve existing loginMode — don't override when manually saving cookies.
   await IntegrationModel.updateOne({ _id: params.id }, buildSessionSuccessUpdate({
-    sessionData:       encryptJSON(session),
-    sessionStatus:     'active',
+    sessionData: encryptJSON(session),
+    sessionStatus: 'active',
     sessionCapturedAt: capturedAt,
-    sessionExpiresAt:  expiresAt,
+    sessionExpiresAt: expiresAt,
     automationRunning: false,
+    ...(resolvedStoreId ? { externalStoreId: resolvedStoreId } : {}),
+    ...(resolvedStoreName ? { externalStoreName: resolvedStoreName } : {}),
   }))
 
+  await ensureChannelForIntegration({
+    provider: integ.provider,
+    brandId: integ.brandId,
+    hubId: integ.hubId,
+    externalStoreId: resolvedStoreId,
+    externalStoreName: resolvedStoreName,
+    isActive: integ.isActive,
+  })
+
   return ok({
-    message:           'Session đã được lưu thành công',
+    message: 'Session đã được lưu thành công',
     sessionCapturedAt: capturedAt,
-    sessionExpiresAt:  expiresAt,
-    cookieCount:       cookies.length,
+    sessionExpiresAt: expiresAt,
+    cookieCount: cookies.length,
+    externalStoreId: resolvedStoreId,
+    externalStoreName: resolvedStoreName,
   })
 }
 
-// ─── DELETE – clear session ───────────────────────────────────────────────────
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const { res } = await requireAdmin(req)
   if (res) return res

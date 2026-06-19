@@ -8,7 +8,7 @@ import { ensureChannelForIntegration } from '@/lib/channel-sync'
 import { getDefaultSessionRefreshMode } from '@/lib/session-refresh-mode'
 
 const EXTERNAL_SCRAPER_STALE_MS = 15 * 60 * 1000
-const EXTERNAL_SCRAPER_LOOKBACK_MS = 30 * 60 * 1000 // 30 phút (stale threshold là 15 phút)
+const EXTERNAL_SCRAPER_LOOKBACK_MS = 30 * 60 * 1000
 
 type ScraperSyncStatus = 'success' | 'error' | 'pending' | 'starting' | 'logging-in'
 
@@ -38,6 +38,24 @@ function extractScraperHeartbeatDetail(content: string) {
   return content.match(/\[detail:([^\]]+)\]/)?.[1]?.trim()
 }
 
+function validateAutoMarketplaceIntegration(input: {
+  provider?: unknown
+  loginMode?: unknown
+  loginUsername?: unknown
+  loginPassword?: unknown
+}, options?: { requirePassword?: boolean }) {
+  const provider = String(input.provider ?? '').trim()
+  const loginMode = String(input.loginMode ?? 'api').trim()
+  if (!['grab', 'be'].includes(provider) || loginMode !== 'auto') return null
+
+  const loginUsername = String(input.loginUsername ?? '').trim()
+  const loginPassword = String(input.loginPassword ?? '').trim()
+
+  if (!loginUsername) return 'Thiếu tài khoản đăng nhập sàn'
+  if (options?.requirePassword !== false && !loginPassword) return 'Thiếu mật khẩu đăng nhập sàn'
+  return null
+}
+
 function mapHeartbeatPhase(phase?: string): { scraperSyncStatus: ScraperSyncStatus; scraperSyncMessage?: string } | null {
   if (!phase) return null
 
@@ -58,6 +76,7 @@ function mapHeartbeatPhase(phase?: string): { scraperSyncStatus: ScraperSyncStat
 export async function GET(req: NextRequest) {
   const { res } = await requireAdmin(req)
   if (res) return res
+
   await connectDB()
   const { searchParams } = new URL(req.url)
   const brandId = searchParams.get('brandId') || ''
@@ -65,6 +84,7 @@ export async function GET(req: NextRequest) {
   const listOnly = searchParams.get('list') === '1'
   const filter: Record<string, unknown> = {}
   if (brandId) filter.brandId = brandId
+
   const baseQuery = IntegrationModel.find(filter).sort({ createdAt: -1 })
   const integrations = summaryOnly
     ? await baseQuery
@@ -76,16 +96,17 @@ export async function GET(req: NextRequest) {
         .populate('brandId', 'name')
         .populate('hubId', 'name')
         .lean()
-    : await baseQuery
-      .populate('brandId', 'name')
-      .populate('hubId', 'name')
-      .populate('createdBy', 'name')
-      .lean()
+      : await baseQuery
+        .populate('brandId', 'name')
+        .populate('hubId', 'name')
+        .populate('createdBy', 'name')
+        .lean()
 
   const typedIntegrations = integrations as Array<Record<string, unknown>>
   if (summaryOnly) {
     return ok(typedIntegrations)
   }
+
   const externalTargets = typedIntegrations.filter((integration) =>
     usesExternalOrderSync({
       provider: String(integration.provider ?? ''),
@@ -181,21 +202,49 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const { token, res } = await requireAdmin(req)
   if (res) return res
+
   await connectDB()
   const body = await req.json()
-  const { provider, brandId, hubId, externalStoreId, externalStoreName, credentials, loginMode, loginUsername, loginPassword, sessionRefreshMode } = body
+  const {
+    provider,
+    brandId,
+    hubId,
+    externalStoreId,
+    externalStoreName,
+    credentials,
+    loginMode,
+    loginUsername,
+    loginPassword,
+    sessionRefreshMode,
+  } = body
+
   if (!provider || !brandId) return err('Thiếu thông tin bắt buộc')
+
+  const autoValidationError = validateAutoMarketplaceIntegration({
+    provider,
+    loginMode,
+    loginUsername,
+    loginPassword,
+  })
+  if (autoValidationError) return err(autoValidationError)
+
   const integDoc: Record<string, unknown> = {
-    provider, brandId, hubId, externalStoreId, externalStoreName,
+    provider,
+    brandId,
+    hubId,
+    externalStoreId,
+    externalStoreName,
     credentials: credentials || {},
     createdBy: token!.id,
   }
-  if (loginMode)    integDoc.loginMode    = loginMode
+
+  if (loginMode) integDoc.loginMode = loginMode
   if (loginUsername) integDoc.loginUsername = loginUsername
   if (loginPassword) integDoc.loginPassword = encrypt(String(loginPassword))
   if (loginMode === 'auto' || loginUsername || loginPassword) {
     integDoc.sessionRefreshMode = sessionRefreshMode || getDefaultSessionRefreshMode(provider)
   }
+
   const integration = await IntegrationModel.create(integDoc)
   await ensureChannelForIntegration({
     provider: integration.provider,
@@ -205,5 +254,6 @@ export async function POST(req: NextRequest) {
     externalStoreName: integration.externalStoreName,
     isActive: integration.isActive,
   })
+
   return ok(integration, 201)
 }

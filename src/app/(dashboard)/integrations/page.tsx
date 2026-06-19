@@ -3625,7 +3625,7 @@ export default function IntegrationsPage() {
 
     if (__sessionRefreshMode)            body.sessionRefreshMode = __sessionRefreshMode
 
-    if (__externalStoreId?.trim())       body.externalStoreId   = __externalStoreId.trim()
+    if (__externalStoreId !== undefined) body.externalStoreId   = __externalStoreId.trim()
 
     if (__loginMode !== 'auto') {
 
@@ -4577,6 +4577,8 @@ export default function IntegrationsPage() {
 
                   </div>
 
+                  <p className="text-xs text-violet-600 -mt-1">Grab và Be theo flow mới chỉ cần tài khoản đăng nhập. Store ID hoặc Restaurant ID sẽ được hệ thống tự học sau khi login hoặc lưu session.</p>
+
                   <div>
 
                     <label className="label">
@@ -4640,6 +4642,8 @@ export default function IntegrationsPage() {
                       value={form.externalStoreName}
 
                       onChange={e => setForm(p => ({ ...p, externalStoreName: e.target.value }))} />
+
+                    <p className="text-xs text-violet-600 mt-1">Bạn có thể tạo mới mà chưa cần nhập Store ID hoặc Restaurant ID.</p>
 
                   </div>
 
@@ -5089,6 +5093,8 @@ export default function IntegrationsPage() {
 
                   onChange={e => setCreds(p => ({ ...p, __externalStoreId: e.target.value }))} />
 
+                <p className="text-xs text-violet-600 mt-1">Với Grab và Be auto, trường này không bắt buộc. Có thể để trống để hệ thống tự học lại từ lần login hoặc lưu session kế tiếp.</p>
+
               </div>
 
 
@@ -5116,6 +5122,10 @@ export default function IntegrationsPage() {
               {creds.__loginMode === 'auto' && (
 
                 <div className="bg-violet-50 border border-violet-100 rounded-xl p-4 space-y-3">
+
+                  {(settingsInteg.provider === 'grab' || settingsInteg.provider === 'be') && (
+                    <p className="text-xs text-violet-600">Flow mới cho Grab và Be cho phép để trống Store ID ban đầu. Hệ thống sẽ tự học lại khi login hoặc lưu session thành công.</p>
+                  )}
 
                   <p className="text-xs text-violet-700 font-medium">{providerUsesSmsOtp(settingsInteg.provider) ? 'Lưu số điện thoại để chạy flow SMS OTP' : 'Lưu thông tin đăng nhập để relog session khi cần'}</p>
 
@@ -5686,6 +5696,8 @@ export default function IntegrationsPage() {
                       value={manualStoreId}
 
                       onChange={e => setManualStoreId(e.target.value)} />
+
+                    <p className="text-xs text-violet-600 mt-1">Có thể để trống. Nếu session hoặc automation tìm ra store thật, BPOS sẽ tự cập nhật lại integration và kênh bán.</p>
 
                   </div>
 
