@@ -16,7 +16,8 @@ import { connectDB } from '@/lib/db'
 import IntegrationModel from '@/models/Integration'
 import { decrypt } from '@/lib/crypto'
 
-const CRON_TOKEN = 'bpos-cron-2024'
+const LEGACY_CRON_TOKEN = 'bpos-cron-2024'
+const CRON_SECRET = process.env.CRON_SECRET
 
 function unauthorized() {
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -24,7 +25,12 @@ function unauthorized() {
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get('authorization') ?? ''
-  if (auth !== `Bearer ${CRON_TOKEN}`) return unauthorized()
+  const acceptedTokens = [
+    LEGACY_CRON_TOKEN,
+    String(CRON_SECRET ?? '').trim(),
+  ].filter(Boolean)
+  const isAuthorized = acceptedTokens.some((token) => auth === `Bearer ${token}`)
+  if (!isAuthorized) return unauthorized()
 
   await connectDB()
 

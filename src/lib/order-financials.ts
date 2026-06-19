@@ -213,7 +213,7 @@ export function getGrabMoneyBreakdown(order: Order) {
     getAmountFromSources(amountSources, ['merchandiseAmount', 'subtotal', 'subTotal', 'originalPriceInMin']),
     getAmountFromSources(amountSources, ['productDiscount', 'orderDiscount', 'discount', 'discountAmount', 'basketPromo']),
     getAmountFromSources(amountSources, ['revenueAfterPromotion', 'totalDisplay', 'revampedSubtotalDisplay', 'eaterPayment', 'total', 'orderTotal']),
-    getAmountFromSources(amountSources, ['platformCommission', 'mexCommissionDisplay', 'platformFee', 'commissionFee', 'merchantCommission', 'merchantFee', 'serviceFee']),
+    getAmountFromSources(amountSources, ['platformCommission', 'mexCommissionDisplay', 'platformFee', 'commissionFee', 'merchantCommission', 'merchantFee']),
     getAmountFromSources(amountSources, ['taxWithheld', 'onBehalfWithholdTaxDisplay', 'withholdingTax', 'withheldTax', 'vatAmount', 'mexVatAmountDisplay', 'pitAmount', 'mexPitAmountDisplay']),
     getAmountFromSources(amountSources, ['actualReceived', 'merchantReceivable', 'merchantPayment', 'payToMerchant', 'receivedAmount']),
   ].some((value) => typeof value === 'number')
@@ -256,7 +256,7 @@ export function getGrabMoneyBreakdown(order: Order) {
   const customerPaid = getAmountFromSources([fare, price, raw], ['passengerTotalDisplay', 'eaterPayment']) ?? 0
   const platformCommission = getDeductionAmountFromSources(
     [financialBreakdown, fare, price, raw],
-    ['platformCommission', 'mexCommissionDisplay', 'platformFee', 'commissionFee', 'merchantCommission', 'merchantFee', 'serviceFee'],
+    ['platformCommission', 'mexCommissionDisplay', 'platformFee', 'commissionFee', 'merchantCommission', 'merchantFee'],
   ) ?? Math.abs(order.platformFee ?? 0)
   const explicitTaxWithheld = getDeductionAmountFromSources(
     [financialBreakdown],
@@ -421,7 +421,7 @@ export function getFinancialBreakdown(order: Order) {
     subtotal: getBreakdownAmount(raw, ['merchandiseAmount', 'grossFoodSales', 'itemSubtotal', 'subTotal']) ?? order.subtotal,
     productDiscount: getBreakdownAmount(raw, ['productDiscount', 'productDiscountAmount', 'itemDiscount', 'itemDiscountAmount', 'lineItemDiscount']) ?? 0,
     orderDiscount: getBreakdownAmount(raw, ['orderDiscount', 'orderDiscountAmount', 'basketDiscount', 'campaignDiscount', 'discountAmount']) ?? order.discount,
-    platformFee: getBreakdownAmount(raw, ['platformCommission', 'platformFee', 'commissionFee', 'merchantCommission', 'serviceFee']) ?? (order.platformFee ?? 0),
+    platformFee: getBreakdownAmount(raw, ['platformCommission', 'platformFee', 'commissionFee', 'merchantCommission']) ?? (order.platformFee ?? 0),
     revenueAfterPromotion: getBreakdownAmount(raw, ['revenueAfterPromotion', 'afterPromotionRevenue', 'netSales', 'salesAfterDiscount']) ?? order.total,
     taxWithheld: getBreakdownAmount(raw, ['taxWithheld', 'taxDeduction', 'withholdingTax', 'withheldTax', 'deductedTax', 'taxAmount']) ?? 0,
   }
