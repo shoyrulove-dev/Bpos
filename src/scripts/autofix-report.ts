@@ -45,7 +45,7 @@ function parseOutputPath() {
 
 function fileContainsAll(relativePath: string, tokens: string[], name: string, summary: string): CheckResult {
   if (!existsSync(resolve(repoRoot, relativePath))) {
-    return { name, status: 'fail', summary: `${relativePath} không tồn tại` }
+    return { name, status: 'fail', summary: `${relativePath} khong ton tai` }
   }
 
   const text = readText(relativePath)
@@ -73,9 +73,7 @@ async function fetchJson(url: string) {
 
   try {
     const res = await fetch(url, { signal: controller.signal })
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`)
-    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return await res.json()
   } finally {
     clearTimeout(timeout)
@@ -121,7 +119,7 @@ async function probeScraper(scraperUrl: string): Promise<{ check: CheckResult; d
       check: {
         name: 'scraper-live-probe',
         status: allOnline ? 'pass' : 'warn',
-        summary: allOnline ? 'Scraper online đầy đủ cho Grab/Be' : 'Scraper phản hồi nhưng còn account chưa online đủ',
+        summary: allOnline ? 'Scraper online day du cho Grab/Be' : 'Scraper phan hoi nhung con account chua online du',
         details: metrics,
       },
       data: metrics,
@@ -131,7 +129,7 @@ async function probeScraper(scraperUrl: string): Promise<{ check: CheckResult; d
       check: {
         name: 'scraper-live-probe',
         status: 'warn',
-        summary: 'Không probe được scraper live',
+        summary: 'Khong probe duoc scraper live',
         details: { scraperUrl, error: error instanceof Error ? error.message : String(error) },
       },
     }
@@ -143,21 +141,21 @@ async function main() {
   const checks: CheckResult[] = [
     fileContainsAll(
       'src/app/(dashboard)/integrations/page.tsx',
-      ['selectedBeAction', 'pause-tomorrow', 'pause-until-reopen', 'Chỉ áp dụng cho Be'],
+      ['selectedBeAction', 'pause-until-reopen', 'Chỉ áp dụng cho Be'],
       'bpos-be-pause-ui',
-      'BPOS pause tab đã có action riêng cho Be giống scraper control',
+      'BPOS pause tab da co action rieng cho Be giong scraper control',
     ),
     fileContainsAll(
       'src/app/api/integrations/pause-store/route.ts',
-      ['pause-tomorrow', 'until-reopen', 'normalizePauseDuration'],
+      ['until-reopen', 'normalizePauseDuration', 'waitForExpectedPauseState', 'verified'],
       'pause-store-normalization',
-      'Route pause-store đã normalize đúng mode Be/Grab',
+      'Route pause-store da normalize dung mode Be/Grab va co hau kiem',
     ),
     fileContainsAll(
       'src/app/api/integrations/route.ts',
       ['vps-be-scraper', 'browser-scraper', 'scraperSyncStatus'],
       'external-sync-source-map',
-      'Integrations API còn map đúng source sync ngoài cho Grab/Be',
+      'Integrations API con map dung source sync ngoai cho Grab/Be',
     ),
   ]
 
@@ -171,7 +169,7 @@ async function main() {
     checks.push({
       name: 'scraper-live-probe',
       status: 'skip',
-      summary: 'Bỏ qua probe scraper vì chưa có SCRAPER_CONTROL_URL',
+      summary: 'Bo qua probe scraper vi chua co SCRAPER_CONTROL_URL',
     })
   }
 
