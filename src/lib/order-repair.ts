@@ -439,16 +439,16 @@ function getGrabRepairTargetStatus(order: Pick<StoredOrder, 'rawPayload'>) {
     ?? ''
   ).toUpperCase()
 
-  if (grabPageStage === 'cancelled' || GRAB_CANCELLED_REPAIR_STATUSES.has(rawGrabStatus)) {
-    return 'cancelled' as const
-  }
-
   if (
     grabPageStage === 'completed'
     || (grabPageStage === 'history' && (GRAB_COMPLETED_REPAIR_STATUSES.has(rawGrabStatus) || hasDeliveredAtSignal(rawPayload)))
     || GRAB_COMPLETED_REPAIR_STATUSES.has(rawGrabStatus)
   ) {
     return 'completed' as const
+  }
+
+  if (grabPageStage === 'cancelled' || GRAB_CANCELLED_REPAIR_STATUSES.has(rawGrabStatus)) {
+    return 'cancelled' as const
   }
 
   return null

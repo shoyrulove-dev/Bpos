@@ -675,6 +675,12 @@ export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
     || pageType.includes('deliver')
   )
 
+  // For Grab, an explicit finalized completion signal from the scraper/detail fetch must win
+  // over stale cancelled breadcrumbs that may remain after driver reassignment / recovery.
+  if (scraperFinalizedStatus === 'completed') {
+    return 'completed' as const
+  }
+
   if (
     parseDateValue(rawPayload.cancelledAt)
     || parseDateValue(rawPayload.canceledAt)
@@ -683,10 +689,6 @@ export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
     || scraperFinalizedStatus === 'cancelled'
   ) {
     return 'cancelled' as const
-  }
-
-  if (scraperFinalizedStatus === 'completed') {
-    return 'completed' as const
   }
 
   // Grab history/completed buckets represent finalized orders even when

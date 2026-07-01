@@ -177,11 +177,24 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
     .map((value) => String(value ?? '').trim().toLowerCase())
     .filter(Boolean)
 
+  const hasCompletionEvidence = hasGrabCompletionSignal(secondarySignals)
+    || hasGrabDateValue(raw.completedAt)
+    || hasGrabDateValue(raw.deliveredAt)
+    || hasGrabDateValue(raw.deliveryCompletedAt)
+    || hasGrabDateValue(raw.delivered_time)
+    || hasGrabDateValue(times?.completedAt)
+    || hasGrabDateValue(times?.deliveredAt)
+
+  // Grab can keep stale cancel/reassign breadcrumbs in the payload even after the order was
+  // delivered. When the portal/detail stage explicitly says completed/history, completion wins.
+  if (pageStage === 'completed') return 'completed'
+  if (pageStage === 'history' && hasCompletionEvidence) return 'completed'
+
   // If the primary state is explicitly active, trust it over page-tab signals.
   // Scenario: scraper briefly sees the order in the Cancelled tab due to a driver cancel/reassign,
   // but the order state itself is still ORDER_IN_PREPARE / ACCEPTED / etc.
   if (GRAB_EXPLICIT_ACTIVE_STATES.has(rawStatus)) {
-    if (hasGrabCompletionSignal(secondarySignals)) return 'completed'
+    if (hasCompletionEvidence) return 'completed'
     if (hasGrabDeliverySignal(secondarySignals)) return 'waiting_pickup'
     return mappedStatus
   }
@@ -216,18 +229,7 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
 
   // Check completion TRƯỚC khi check pageStage === 'ready', để tránh downgrade
   // đơn đã hoàn thành (có completedAt/deliveredAt) xuống waiting_pickup
-  if (hasGrabCompletionSignal(secondarySignals)) {
-    return 'completed'
-  }
-
-  if (
-    hasGrabDateValue(raw.completedAt)
-    || hasGrabDateValue(raw.deliveredAt)
-    || hasGrabDateValue(raw.deliveryCompletedAt)
-    || hasGrabDateValue(raw.delivered_time)
-    || hasGrabDateValue(times?.completedAt)
-    || hasGrabDateValue(times?.deliveredAt)
-  ) {
+  if (hasCompletionEvidence) {
     return 'completed'
   }
 
@@ -236,13 +238,6 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
     // Đang giao (driver đã lấy, chưa giao xong) → vẫn là waiting_pickup từ góc nhìn nhà hàng
     if (secondarySignals.some(v => v.includes('cancel') || v.includes('fail') || v.includes('refund'))) return 'cancelled'
     if (raw.cancelCode || hasGrabDateValue(raw.cancelledAt) || hasGrabDateValue(raw.canceledAt) || hasGrabDateValue(times?.cancelledAt)) return 'cancelled'
-    const hasCompletionEvidence = hasGrabCompletionSignal(secondarySignals)
-      || hasGrabDateValue(raw.completedAt)
-      || hasGrabDateValue(raw.deliveredAt)
-      || hasGrabDateValue(raw.deliveryCompletedAt)
-      || hasGrabDateValue(raw.delivered_time)
-      || hasGrabDateValue(times?.completedAt)
-      || hasGrabDateValue(times?.deliveredAt)
     if (hasCompletionEvidence) return 'completed'
     // Đang giao hoặc chưa rõ → waiting_pickup (không dùng delivering)
     return 'waiting_pickup'
