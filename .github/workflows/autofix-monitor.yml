@@ -51,18 +51,10 @@ jobs:
           AUTOFIX_REPORT_PATH: tmp/autofix-report.json
         run: npm run autofix:report
 
-      - name: Upload autofix report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: autofix-report
-          path: tmp/autofix-report.json
-          if-no-files-found: warn
-
       - name: Publish job summary
         if: always()
         run: |
-          node -e "const fs=require('fs');const p='tmp/autofix-report.json';if(!fs.existsSync(p)){fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'## Autofix Report\n\nReport file not found.\n');process.exit(0)};const r=JSON.parse(fs.readFileSync(p,'utf8'));const lines=['## Autofix Report','',`- Generated: ${r.generatedAt ?? '-'}`,`- Repo version: ${r.repoVersion ?? '-'}`,`- Pass: ${r.summary?.pass ?? 0}`,`- Warn: ${r.summary?.warn ?? 0}`,`- Fail: ${r.summary?.fail ?? 0}`,`- Skip: ${r.summary?.skip ?? 0}`,'','| Check | Status | Summary |','| --- | --- | --- |',...(Array.isArray(r.checks)?r.checks:[]).map(c=>`| ${String(c.name ?? '-')} | ${String(c.status ?? '-')} | ${String(c.summary ?? '-').replace(/\n/g,' ')} |`)];fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,lines.join('\n')+'\n');"
+          node -e "const fs=require('fs');const p='tmp/autofix-report.json';if(!fs.existsSync(p)){fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'## Autofix Report\n\nReport file not found.\n');process.exit(0)};const r=JSON.parse(fs.readFileSync(p,'utf8'));const lines=['## Autofix Report','',`- Generated: ${r.generatedAt ?? '-'}`,`- Repo version: ${r.repoVersion ?? '-'}`,`- Pass: ${r.summary?.pass ?? 0}`,`- Warn: ${r.summary?.warn ?? 0}`,`- Fail: ${r.summary?.fail ?? 0}`,`- Skip: ${r.summary?.skip ?? 0}`,'','| Check | Status | Summary |','| --- | --- | --- |',...(Array.isArray(r.checks)?r.checks:[]).map(c=>`| ${String(c.name ?? '-')} | ${String(c.status ?? '-')} | ${String(c.summary ?? '-').replace(/\n/g,' ')} |`),'','### Raw report JSON','','```json',JSON.stringify(r,null,2),'```'];fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,lines.join('\n')+'\n');"
 
       - name: Enforce autofix report
         if: always()
