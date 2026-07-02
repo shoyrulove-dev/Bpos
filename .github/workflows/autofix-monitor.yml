@@ -19,6 +19,8 @@ jobs:
   autofix-monitor:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
     permissions:
       contents: write
 
@@ -42,22 +44,30 @@ jobs:
         run: npm run build
 
       - name: Generate autofix report
+        id: autofix_report
+        continue-on-error: true
         env:
           SCRAPER_CONTROL_URL: ${{ vars.SCRAPER_CONTROL_URL }}
           AUTOFIX_REPORT_PATH: tmp/autofix-report.json
         run: npm run autofix:report
 
       - name: Upload autofix report
-        uses: actions/upload-artifact@v5
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
           name: autofix-report
           path: tmp/autofix-report.json
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Publish job summary
         if: always()
         run: |
           node -e "const fs=require('fs');const p='tmp/autofix-report.json';if(!fs.existsSync(p)){fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'## Autofix Report\n\nReport file not found.\n');process.exit(0)};const r=JSON.parse(fs.readFileSync(p,'utf8'));const lines=['## Autofix Report','',`- Generated: ${r.generatedAt ?? '-'}`,`- Repo version: ${r.repoVersion ?? '-'}`,`- Pass: ${r.summary?.pass ?? 0}`,`- Warn: ${r.summary?.warn ?? 0}`,`- Fail: ${r.summary?.fail ?? 0}`,`- Skip: ${r.summary?.skip ?? 0}`,'','| Check | Status | Summary |','| --- | --- | --- |',...(Array.isArray(r.checks)?r.checks:[]).map(c=>`| ${String(c.name ?? '-')} | ${String(c.status ?? '-')} | ${String(c.summary ?? '-').replace(/\n/g,' ')} |`)];fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,lines.join('\n')+'\n');"
+
+      - name: Enforce autofix report
+        if: always()
+        run: |
+          node -e "const fs=require('fs');const p='tmp/autofix-report.json';if(!fs.existsSync(p)){console.error('Autofix report missing');process.exit(1)};const r=JSON.parse(fs.readFileSync(p,'utf8'));const fail=Number(r.summary?.fail ?? 0);if(fail>0){console.error(`Autofix report contains ${fail} failing check(s)`);process.exit(1)};if('${{ steps.autofix_report.outcome }}'==='failure'){console.error('Autofix report step failed before producing a clean result');process.exit(1)};console.log('Autofix report checks passed');"
 
       - name: Commit lint autofixes
         if: github.event_name == 'workflow_dispatch' && inputs.applyFixes == true
