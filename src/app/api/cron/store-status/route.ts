@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
 import ChannelModel from '@/models/Channel'
 import IntegrationModel from '@/models/Integration'
+import { runRecentGrabEnrich } from '@/lib/grab-recent-enrich'
 
 const CRON_SECRET = process.env.CRON_SECRET
 
@@ -37,6 +38,7 @@ export async function POST(req: NextRequest) {
 
   const now = new Date()
   let updated = 0
+  let shouldRunGrabRecentEnrich = false
 
   for (const session of sessions) {
     const s = session as Record<string, unknown>
@@ -49,6 +51,7 @@ export async function POST(req: NextRequest) {
     const scraperPaused = Boolean(s.paused)
     const scraperPausedUntil = s.pausedUntil ? new Date(String(s.pausedUntil)) : null
     const scraperLoggedIn = Boolean(s.loggedIn)
+    if (source === 'grab' && scraperLoggedIn) shouldRunGrabRecentEnrich = true
     const scraperPauseMode = s.pauseMode === 'tomorrow' || s.pauseMode === 'until-reopen' ? s.pauseMode : null
     const scraperPauseLabel = typeof s.pauseLabel === 'string' ? s.pauseLabel : null
     const scraperIsUnknown = Boolean(s.isUnknown)
@@ -78,5 +81,21 @@ export async function POST(req: NextRequest) {
     updated += result.modifiedCount
   }
 
-  return NextResponse.json({ ok: true, updated })
+  let grabRecentEnrich: Record<string, unknown> | null = null
+  if (shouldRunGrabRecentEnrich) {
+    try {
+      const result = await runRecentGrabEnrich({ hours: 168, limit: 200 })
+      grabRecentEnrich = {
+        scanned: result.scanned,
+        updated: result.updated,
+        skipped: result.skipped,
+      }
+    } catch (error) {
+      grabRecentEnrich = {
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  return NextResponse.json({ ok: true, updated, ...(grabRecentEnrich ? { grabRecentEnrich } : {}) })
 }

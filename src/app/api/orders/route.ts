@@ -24,6 +24,17 @@ const ORDER_LIST_RAW_SELECT = [
   'rawPayload.courier',
   'rawPayload.driverDetails',
   'rawPayload.driverInfo',
+  'rawPayload.fare',
+  'rawPayload.price',
+  'rawPayload.pricing',
+  'rawPayload.financialBreakdown',
+  'rawPayload.deliveryStatus',
+  'rawPayload.deliveryTaskpoolStatus',
+  'rawPayload.preparationTaskpoolStatus',
+  'rawPayload.state',
+  'rawPayload._pageType',
+  'rawPayload._pageStage',
+  'rawPayload._scraperFinalizedStatus',
   'rawPayload.customer_name',
   'rawPayload.receiver_name',
   'rawPayload.customer_phone',
@@ -66,7 +77,7 @@ export async function GET(req: NextRequest) {
     OrderModel.countDocuments(filter),
   ])
 
-  const orders = orderRows.map((order) => serializeOrderListResponse(order as Record<string, unknown>, { includeRawPayload: false }))
+  const orders = orderRows.map((order) => serializeOrderListResponse(order as Record<string, unknown>, { includeRawPayload: true }))
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
