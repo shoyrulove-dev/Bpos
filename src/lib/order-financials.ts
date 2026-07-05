@@ -181,6 +181,21 @@ function getDeductionAmountFromSources(sources: Array<Record<string, unknown> | 
   return undefined
 }
 
+const GRAB_DEFAULT_WITHHOLDING_TAX_RATE = 0.045
+
+function isGrabFinalizedOrder(raw: Record<string, unknown> | undefined) {
+  if (!raw) return false
+
+  const finalizedStatus = String(raw._scraperFinalizedStatus ?? '').trim().toLowerCase()
+  if (finalizedStatus === 'completed') return true
+
+  const pageStage = String(raw._pageStage ?? raw._pageType ?? '').trim().toLowerCase()
+  if (pageStage === 'completed' || pageStage === 'history') return true
+
+  const deliveryStatus = String(raw.deliveryStatus ?? raw.deliveryTaskpoolStatus ?? raw.preparationTaskpoolStatus ?? raw.state ?? '').trim().toLowerCase()
+  return deliveryStatus === 'completed' || deliveryStatus === 'delivered'
+}
+
 function getGrabItemDiscountTotal(order: Order) {
   const raw = getRecord(order.rawPayload)
   const itemInfo = getRecord(raw?.itemInfo)
@@ -254,26 +269,40 @@ export function getGrabMoneyBreakdown(order: Order) {
   // Use only explicit Grab customer-paid fields, NOT 'total'/'orderTotal' (those are order totals
   // always present on active orders and would incorrectly trigger the payment breakdown section)
   const customerPaid = getAmountFromSources([fare, price, raw], ['passengerTotalDisplay', 'eaterPayment']) ?? 0
+  // Nexpos currently treats Grab "CK sàn" as an explicit settlement field only.
+  // Do not infer it from fare.mexCommissionDisplay because that value makes BPOS diverge
+  // from the settlement view used operationally by the team.
   const platformCommission = getDeductionAmountFromSources(
-    [financialBreakdown, fare, price, raw],
-    ['platformCommission', 'mexCommissionDisplay', 'platformFee', 'commissionFee', 'merchantCommission', 'merchantFee'],
-  ) ?? Math.abs(order.platformFee ?? 0)
-  const explicitTaxWithheld = getDeductionAmountFromSources(
+    [financialBreakdown, price, raw],
+    ['platformCommission', 'platformFee', 'commissionFee'],
+  ) ?? 0
+  const explicitTaxWithheldRaw = getDeductionAmountFromSources(
     [financialBreakdown],
     ['taxWithheld', 'onBehalfWithholdTaxDisplay', 'withholdingTax', 'withheldTax', 'onBehalfWithholdTax', 'deductedTax'],
   )
+  const explicitTaxWithheld = typeof explicitTaxWithheldRaw === 'number' && explicitTaxWithheldRaw > 0
+    ? explicitTaxWithheldRaw
+    : undefined
   const vatAmount = explicitTaxWithheld === undefined
     ? (getDeductionAmountFromSources([fare, price, raw], ['mexVatAmountDisplay', 'vatAmount', 'vat', 'commissionVat']) ?? 0)
     : 0
   const pitAmount = explicitTaxWithheld === undefined
     ? (getDeductionAmountFromSources([fare, price, raw], ['mexPitAmountDisplay', 'pitAmount', 'pit', 'personalIncomeTax']) ?? 0)
     : 0
+  const nestedTaxWithheldRaw = getDeductionAmountFromSources(
+    [fare, price, raw],
+    ['onBehalfWithholdTaxDisplay', 'withholdingTax', 'withheldTax', 'onBehalfWithholdTax', 'deductedTax'],
+  )
+  const nestedTaxWithheld = typeof nestedTaxWithheldRaw === 'number' && nestedTaxWithheldRaw > 0
+    ? nestedTaxWithheldRaw
+    : undefined
   const taxWithheld = explicitTaxWithheld
-    ?? getDeductionAmountFromSources(
-      [fare, price, raw],
-      ['onBehalfWithholdTaxDisplay', 'withholdingTax', 'withheldTax', 'onBehalfWithholdTax', 'deductedTax'],
+    ?? nestedTaxWithheld
+    ?? (
+      isGrabFinalizedOrder(raw)
+        ? Math.round(Math.max(0, revenueAfterPromotion) * GRAB_DEFAULT_WITHHOLDING_TAX_RATE)
+        : 0
     )
-    ?? 0
   const explicitActualReceived = getAmountFromSources(
     [financialBreakdown, price, raw],
     ['actualReceived', 'merchantReceivable', 'receivedAmount', 'merchantPayment', 'payToMerchant'],
