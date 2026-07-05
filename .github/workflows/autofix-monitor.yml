@@ -50,7 +50,41 @@ jobs:
       - name: Publish job summary
         if: always()
         run: |
-          node -e "const fs=require('fs');const p='tmp/autofix-report.json';if(!fs.existsSync(p)){fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'## Autofix Report\n\nReport file not found.\n');process.exit(0)};const r=JSON.parse(fs.readFileSync(p,'utf8'));const lines=['## Autofix Report','',`- Generated: ${r.generatedAt ?? '-'}`,`- Repo version: ${r.repoVersion ?? '-'}`,`- Pass: ${r.summary?.pass ?? 0}`,`- Warn: ${r.summary?.warn ?? 0}`,`- Fail: ${r.summary?.fail ?? 0}`,`- Skip: ${r.summary?.skip ?? 0}`,'','| Check | Status | Summary |','| --- | --- | --- |',...(Array.isArray(r.checks)?r.checks:[]).map(c=>`| ${String(c.name ?? '-')} | ${String(c.status ?? '-')} | ${String(c.summary ?? '-').replace(/\n/g,' ')} |`),'','### Raw report JSON','','```json',JSON.stringify(r,null,2),'```'];fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,lines.join('\n')+'\n');"
+          node <<'NODE'
+          const fs = require('fs')
+          const summaryPath = process.env.GITHUB_STEP_SUMMARY
+          const reportPath = 'tmp/autofix-report.json'
+
+          if (!fs.existsSync(reportPath)) {
+            fs.appendFileSync(summaryPath, '## Autofix Report\n\nReport file not found.\n')
+            process.exit(0)
+          }
+
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
+          const checks = Array.isArray(report.checks) ? report.checks : []
+          const lines = [
+            '## Autofix Report',
+            '',
+            `- Generated: ${report.generatedAt ?? '-'}`,
+            `- Repo version: ${report.repoVersion ?? '-'}`,
+            `- Pass: ${report.summary?.pass ?? 0}`,
+            `- Warn: ${report.summary?.warn ?? 0}`,
+            `- Fail: ${report.summary?.fail ?? 0}`,
+            `- Skip: ${report.summary?.skip ?? 0}`,
+            '',
+            '| Check | Status | Summary |',
+            '| --- | --- | --- |',
+            ...checks.map((check) => `| ${String(check.name ?? '-')} | ${String(check.status ?? '-')} | ${String(check.summary ?? '-').replace(/\n/g, ' ')} |`),
+            '',
+            '### Raw report JSON',
+            '',
+            '```json',
+            JSON.stringify(report, null, 2),
+            '```',
+          ]
+
+          fs.appendFileSync(summaryPath, `${lines.join('\n')}\n`)
+          NODE
 
       - name: Commit lint autofixes
         if: github.event_name == 'workflow_dispatch' && inputs.applyFixes == true
