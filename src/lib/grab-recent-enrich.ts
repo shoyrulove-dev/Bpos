@@ -86,6 +86,9 @@ function getComparableSnapshot(order: StoredGrabOrder) {
     discount: Number(order.discount ?? 0),
     total: Number(order.total ?? 0),
     platformFee: Number(order.platformFee ?? 0),
+    status: String(order.status ?? ''),
+    driverInfo: order.driverInfo ?? null,
+    deliveredAt: order.deliveredAt ?? null,
   })
 }
 
@@ -129,11 +132,10 @@ export async function runRecentGrabEnrich(options: RecentGrabEnrichOptions) {
     )
 
     const nextSet = (upsert.$set ?? {}) as Record<string, unknown>
-    // This enrich job is intentionally detail-only.
-    // Never regress finalized or active status based on stale raw payload snapshots.
-    nextSet.status = String(order.status ?? '')
-    if (order.deliveredAt) nextSet.deliveredAt = order.deliveredAt
-    else delete nextSet.deliveredAt
+    const nextStatus = String(nextSet.status ?? order.status ?? '')
+    const preserveCompleted = order.status === 'completed' && (nextStatus === 'waiting_confirm' || nextStatus === 'waiting_pickup' || nextStatus === 'delivering')
+    nextSet.status = preserveCompleted ? 'completed' : nextStatus
+    if (!nextSet.deliveredAt && order.deliveredAt) nextSet.deliveredAt = order.deliveredAt
     if (upsert.$unset && typeof upsert.$unset === 'object') {
       delete (upsert.$unset as Record<string, unknown>).deliveredAt
       delete (upsert.$unset as Record<string, unknown>).cancelledAt
@@ -147,6 +149,9 @@ export async function runRecentGrabEnrich(options: RecentGrabEnrichOptions) {
       discount: Number(nextSet.discount ?? 0),
       total: Number(nextSet.total ?? 0),
       platformFee: Number(nextSet.platformFee ?? 0),
+      status: String(nextSet.status ?? ''),
+      driverInfo: nextSet.driverInfo ?? null,
+      deliveredAt: nextSet.deliveredAt ?? null,
     })
 
     if (beforeSnapshot === afterSnapshot) {
@@ -160,6 +165,9 @@ export async function runRecentGrabEnrich(options: RecentGrabEnrichOptions) {
     if (Number(order.discount ?? 0) !== Number(nextSet.discount ?? 0)) changed.push('discount')
     if (Number(order.total ?? 0) !== Number(nextSet.total ?? 0)) changed.push('total')
     if (Number(order.platformFee ?? 0) !== Number(nextSet.platformFee ?? 0)) changed.push('platformFee')
+    if (String(order.status ?? '') !== String(nextSet.status ?? '')) changed.push('status')
+    if (JSON.stringify(order.driverInfo ?? null) !== JSON.stringify(nextSet.driverInfo ?? null)) changed.push('driverInfo')
+    if (String(order.deliveredAt ?? '') !== String(nextSet.deliveredAt ?? '')) changed.push('deliveredAt')
 
     await OrderModel.updateOne({ _id: order._id }, upsert)
     updated += 1

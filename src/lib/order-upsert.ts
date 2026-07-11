@@ -45,6 +45,13 @@ function pickPreferredPhone(incoming: unknown, existing: unknown) {
   return undefined
 }
 
+function pickPreferredDriverPhone(incoming: unknown, existing: unknown) {
+  const incomingPhone = hasMeaningfulPhone(incoming) ? normalizeCompactPhone(toTrimmedText(incoming)) : undefined
+  const existingPhone = hasMeaningfulPhone(existing) ? normalizeCompactPhone(toTrimmedText(existing)) : undefined
+  if (incomingPhone && existingPhone && incomingPhone !== existingPhone) return incomingPhone
+  return incomingPhone ?? existingPhone
+}
+
 function hasMeaningfulName(value: unknown, placeholders: Set<string>) {
   const trimmed = toTrimmedText(value)
   if (!trimmed || isRedactedText(trimmed)) return false
@@ -79,6 +86,22 @@ export function getComparableDriverName(value: unknown) {
 export function isDriverNamePlaceholder(value: unknown) {
   const trimmed = toTrimmedText(value)
   return Boolean(trimmed && trimmed.startsWith('(') && trimmed.endsWith(')'))
+}
+
+function pickPreferredDriverName(incoming: unknown, existing: unknown, incomingPhone?: string, existingPhone?: string) {
+  const incomingName = toTrimmedText(incoming)
+  const existingName = toTrimmedText(existing)
+
+  if (
+    incomingPhone
+    && existingPhone
+    && incomingPhone !== existingPhone
+    && hasMeaningfulDriverName(incomingName)
+  ) {
+    return incomingName
+  }
+
+  return pickPreferredName(incomingName, existingName, DRIVER_NAME_PLACEHOLDERS)
 }
 
 function pickPreferredName(
@@ -119,10 +142,10 @@ function mergeDriverInfoPreservingDetail(
   // On reassignment, incoming name and phone win unconditionally.
   const driverName = isDriverReassignment
     ? toTrimmedText(incoming?.name)
-    : pickPreferredName(incoming?.name, existing?.name, DRIVER_NAME_PLACEHOLDERS)
+    : pickPreferredDriverName(incoming?.name, existing?.name, incomingPhone, existingPhone)
   const driverPhone = isDriverReassignment
     ? incomingPhone
-    : pickPreferredPhone(incoming?.phone, existing?.phone)
+    : pickPreferredDriverPhone(incoming?.phone, existing?.phone)
 
   if (driverName) nextDriverInfo.name = driverName
   else delete nextDriverInfo.name
@@ -393,15 +416,14 @@ export function mergeNormalizedOrderPreservingDetail(existing: OrderSnapshot | n
     getDisplayCustomerPhone(existingOrder) || existing?.customerPhone,
   )
 
-  const mergedDriverName = pickPreferredName(
+  const incomingDriverPhone = getDisplayDriverPhone(incomingOrder) || incoming.driverInfo?.phone
+  const existingDriverPhone = getDisplayDriverPhone(existingOrder) || existing?.driverInfo?.phone
+  const mergedDriverPhone = pickPreferredDriverPhone(incomingDriverPhone, existingDriverPhone)
+  const mergedDriverName = pickPreferredDriverName(
     getDisplayDriverName(incomingOrder) || incoming.driverInfo?.name,
     getDisplayDriverName(existingOrder) || existing?.driverInfo?.name,
-    DRIVER_NAME_PLACEHOLDERS,
-  )
-
-  const mergedDriverPhone = pickPreferredPhone(
-    getDisplayDriverPhone(incomingOrder) || incoming.driverInfo?.phone,
-    getDisplayDriverPhone(existingOrder) || existing?.driverInfo?.phone,
+    hasMeaningfulPhone(incomingDriverPhone) ? normalizeCompactPhone(String(incomingDriverPhone)) ?? undefined : undefined,
+    hasMeaningfulPhone(existingDriverPhone) ? normalizeCompactPhone(String(existingDriverPhone)) ?? undefined : undefined,
   )
 
   const mergedDriverInfo = shouldSuppressDriverInfo(incoming)
@@ -546,6 +568,40 @@ function hasGrabActiveStatusSignal(normalized: NormalizedOrder) {
   ))
 }
 
+function hasGrabDeliveryStatusSignal(normalized: NormalizedOrder) {
+  if (normalized.source !== 'grab') return false
+
+  const rawPayload = normalized.rawPayload ?? {}
+  const signals = [
+    normalized.orderStatus,
+    rawPayload.deliveryStatus,
+    rawPayload.orderState,
+    rawPayload.status,
+    rawPayload.orderStatus,
+    rawPayload.state,
+    rawPayload.fulfillmentStatus,
+    rawPayload.pageType,
+    rawPayload._pageType,
+    rawPayload._pageStage,
+  ]
+    .map((value) => String(value ?? '').trim().toLowerCase())
+    .filter(Boolean)
+
+  if (signals.some((value) => value.includes('cancel') || value.includes('fail') || value.includes('refund'))) {
+    return false
+  }
+
+  return signals.some((value) => (
+    value.includes('in_delivery')
+    || value.includes('delivering')
+    || value.includes('dang giao')
+    || value.includes('đang giao')
+    || value.includes('collected')
+    || value.includes('picked_up')
+    || value.includes('on_the_way')
+  ))
+}
+
 function extractCancellationReason(rawPayload: Record<string, unknown>) {
   const reason = rawPayload.cancelReason
     ?? rawPayload.cancellationReason
@@ -666,6 +722,26 @@ export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
   const pageStage = String(rawPayload._pageStage ?? '').trim().toLowerCase()
   const pageType = String(rawPayload._pageType ?? rawPayload.pageType ?? '').trim().toLowerCase()
   const scraperFinalizedStatus = getGrabScraperFinalizedStatusFromRaw(rawPayload)
+  const hasDeliverySignal = hasGrabDeliveryStatusSignal(normalized)
+  const hasCompletionTimestamp = Boolean(
+    parseDateValue(normalized.deliveredAt)
+    || parseDateValue(rawPayload.deliveredAt)
+    || parseDateValue(rawPayload.delivered_at)
+    || parseDateValue(rawPayload.completedAt)
+    || parseDateValue(rawPayload.completed_at)
+    || parseDateValue(rawPayload.deliveryCompletedAt)
+    || parseDateValue(rawPayload.delivered_time)
+    || nestedTimes.deliveredAt
+    || nestedTimes.completedAt
+  )
+  const isGrabActivePageBucket = normalized.source === 'grab' && (
+    pageStage === 'preparing'
+    || pageStage === 'ready'
+    || pageStage === 'upcoming'
+    || pageType === 'preparingv2'
+    || pageType === 'ready'
+    || pageType === 'upcoming'
+  )
   const isGrabHistoryBucket = normalized.source === 'grab' && (
     pageStage === 'history'
     || pageStage === 'completed'
@@ -681,6 +757,10 @@ export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
     return 'completed' as const
   }
 
+  if (normalized.source === 'grab' && hasDeliverySignal && !hasCompletionTimestamp) {
+    return 'delivering' as const
+  }
+
   if (
     parseDateValue(rawPayload.cancelledAt)
     || parseDateValue(rawPayload.canceledAt)
@@ -688,6 +768,9 @@ export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
     || rawPayload.cancelCode
     || scraperFinalizedStatus === 'cancelled'
   ) {
+    if (normalized.source === 'grab' && (isGrabActivePageBucket || hasDeliverySignal || hasCompletionTimestamp)) {
+      return hasCompletionTimestamp ? 'completed' as const : hasDeliverySignal ? 'delivering' as const : 'waiting_pickup' as const
+    }
     return 'cancelled' as const
   }
 
@@ -702,24 +785,10 @@ export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
     // tin tuyệt đối vào page bucket — KHÔNG check completion timestamps.
     // Các field completedAt/deliveredAt có thể là zero-value hoặc stale từ Grab API
     // khiến đơn mới nhất bị mark nhầm là completed.
-    const isActivePageBucket = pageStage === 'preparing' || pageStage === 'ready' || pageStage === 'upcoming'
-      || pageType === 'preparingv2' || pageType === 'ready' || pageType === 'upcoming'
-
-    if (!isActivePageBucket) {
+    if (!isGrabActivePageBucket) {
       // Order có active signal nhưng không rõ bucket (có thể đang trong history).
       // Kiểm tra completion timestamps để xử lý trường hợp Grab giữ READY_FOR_PICKUP
       // nhưng đơn thực tế đã giao xong.
-      const hasCompletionTimestamp = Boolean(
-        parseDateValue(normalized.deliveredAt)
-        || parseDateValue(rawPayload.deliveredAt)
-        || parseDateValue(rawPayload.delivered_at)
-        || parseDateValue(rawPayload.completedAt)
-        || parseDateValue(rawPayload.completed_at)
-        || parseDateValue(rawPayload.deliveryCompletedAt)
-        || parseDateValue(rawPayload.delivered_time)
-        || nestedTimes.deliveredAt
-        || nestedTimes.completedAt
-      )
       if (hasCompletionTimestamp) return 'completed'
       // Nếu page rõ ràng là history/completed bucket của Grab → hoàn thành dù không có timestamp
       // (Grab history tab = đơn đã giao xong; active signal chỉ là stale state từ API)
@@ -727,20 +796,10 @@ export function resolveNormalizedOrderStatus(normalized: NormalizedOrder) {
         || pageType.includes('history') || pageType.includes('complet') || pageType.includes('past') || pageType.includes('deliver')
       if (isHistoryBucket) return 'completed'
     }
-    return 'waiting_pickup'
+    return hasDeliverySignal ? 'delivering' as const : 'waiting_pickup' as const
   }
 
-  if (
-    parseDateValue(normalized.deliveredAt)
-    || parseDateValue(rawPayload.deliveredAt)
-    || parseDateValue(rawPayload.delivered_at)
-    || parseDateValue(rawPayload.completedAt)
-    || parseDateValue(rawPayload.completed_at)
-    || parseDateValue(rawPayload.deliveryCompletedAt)
-    || parseDateValue(rawPayload.delivered_time)
-    || nestedTimes.deliveredAt
-    || nestedTimes.completedAt
-  ) {
+  if (hasCompletionTimestamp) {
     return 'completed' as const
   }
 

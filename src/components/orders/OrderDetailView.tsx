@@ -1136,7 +1136,7 @@ function BeDetailView({ order, displayOrderCode, actualReceived, financialBreakd
   const items = getBeDetailItems(order)
   const customerPhone = getDisplayCustomerPhone(order) || '-'
   const driverPhone = getDisplayDriverPhone(order) || '-'
-  const driverName = cleanText(order.driverInfo?.name ?? raw?.driver_name, '-')
+  const driverName = cleanText(getDisplayDriverName(order) ?? order.driverInfo?.name ?? raw?.driver_name, '-')
   const paymentMethodLabel = getBePaymentMethodLabel(order)
   const externalReference = cleanText(order.externalOrderId, '-')
   const brandName = cleanText(order.brandName, '-')
@@ -1302,7 +1302,7 @@ export default function OrderDetailView({ orderId }: { orderId: string }) {
   const channelName = cleanText(order.channelName || CHANNEL_SOURCE_LABEL[order.source], '-')
   const hubName = cleanText(order.hubName, '-')
   const customerName = cleanText(order.customerName, '-')
-  const driverName = cleanText(order.driverInfo?.name, '-')
+  const driverName = cleanText(getDisplayDriverName(order) ?? order.driverInfo?.name, '-')
   const driverVehiclePlate = cleanOptionalText(order.driverInfo?.vehiclePlate)
   const deliveryAddress = cleanOptionalText(order.deliveryInfo?.address)
   const deliveryNote = cleanOptionalText(order.deliveryInfo?.note || order.note)

@@ -60,7 +60,7 @@ type PrintJob = {
 
 type ChannelPrintState = Pick<Channel, '_id' | 'source' | 'status' | 'scraperPaused' | 'scraperLoggedIn' | 'scraperLastSeen' | 'printerEnabled' | 'printerReceiptEnabled' | 'printerLabelEnabled'>
 
-const NEW_ORDER_STATUSES = ['waiting_confirm', 'waiting_pickup']
+const NEW_ORDER_STATUSES = ['waiting_confirm', 'waiting_pickup', 'delivering']
 
 function getLatestOrder(orderList: AlertOrder[]) {
   return [...orderList].sort((left, right) => {

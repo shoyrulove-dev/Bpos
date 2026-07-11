@@ -92,8 +92,8 @@ function mapGrabStatus(rawStatus: string): OrderStatus {
     DRIVER_ALLOCATED: 'waiting_pickup',
     DRIVER_ARRIVED: 'waiting_pickup',
     READY_FOR_PICKUP: 'waiting_pickup',
-    COLLECTED: 'waiting_pickup',
-    IN_DELIVERY: 'waiting_pickup',
+    COLLECTED: 'delivering',
+    IN_DELIVERY: 'delivering',
     DELIVERED: 'completed',
     COMPLETED: 'completed',
     BILL_PAID: 'completed',
@@ -195,22 +195,22 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
   // but the order state itself is still ORDER_IN_PREPARE / ACCEPTED / etc.
   if (GRAB_EXPLICIT_ACTIVE_STATES.has(rawStatus)) {
     if (hasCompletionEvidence) return 'completed'
-    if (hasGrabDeliverySignal(secondarySignals)) return 'waiting_pickup'
+    if (hasGrabDeliverySignal(secondarySignals)) return 'delivering'
     return mappedStatus
   }
 
-  if (secondarySignals.some((value) => value.includes('cancel') || value.includes('fail') || value.includes('refund'))) {
+  if (secondarySignals.some((value) => value.includes('cancel') || value.includes('fail') || value.includes('refund')) && !hasGrabDeliverySignal(secondarySignals) && !hasCompletionEvidence) {
     return 'cancelled'
   }
 
-  if (pageStage === 'cancelled') return 'cancelled'
+  if (pageStage === 'cancelled' && !hasGrabDeliverySignal(secondarySignals) && !hasCompletionEvidence) return 'cancelled'
 
   // Nếu order đang ở tab ACTIVE (PreparingV2, Ready, Upcoming), trust page bucket — không check completion timestamps
   // vì các field completedAt/deliveredAt có thể là stale/null từ order trước
   const isActivePageStage = pageStage === 'preparing' || pageStage === 'ready' || pageStage === 'upcoming'
   if (isActivePageStage) {
     // "Đang giao" không phải trạng thái riêng trên BPOS — giữ là waiting_pickup
-    if (hasGrabDeliverySignal(secondarySignals)) return 'waiting_pickup'
+    if (hasGrabDeliverySignal(secondarySignals)) return 'delivering'
     if (pageStage === 'ready') return 'waiting_pickup'
     if (pageStage === 'upcoming') return 'waiting_pickup'
     return mappedStatus
@@ -221,7 +221,7 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
   // and the order moves to the history bucket — while driver is still "đang giao".
   // If we don't catch the delivery signal first, we'd incorrectly return 'completed'.
   if (hasGrabDeliverySignal(secondarySignals) || mappedStatus === 'delivering') {
-    return 'waiting_pickup'
+    return 'delivering'
   }
 
   // Now safe to trust mappedStatus === 'completed' — no active delivery signals present
@@ -237,13 +237,14 @@ function resolveGrabStatus(rawStatus: string, raw: Record<string, unknown>): Ord
     // history tab: chỉ completed/cancelled khi có bằng chứng rõ ràng
     // Đang giao (driver đã lấy, chưa giao xong) → vẫn là waiting_pickup từ góc nhìn nhà hàng
     if (secondarySignals.some(v => v.includes('cancel') || v.includes('fail') || v.includes('refund'))) return 'cancelled'
-    if (raw.cancelCode || hasGrabDateValue(raw.cancelledAt) || hasGrabDateValue(raw.canceledAt) || hasGrabDateValue(times?.cancelledAt)) return 'cancelled'
+    if ((raw.cancelCode || hasGrabDateValue(raw.cancelledAt) || hasGrabDateValue(raw.canceledAt) || hasGrabDateValue(times?.cancelledAt)) && !hasGrabDeliverySignal(secondarySignals) && !hasCompletionEvidence) return 'cancelled'
     if (hasCompletionEvidence) return 'completed'
     // Đang giao hoặc chưa rõ → waiting_pickup (không dùng delivering)
+    if (hasGrabDeliverySignal(secondarySignals)) return 'delivering'
     return 'waiting_pickup'
   }
 
-  if (raw.cancelCode || hasGrabDateValue(raw.cancelledAt) || hasGrabDateValue(raw.canceledAt) || hasGrabDateValue(times?.cancelledAt)) {
+  if ((raw.cancelCode || hasGrabDateValue(raw.cancelledAt) || hasGrabDateValue(raw.canceledAt) || hasGrabDateValue(times?.cancelledAt)) && !hasGrabDeliverySignal(secondarySignals) && !hasCompletionEvidence) {
     return 'cancelled'
   }
 

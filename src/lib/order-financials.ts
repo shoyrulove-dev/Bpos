@@ -273,22 +273,16 @@ export function getGrabMoneyBreakdown(order: Order) {
   // Do not infer it from fare.mexCommissionDisplay because that value makes BPOS diverge
   // from the settlement view used operationally by the team.
   const platformCommission = getDeductionAmountFromSources(
-    [financialBreakdown, price, raw],
-    ['platformCommission', 'platformFee', 'commissionFee'],
+    [financialBreakdown, fare, price, raw],
+    ['platformCommission', 'mexCommissionDisplay', 'platformFee', 'commissionFee', 'merchantCommission', 'merchantFee'],
   ) ?? 0
   const explicitTaxWithheldRaw = getDeductionAmountFromSources(
-    [financialBreakdown],
+    [financialBreakdown, fare, price, raw],
     ['taxWithheld', 'onBehalfWithholdTaxDisplay', 'withholdingTax', 'withheldTax', 'onBehalfWithholdTax', 'deductedTax'],
   )
   const explicitTaxWithheld = typeof explicitTaxWithheldRaw === 'number' && explicitTaxWithheldRaw > 0
     ? explicitTaxWithheldRaw
     : undefined
-  const vatAmount = explicitTaxWithheld === undefined
-    ? (getDeductionAmountFromSources([fare, price, raw], ['mexVatAmountDisplay', 'vatAmount', 'vat', 'commissionVat']) ?? 0)
-    : 0
-  const pitAmount = explicitTaxWithheld === undefined
-    ? (getDeductionAmountFromSources([fare, price, raw], ['mexPitAmountDisplay', 'pitAmount', 'pit', 'personalIncomeTax']) ?? 0)
-    : 0
   const nestedTaxWithheldRaw = getDeductionAmountFromSources(
     [fare, price, raw],
     ['onBehalfWithholdTaxDisplay', 'withholdingTax', 'withheldTax', 'onBehalfWithholdTax', 'deductedTax'],
@@ -303,11 +297,13 @@ export function getGrabMoneyBreakdown(order: Order) {
         ? Math.round(Math.max(0, revenueAfterPromotion) * GRAB_DEFAULT_WITHHOLDING_TAX_RATE)
         : 0
     )
+  const vatAmount = 0
+  const pitAmount = 0
   const explicitActualReceived = getAmountFromSources(
     [financialBreakdown, price, raw],
     ['actualReceived', 'merchantReceivable', 'receivedAmount', 'merchantPayment', 'payToMerchant'],
   )
-  const computedActualReceived = Math.max(0, revenueAfterPromotion - platformCommission - vatAmount - pitAmount - taxWithheld)
+  const computedActualReceived = Math.max(0, revenueAfterPromotion - platformCommission - taxWithheld)
   const actualReceived = typeof explicitActualReceived === 'number' && explicitActualReceived > 0
     ? explicitActualReceived
     : computedActualReceived
@@ -544,7 +540,6 @@ export function getDisplayDriverPhone(order: Order) {
   const deliveryPerson = getRecord(raw?.deliveryPerson ?? raw?.deliveryAgent)
 
   return getNormalizedPhoneFromCandidates([
-    order.driverInfo?.phone,
     raw?.driver_phone_no,
     raw?.driver_contact,
     raw?.driver_phone,
@@ -592,6 +587,7 @@ export function getDisplayDriverPhone(order: Order) {
     deliveryPerson?.phoneNumber,
     deliveryPerson?.contactNumber,
     deliveryPerson?.displayPhone,
+    order.driverInfo?.phone,
   ])
 }
 
@@ -608,7 +604,6 @@ export function getDisplayDriverName(order: Order) {
 
   const DRIVER_PLACEHOLDERS = ['tài xế', 'tai xe', 'driver', 'shipper']
   const candidates = [
-    order.driverInfo?.name,
     deliveryDriver?.name,
     deliveryDriver?.displayName,
     deliveryDriver?.fullName,
@@ -634,6 +629,7 @@ export function getDisplayDriverName(order: Order) {
     raw?.driver_name,
     raw?.driverName,
     raw?.driverDisplayName,
+    order.driverInfo?.name,
   ]
 
   for (const candidate of candidates) {

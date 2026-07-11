@@ -714,10 +714,14 @@ async function repairStoredOrders(
       }
 
       const currentDriverInfo = order.driverInfo ?? {}
+      const currentDriverNameKey = getComparableDriverName(currentDriverInfo.name)
+      const nextDriverNameKey = getComparableDriverName(nextDriverName)
+      const currentDriverPhone = normalizeCompactPhone(currentDriverInfo.phone)
+      const nextDriverPhoneCompact = normalizeCompactPhone(nextDriverPhone)
       const nextDriverInfo = {
         ...currentDriverInfo,
-        ...(nextDriverName && !hasMeaningfulDriverName(currentDriverInfo.name) ? { name: nextDriverName } : {}),
-        ...(nextDriverPhone && !hasMeaningfulPhone(currentDriverInfo.phone) ? { phone: nextDriverPhone } : {}),
+        ...(nextDriverName && (!hasMeaningfulDriverName(currentDriverInfo.name) || (nextDriverNameKey && currentDriverNameKey !== nextDriverNameKey)) ? { name: nextDriverName } : {}),
+        ...(nextDriverPhone && (!hasMeaningfulPhone(currentDriverInfo.phone) || (nextDriverPhoneCompact && currentDriverPhone !== nextDriverPhoneCompact)) ? { phone: nextDriverPhone } : {}),
       }
       if (Object.keys(nextDriverInfo).some((key) => nextDriverInfo[key as keyof typeof nextDriverInfo] !== currentDriverInfo[key as keyof typeof currentDriverInfo])) {
         set.driverInfo = {

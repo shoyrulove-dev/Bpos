@@ -7,7 +7,7 @@ import OrderCreateModal from '@/components/orders/OrderCreateModal'
 import { PlatformIcon } from '@/components/ui/PlatformIcon'
 import { useOrders, useOrderTodayStatusCounts } from '@/hooks/use-orders-channels'
 import { useDebounce } from '@/hooks/use-debounce'
-import { getActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverPhone } from '@/lib/order-financials'
+import { getActualReceived, getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone } from '@/lib/order-financials'
 import { resolveOrderDeliveredAtValue, resolveOrderPlacedAtValue } from '@/lib/order-recovery'
 import { printItemLabels, printOrderWithFallback } from '@/lib/local-printer'
 import { formatDateInput } from '@/lib/date-range'
@@ -302,7 +302,7 @@ export default function OrdersPage() {
                         <InfoRow label="Nhận hàng" value={formatMaybeDate(resolveOrderDeliveredAtValue(order) ?? order.deliveredAt ?? order.deliveryInfo?.estimatedTime)} />
                       </InfoGroup>
                       <InfoGroup title="Vận chuyển">
-                        <InfoRow label="Tài xế" value={order.driverInfo?.name || '-'} />
+                        <InfoRow label="Tài xế" value={getDisplayDriverName(order) || order.driverInfo?.name || '-'} />
                         <InfoRow label="SĐT" value={order.driverInfo?.phone || getDisplayDriverPhone(order) || '-'} />
                         {order.deliveryInfo?.address && <InfoRow label="Địa chỉ" value={order.deliveryInfo.address} valueClassName="text-xs" />}
                       </InfoGroup>
