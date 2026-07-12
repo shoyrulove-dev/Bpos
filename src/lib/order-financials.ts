@@ -332,11 +332,22 @@ export function getBeMoneyBreakdown(order: Order) {
   const raw = getRecord(order.rawPayload)
   if (!raw) return null
 
+  const financeData = getRecord(raw.finance_data)
+  const customerData = getRecord(raw.customer_data)
   const itemRecords = Array.isArray(raw.order_items) ? raw.order_items.map((item) => getRecord(item)).filter(Boolean) as Record<string, unknown>[] : []
+  const dishRecords = Array.isArray(raw.dishes) ? raw.dishes.map((item) => getRecord(item)).filter(Boolean) as Record<string, unknown>[] : []
   const offers = getRecord(raw.offers)
   const foodDiscounts = Array.isArray(offers?.food_discounts) ? offers.food_discounts : []
   const deliveryDiscounts = Array.isArray(offers?.delivery_discounts) ? offers.delivery_discounts : []
-  const originalSubtotal = parseAmount(raw.originial_amount ?? raw.original_amount ?? raw.order_amount ?? raw.sub_total ?? raw.subtotal) ?? order.subtotal
+  const originalSubtotal = parseAmount(
+    raw.originial_amount
+    ?? raw.original_amount
+    ?? raw.order_amount
+    ?? raw.sub_total
+    ?? raw.subtotal
+    ?? financeData?.original_price
+    ?? customerData?.original_price,
+  ) ?? order.subtotal
   const originalItemSubtotal = itemRecords.reduce((sum, item) => {
     const amount = parseAmount(item.original_amount)
     return sum + (typeof amount === 'number' ? amount : 0)
@@ -345,20 +356,46 @@ export function getBeMoneyBreakdown(order: Order) {
     const amount = parseAmount(item.amount)
     return sum + (typeof amount === 'number' ? amount : 0)
   }, 0)
-  const productDiscount = Math.max(0, originalItemSubtotal - soldItemSubtotal)
+  const dishOriginalSubtotal = dishRecords.reduce((sum, item) => {
+    const quantity = Math.max(1, Number(item.quantity ?? 1) || 1)
+    const lineTotal = parseAmount(item.price)
+    return sum + ((typeof lineTotal === 'number' ? lineTotal : 0) * quantity)
+  }, 0)
+  const dishSoldSubtotal = dishRecords.reduce((sum, item) => {
+    const quantity = Math.max(1, Number(item.quantity ?? 1) || 1)
+    const lineTotal = parseAmount(item.discount_price)
+    return sum + ((typeof lineTotal === 'number' ? lineTotal : 0) * quantity)
+  }, 0)
+  const productDiscount = Math.max(0,
+    (originalItemSubtotal > 0 || soldItemSubtotal > 0)
+      ? (originalItemSubtotal - soldItemSubtotal)
+      : (dishOriginalSubtotal > 0 || dishSoldSubtotal > 0)
+      ? (dishOriginalSubtotal - dishSoldSubtotal)
+      : 0,
+  )
   const orderDiscountRecord = getRecord(raw.order_discount)
   const offerDiscountTotal = [...foodDiscounts, ...deliveryDiscounts].reduce((sum, offer) => {
     const offerRecord = getRecord(offer)
     const amount = parseAmount(offerRecord?.discount_value)
     return sum + (typeof amount === 'number' ? amount : 0)
   }, 0)
-  const orderDiscount = Math.max(0,
-    parseAmount(orderDiscountRecord?.total_customer_discount)
+  const explicitOrderDiscount = parseAmount(orderDiscountRecord?.total_customer_discount)
     ?? parseAmount(orderDiscountRecord?.be_discount)
     ?? parseAmount(orderDiscountRecord?.merchant_discount)
     ?? parseAmount(orderDiscountRecord?.partner_discount)
     ?? parseAmount(raw.partner_discount)
     ?? (offerDiscountTotal > 0 ? offerDiscountTotal : undefined)
+  const orderDiscount = Math.max(0,
+    explicitOrderDiscount
+    ?? (
+      productDiscount <= 0
+        ? (
+          parseAmount(financeData?.total_promotion_price)
+          ?? parseAmount(customerData?.order_discount)
+          ?? parseAmount(customerData?.shipment_discount)
+        )
+        : undefined
+    )
     ?? 0,
   )
   const platformFee = Math.max(0,
@@ -367,16 +404,33 @@ export function getBeMoneyBreakdown(order: Order) {
     ?? parseAmount(raw.commission)
     ?? parseAmount(raw.marketing_fee)
     ?? parseAmount(raw.gateway_fee)
+    ?? parseAmount(financeData?.commission)
     ?? order.platformFee
     ?? 0,
   )
-  const revenueAfterPromotion = parseAmount(raw.order_amount ?? raw.originial_amount ?? raw.original_amount ?? raw.sub_total ?? raw.subtotal) ?? order.total
+  const revenueAfterPromotion = parseAmount(
+    raw.order_amount
+    ?? raw.originial_amount
+    ?? raw.original_amount
+    ?? raw.sub_total
+    ?? raw.subtotal
+    ?? financeData?.gross_received
+    ?? customerData?.sell_price,
+  ) ?? order.total
   const taxWithheld = Math.max(0,
     (parseAmount(raw.vat_amount) ?? 0)
     + (parseAmount(raw.pit_amount) ?? 0)
     + (parseAmount(raw.tax_amount) ?? 0),
   )
-  const actualReceived = parseAmount(raw.net_order_amount ?? raw.received_amount ?? raw.merchant_receivable)
+  const actualReceived = parseAmount(
+    raw.net_order_amount
+    ?? raw.received_amount
+    ?? raw.merchant_receivable
+    ?? financeData?.real_received
+    ?? financeData?.net_received
+    ?? raw.total_for_biz
+    ?? customerData?.total_paid,
+  )
     ?? Math.max(0, revenueAfterPromotion - platformFee - taxWithheld)
 
   return {
