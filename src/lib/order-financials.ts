@@ -220,6 +220,7 @@ function getGrabItemDiscountTotal(order: Order) {
 export function getGrabMoneyBreakdown(order: Order) {
   const raw = getRecord(order.rawPayload)
   const financialBreakdown = getRecord(raw?.financialBreakdown)
+  const nexposFinanceData = getRecord(raw?.finance_data)
   const fare = getGrabFareRecord(order)
   const price = getGrabPriceRecord(order)
   const amountSources = [financialBreakdown, fare, price, raw]
@@ -242,6 +243,7 @@ export function getGrabMoneyBreakdown(order: Order) {
   const explicitItemDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['productDiscount', 'itemDiscount'])
   const explicitPromotionDiscount = getDeductionAmountFromSources([financialBreakdown, price, raw], ['orderDiscount', 'merchantDiscount', 'merchantPromotionDiscount', 'basketPromo', 'discountAmount', 'discount'])
   const explicitRevenueAfterPromotion = getAmountFromSources([financialBreakdown], ['revenueAfterPromotion'])
+  const nexposRevenueAfterPromotion = getAmountFromSources([raw, nexposFinanceData], ['gross_received'])
   const itemDiscount = explicitItemDiscount ?? getGrabItemDiscountTotal(order)
   // Voucher / order-level discount from voucherInfo (used when explicit discount fields are 0 or absent)
   const voucherInfoRecord = getRecord(raw?.voucherInfo)
@@ -262,7 +264,7 @@ export function getGrabMoneyBreakdown(order: Order) {
   const computedRevenueAfterPromotion = Math.max(0, originalSubtotal - itemDiscount - promotionDiscount)
   const revenueAfterPromotion = typeof explicitRevenueAfterPromotion === 'number'
     ? explicitRevenueAfterPromotion
-    : computedRevenueAfterPromotion
+    : (typeof nexposRevenueAfterPromotion === 'number' ? nexposRevenueAfterPromotion : computedRevenueAfterPromotion)
   const deliveryFee = getAmountFromSources([fare, price, raw], ['deliveryFeeDisplay', 'deliveryFee']) ?? 0
   const smallOrderFee = getAmountFromSources([fare, price, raw], ['smallOrderFeeDisplay', 'smallOrderFee']) ?? 0
   const serviceFee = getAmountFromSources([fare, price, raw], ['serviceChargeFeeDisplay', 'serviceFee']) ?? 0
@@ -275,10 +277,14 @@ export function getGrabMoneyBreakdown(order: Order) {
   const explicitStoredPlatformCommission = typeof order.platformFee === 'number' && order.platformFee > 0
     ? Math.round(order.platformFee)
     : undefined
-  const platformCommission = getDeductionAmountFromSources(
-    [financialBreakdown, fare, price, raw],
-    ['platformCommission', 'mexCommissionDisplay', 'platformFee', 'commissionFee', 'merchantCommission', 'merchantFee'],
-  ) ?? explicitStoredPlatformCommission ?? 0
+  const explicitSettlementPlatformCommission = getDeductionAmountFromSources(
+    [financialBreakdown],
+    ['platformCommission'],
+  )
+  const nexposTopLevelPlatformCommission = getDeductionAmountFromSources(
+    [raw],
+    ['commission'],
+  )
   const explicitTaxWithheldRaw = getDeductionAmountFromSources(
     [financialBreakdown, fare, price, raw],
     ['taxWithheld', 'onBehalfWithholdTaxDisplay', 'withholdingTax', 'withheldTax', 'onBehalfWithholdTax', 'deductedTax'],
@@ -293,7 +299,19 @@ export function getGrabMoneyBreakdown(order: Order) {
   const nestedTaxWithheld = typeof nestedTaxWithheldRaw === 'number' && nestedTaxWithheldRaw > 0
     ? nestedTaxWithheldRaw
     : undefined
+  const explicitActualReceived = getAmountFromSources(
+    [financialBreakdown, raw, nexposFinanceData, price],
+    ['actualReceived', 'total_for_biz', 'merchantReceivable', 'receivedAmount', 'merchantPayment', 'payToMerchant', 'real_received'],
+  )
+  const derivedTaxFromNexposTopLevel = (
+    typeof nexposTopLevelPlatformCommission === 'number'
+    && typeof explicitActualReceived === 'number'
+    && revenueAfterPromotion > 0
+  )
+    ? Math.max(0, revenueAfterPromotion - nexposTopLevelPlatformCommission - explicitActualReceived)
+    : undefined
   const taxWithheld = explicitTaxWithheld
+    ?? derivedTaxFromNexposTopLevel
     ?? nestedTaxWithheld
     ?? (
       isGrabFinalizedOrder(raw)
@@ -302,10 +320,18 @@ export function getGrabMoneyBreakdown(order: Order) {
     )
   const vatAmount = 0
   const pitAmount = 0
-  const explicitActualReceived = getAmountFromSources(
-    [financialBreakdown, price, raw],
-    ['actualReceived', 'merchantReceivable', 'receivedAmount', 'merchantPayment', 'payToMerchant'],
-  )
+  const derivedPlatformCommissionFromActual = typeof explicitActualReceived === 'number'
+    ? Math.max(0, revenueAfterPromotion - taxWithheld - explicitActualReceived)
+    : undefined
+  const platformCommission = explicitSettlementPlatformCommission
+    ?? derivedPlatformCommissionFromActual
+    ?? nexposTopLevelPlatformCommission
+    ?? explicitStoredPlatformCommission
+    ?? getDeductionAmountFromSources(
+      [fare, price, raw],
+      ['platformCommission', 'mexCommissionDisplay', 'platformFee', 'commissionFee', 'merchantCommission', 'merchantFee'],
+    )
+    ?? 0
   const computedActualReceived = Math.max(0, revenueAfterPromotion - platformCommission - taxWithheld)
   const actualReceived = typeof explicitActualReceived === 'number' && explicitActualReceived > 0
     ? explicitActualReceived
