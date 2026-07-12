@@ -272,10 +272,13 @@ export function getGrabMoneyBreakdown(order: Order) {
   // Nexpos currently treats Grab "CK sàn" as an explicit settlement field only.
   // Do not infer it from fare.mexCommissionDisplay because that value makes BPOS diverge
   // from the settlement view used operationally by the team.
+  const explicitStoredPlatformCommission = typeof order.platformFee === 'number' && order.platformFee > 0
+    ? Math.round(order.platformFee)
+    : undefined
   const platformCommission = getDeductionAmountFromSources(
     [financialBreakdown, fare, price, raw],
     ['platformCommission', 'mexCommissionDisplay', 'platformFee', 'commissionFee', 'merchantCommission', 'merchantFee'],
-  ) ?? 0
+  ) ?? explicitStoredPlatformCommission ?? 0
   const explicitTaxWithheldRaw = getDeductionAmountFromSources(
     [financialBreakdown, fare, price, raw],
     ['taxWithheld', 'onBehalfWithholdTaxDisplay', 'withholdingTax', 'withheldTax', 'onBehalfWithholdTax', 'deductedTax'],

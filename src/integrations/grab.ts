@@ -922,6 +922,9 @@ export class GrabAdapter implements PlatformAdapter {
 
   private extractGrabPortalOrderFromHtml(html: string, orderId: string): Record<string, unknown> | null {
     const jsonBlocks = new Set<string>()
+    const textDetail = this.extractGrabPortalOrderFromText(html, orderId)
+    let bestJsonDetail: Record<string, unknown> | null = null
+    let bestJsonScore = -1
 
     const nextDataMatch = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i)
     if (nextDataMatch?.[1]) jsonBlocks.add(nextDataMatch[1])
@@ -934,13 +937,29 @@ export class GrabAdapter implements PlatformAdapter {
       try {
         const parsed = JSON.parse(block) as unknown
         const found = this.findGrabPortalOrderInValue(parsed, orderId)
-        if (found) return found
+        if (!found) continue
+        const score = this.scoreGrabPortalDetail(found)
+        if (score > bestJsonScore) {
+          bestJsonScore = score
+          bestJsonDetail = found
+        }
       } catch {
         continue
       }
     }
 
-    return this.extractGrabPortalOrderFromText(html, orderId)
+    if (bestJsonDetail && textDetail) {
+      return {
+        ...bestJsonDetail,
+        ...textDetail,
+        financialBreakdown: {
+          ...((bestJsonDetail.financialBreakdown && typeof bestJsonDetail.financialBreakdown === 'object' && !Array.isArray(bestJsonDetail.financialBreakdown)) ? bestJsonDetail.financialBreakdown as Record<string, unknown> : {}),
+          ...((textDetail.financialBreakdown && typeof textDetail.financialBreakdown === 'object' && !Array.isArray(textDetail.financialBreakdown)) ? textDetail.financialBreakdown as Record<string, unknown> : {}),
+        },
+      }
+    }
+
+    return bestJsonDetail ?? textDetail
   }
 
   private scoreNormalizedGrabPortalDetail(normalized: NormalizedOrder) {
