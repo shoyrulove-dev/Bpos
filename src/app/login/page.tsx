@@ -29,22 +29,22 @@ export default function LoginPage() {
       if (result?.error) {
         const code = (result as { code?: string }).code ?? ''
         if (code === 'USER_NOT_FOUND') {
-          setError('Email không tồn tại trong hệ thống')
+          setError('Email khÃ´ng tá»“n táº¡i trong há»‡ thá»‘ng')
         } else if (code === 'WRONG_PASSWORD') {
-          setError('Mật khẩu không đúng')
+          setError('Máº­t kháº©u khÃ´ng Ä‘Ãºng')
         } else if (code.startsWith('DB_CONNECT')) {
-          setError(`Lỗi kết nối database: ${code.replace('DB_CONNECT: ', '')}`)
+          setError(`Lá»—i káº¿t ná»‘i database: ${code.replace('DB_CONNECT: ', '')}`)
         } else if (code === 'MISSING_FIELDS') {
-          setError('Vui lòng nhập đầy đủ email và mật khẩu')
+          setError('Vui lÃ²ng nháº­p Ä‘áº§y Ä‘á»§ email vÃ  máº­t kháº©u')
         } else {
-          setError(`Đăng nhập thất bại${code ? ` (${code})` : ''}`)
+          setError(`ÄÄƒng nháº­p tháº¥t báº¡i${code ? ` (${code})` : ''}`)
         }
       } else {
         router.push('/orders')
         router.refresh()
       }
     } catch {
-      setError('Có lỗi xảy ra. Vui lòng thử lại.')
+      setError('CÃ³ lá»—i xáº£y ra. Vui lÃ²ng thá»­ láº¡i.')
     } finally {
       setLoading(false)
     }
@@ -52,7 +52,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-500 via-primary-600 to-orange-700 flex items-center justify-center p-4">
-      {/* Background decorations */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-white/10" />
         <div className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-white/5" />
@@ -60,18 +59,16 @@ export default function LoginPage() {
       </div>
 
       <div className="relative w-full max-w-md">
-        {/* Logo / Brand */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-xl mb-4">
             <ShoppingBag className="w-8 h-8 text-primary-500" />
           </div>
           <h1 className="text-3xl font-bold text-white">BPOS Portal</h1>
-          <p className="text-primary-100 mt-1 text-sm">Quản lý bán hàng đa kênh</p>
+          <p className="text-primary-100 mt-1 text-sm">Quáº£n lÃ½ bÃ¡n hÃ ng Ä‘a kÃªnh</p>
         </div>
 
-        {/* Form Card */}
         <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">Đăng nhập</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-6">ÄÄƒng nháº­p</h2>
 
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
@@ -94,12 +91,12 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="label">Mật khẩu</label>
+              <label className="label">Máº­t kháº©u</label>
               <div className="relative">
                 <input
                   type={showPass ? 'text' : 'password'}
                   className="input pr-10"
-                  placeholder="••••••••"
+                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   required
@@ -123,7 +120,7 @@ export default function LoginPage() {
                   onChange={(e) => setRememberMe(e.target.checked)}
                   className="w-4 h-4 rounded border-gray-300 text-primary-500 accent-orange-500 cursor-pointer"
                 />
-                <span className="text-sm text-gray-600">Ghi nhớ đăng nhập</span>
+                <span className="text-sm text-gray-600">Ghi nhá»› Ä‘Äƒng nháº­p</span>
               </label>
             </div>
 
@@ -135,40 +132,17 @@ export default function LoginPage() {
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Đang đăng nhập...
+                  Äang Ä‘Äƒng nháº­p...
                 </>
               ) : (
-                'Đăng nhập'
+                'ÄÄƒng nháº­p'
               )}
             </button>
           </form>
-
-          {/* Demo accounts */}
-          <div className="mt-6 pt-5 border-t border-gray-100">
-            <p className="text-xs text-gray-400 text-center mb-3">Tài khoản demo</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setForm({ email: 'admin@bpos.vn', password: '123456' })}
-                className="text-xs text-left p-2.5 rounded-lg bg-orange-50 border border-orange-100 hover:bg-orange-100 transition-colors"
-              >
-                <span className="font-semibold text-orange-700 block">Admin</span>
-                <span className="text-gray-500">admin@bpos.vn</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm({ email: 'user@bpos.vn', password: '123456' })}
-                className="text-xs text-left p-2.5 rounded-lg bg-blue-50 border border-blue-100 hover:bg-blue-100 transition-colors"
-              >
-                <span className="font-semibold text-blue-700 block">User</span>
-                <span className="text-gray-500">user@bpos.vn</span>
-              </button>
-            </div>
-          </div>
         </div>
 
         <p className="text-center text-primary-100 text-xs mt-6">
-          © 2026 BPOS Portal · v1.0.0
+          Â© 2026 BPOS Portal Â· v1.0.0
         </p>
       </div>
     </div>
