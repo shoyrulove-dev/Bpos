@@ -9,7 +9,7 @@
  *   { grab: GrabAccount[], be: BeAccount[] }
  *
  * GrabAccount:  { integrationId, username, password, storeId, label }
- * BeAccount:    { username, password, restaurantId, label }
+ * BeAccount:    { username, password, restaurantId|null, label }
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db'
@@ -66,14 +66,15 @@ export async function GET(req: NextRequest) {
         label,
       })
     } else if (integ.provider === 'be') {
-      // restaurantId lưu ở externalStoreId
+      // restaurantId lưu ở externalStoreId.
+      // Nếu chưa có, vẫn trả account về cho scraper để scraper tự resolve
+      // khi account chỉ quản lý đúng 1 store.
       const restaurantId = Number(integ.externalStoreId ?? 0)
-      if (!restaurantId) continue
       be.push({
         integrationId: String(integ._id),
         username,
         password,
-        restaurantId,
+        restaurantId: restaurantId || null,
         label,
       })
     }
