@@ -240,6 +240,7 @@ export default function NotificationProvider({ children }: { children: React.Rea
       const searchParams = new URLSearchParams({
         status: NEW_ORDER_STATUSES.join(','),
         limit: '100',
+        view: 'alerts',
       })
       const res = await fetch(`/api/orders?${searchParams.toString()}`)
       if (!res.ok) return

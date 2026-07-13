@@ -12,7 +12,7 @@ async function fetchJSON(url: string, opts?: RequestInit, normalizeResponse = tr
   return normalizeResponse ? repairVietnameseTextDeep(payload) : payload
 }
 
-export function useOrders(params?: { q?: string; status?: string; source?: string; brandId?: string; page?: number; limit?: number; fromDate?: string; toDate?: string; pollingEnabled?: boolean }) {
+export function useOrders(params?: { q?: string; status?: string; source?: string; brandId?: string; page?: number; limit?: number; fromDate?: string; toDate?: string; pollingEnabled?: boolean; pollIntervalMs?: number }) {
   const sp = new URLSearchParams()
   if (params?.q) sp.set('q', params.q)
   if (params?.status) sp.set('status', params.status)
@@ -27,7 +27,7 @@ export function useOrders(params?: { q?: string; status?: string; source?: strin
     queryFn: () => fetchJSON(`/api/orders?${sp}`, undefined, false),
     placeholderData: keepPreviousData,
     staleTime: 0,
-    refetchInterval: params?.pollingEnabled ? ORDER_ALERT_POLL_INTERVAL_MS : false,
+    refetchInterval: params?.pollingEnabled ? (params.pollIntervalMs ?? ORDER_ALERT_POLL_INTERVAL_MS) : false,
     refetchIntervalInBackground: params?.pollingEnabled ?? false,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
@@ -38,7 +38,7 @@ export function useOrder(id: string) {
   return useQuery({ queryKey: ['order', id], queryFn: () => fetchJSON(`/api/orders/${encodeURIComponent(id)}`, undefined, false), enabled: !!id })
 }
 
-export function useOrderTodayStatusCounts(params?: { source?: string; brandId?: string; pollingEnabled?: boolean }) {
+export function useOrderTodayStatusCounts(params?: { source?: string; brandId?: string; pollingEnabled?: boolean; pollIntervalMs?: number }) {
   const sp = new URLSearchParams()
   if (params?.source) sp.set('source', params.source)
   if (params?.brandId) sp.set('brandId', params.brandId)
@@ -47,7 +47,7 @@ export function useOrderTodayStatusCounts(params?: { source?: string; brandId?: 
     queryKey: ['orders-today-status', params],
     queryFn: () => fetchJSON(`/api/orders/today-status?${sp}`, undefined, false),
     staleTime: 0,
-    refetchInterval: params?.pollingEnabled ? ORDER_ALERT_POLL_INTERVAL_MS : false,
+    refetchInterval: params?.pollingEnabled ? (params.pollIntervalMs ?? ORDER_ALERT_POLL_INTERVAL_MS) : false,
     refetchIntervalInBackground: params?.pollingEnabled ?? false,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,

@@ -59,6 +59,25 @@ const ORDER_LIST_RAW_SELECT = [
   'rawPayload.finished_at',
 ].join(' ')
 const ORDER_LIST_SELECT = `shortId source externalOrderId brandId hubId channelId customerName customerPhone items.quantity total platformFee deliveryInfo.address deliveryInfo.estimatedTime driverInfo.name driverInfo.phone status placedAt deliveredAt ${ORDER_LIST_RAW_SELECT}`
+const ORDER_ALERT_SELECT = 'shortId source externalOrderId channelId customerName status placedAt rawPayload.displayID'
+
+function serializeAlertOrder(order: Record<string, unknown>) {
+  const rawPayload = order.rawPayload && typeof order.rawPayload === 'object' && !Array.isArray(order.rawPayload)
+    ? (order.rawPayload as Record<string, unknown>)
+    : undefined
+
+  return {
+    _id: typeof order._id === 'string' ? order._id : order._id?.toString?.(),
+    shortId: typeof order.shortId === 'string' ? order.shortId : undefined,
+    source: typeof order.source === 'string' ? order.source : undefined,
+    externalOrderId: typeof order.externalOrderId === 'string' ? order.externalOrderId : undefined,
+    channelId: typeof order.channelId === 'string' ? order.channelId : order.channelId?.toString?.(),
+    customerName: typeof order.customerName === 'string' ? order.customerName : undefined,
+    placedAt: order.placedAt,
+    status: typeof order.status === 'string' ? order.status : undefined,
+    rawPayload: rawPayload?.displayID ? { displayID: rawPayload.displayID } : undefined,
+  }
+}
 
 export async function GET(req: NextRequest) {
   const { res } = await requireAuth(req)
@@ -69,7 +88,24 @@ export async function GET(req: NextRequest) {
   const requestedLimit = parseInt(searchParams.get('limit') || '10', 10) || 10
   const limit = Math.min(500, Math.max(1, requestedLimit))
   const filter = buildOrderFilterFromSearchParams(searchParams)
+  const view = String(searchParams.get('view') || '').trim().toLowerCase()
   const skip = (page - 1) * limit
+  if (view === 'alerts') {
+    const orderRows = await OrderModel.find(filter)
+      .select(ORDER_ALERT_SELECT)
+      .sort({ placedAt: -1 })
+      .limit(limit)
+      .lean()
+
+    return ok({
+      orders: orderRows.map((order) => serializeAlertOrder(order as Record<string, unknown>)),
+      total: orderRows.length,
+      page: 1,
+      limit,
+      totalPages: 1,
+    })
+  }
+
   const [orderRows, total] = await Promise.all([
     OrderModel.find(filter)
       .select(ORDER_LIST_SELECT)

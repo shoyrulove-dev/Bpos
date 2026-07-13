@@ -15,6 +15,7 @@ import { CHANNEL_SOURCE_LABEL, cn, formatCurrency, formatDate, getOrderDisplayCo
 import type { Order } from '@/types'
 
 const PAGE_SIZE_OPTIONS = [10, 30, 50, 100, 200, 500] as const
+const ORDERS_PAGE_POLL_INTERVAL_MS = 10_000
 type OrdersResponse = {
   orders: Order[]
   total: number
@@ -133,6 +134,7 @@ export default function OrdersPage() {
     fromDate,
     toDate,
     pollingEnabled,
+    pollIntervalMs: ORDERS_PAGE_POLL_INTERVAL_MS,
   })
 
   const ordersData = data as OrdersResponse | undefined
@@ -140,6 +142,7 @@ export default function OrdersPage() {
   const { data: todayCountsData } = useOrderTodayStatusCounts({
     source: sourceFilter,
     pollingEnabled,
+    pollIntervalMs: ORDERS_PAGE_POLL_INTERVAL_MS,
   })
 
   useEffect(() => {
