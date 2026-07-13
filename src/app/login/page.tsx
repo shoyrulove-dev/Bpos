@@ -29,22 +29,22 @@ export default function LoginPage() {
       if (result?.error) {
         const code = (result as { code?: string }).code ?? ''
         if (code === 'USER_NOT_FOUND') {
-          setError('Email khÃ´ng tá»“n táº¡i trong há»‡ thá»‘ng')
+          setError('Email không tồn tại trong hệ thống')
         } else if (code === 'WRONG_PASSWORD') {
-          setError('Máº­t kháº©u khÃ´ng Ä‘Ãºng')
+          setError('Mật khẩu không đúng')
         } else if (code.startsWith('DB_CONNECT')) {
-          setError(`Lá»—i káº¿t ná»‘i database: ${code.replace('DB_CONNECT: ', '')}`)
+          setError(`Lỗi kết nối database: ${code.replace('DB_CONNECT: ', '')}`)
         } else if (code === 'MISSING_FIELDS') {
-          setError('Vui lÃ²ng nháº­p Ä‘áº§y Ä‘á»§ email vÃ  máº­t kháº©u')
+          setError('Vui lòng nhập đầy đủ email và mật khẩu')
         } else {
-          setError(`ÄÄƒng nháº­p tháº¥t báº¡i${code ? ` (${code})` : ''}`)
+          setError(`Đăng nhập thất bại${code ? ` (${code})` : ''}`)
         }
       } else {
         router.push('/orders')
         router.refresh()
       }
     } catch {
-      setError('CÃ³ lá»—i xáº£y ra. Vui lÃ²ng thá»­ láº¡i.')
+      setError('Có lỗi xảy ra. Vui lòng thử lại.')
     } finally {
       setLoading(false)
     }
@@ -64,11 +64,11 @@ export default function LoginPage() {
             <ShoppingBag className="w-8 h-8 text-primary-500" />
           </div>
           <h1 className="text-3xl font-bold text-white">BPOS Portal</h1>
-          <p className="text-primary-100 mt-1 text-sm">Quáº£n lÃ½ bÃ¡n hÃ ng Ä‘a kÃªnh</p>
+          <p className="text-primary-100 mt-1 text-sm">Quản lý bán hàng đa kênh</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">ÄÄƒng nháº­p</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-6">Đăng nhập</h2>
 
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
@@ -91,12 +91,12 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="label">Máº­t kháº©u</label>
+              <label className="label">Mật khẩu</label>
               <div className="relative">
                 <input
                   type={showPass ? 'text' : 'password'}
                   className="input pr-10"
-                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                  placeholder="••••••••"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   required
@@ -120,7 +120,7 @@ export default function LoginPage() {
                   onChange={(e) => setRememberMe(e.target.checked)}
                   className="w-4 h-4 rounded border-gray-300 text-primary-500 accent-orange-500 cursor-pointer"
                 />
-                <span className="text-sm text-gray-600">Ghi nhá»› Ä‘Äƒng nháº­p</span>
+                <span className="text-sm text-gray-600">Ghi nhớ đăng nhập</span>
               </label>
             </div>
 
@@ -132,17 +132,17 @@ export default function LoginPage() {
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Äang Ä‘Äƒng nháº­p...
+                  Đang đăng nhập...
                 </>
               ) : (
-                'ÄÄƒng nháº­p'
+                'Đăng nhập'
               )}
             </button>
           </form>
         </div>
 
         <p className="text-center text-primary-100 text-xs mt-6">
-          Â© 2026 BPOS Portal Â· v1.0.0
+          © 2026 BPOS Portal · v1.0.0
         </p>
       </div>
     </div>

@@ -1104,8 +1104,8 @@ function PauseStoreSection() {
     const delayMs = source === 'be' ? 4_000 : 2_500
     setStatusMsg(
       source === 'be'
-        ? `ÄÃ£ gá»­i lá»‡nh ${action === 'pause' ? 'táº¡m dá»«ng' : 'má»Ÿ láº¡i'} Be, Ä‘ang kiá»ƒm tra tráº¡ng thÃ¡i thá»±c táº¿â€¦`
-        : `ÄÃ£ gá»­i lá»‡nh ${action === 'pause' ? 'táº¡m dá»«ng' : 'má»Ÿ láº¡i'} Grab, Ä‘ang xÃ¡c nháº­n tráº¡ng thÃ¡iâ€¦`
+        ? `Đã gửi lệnh ${action === 'pause' ? 'tạm dừng' : 'mở lại'} Be, đang kiểm tra trạng thái thực tế...`
+        : `Đã gửi lệnh ${action === 'pause' ? 'tạm dừng' : 'mở lại'} Grab, đang xác nhận trạng thái...`
     )
 
     for (let index = 0; index < rounds; index++) {
