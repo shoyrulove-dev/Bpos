@@ -2,7 +2,7 @@ import { decryptJSON } from '@/lib/crypto'
 import { hasBeCancelSignal } from '@/lib/be-order-status'
 import { calcCustomerTier, upsertCustomerProfile } from '@/lib/customer-upsert'
 import { getAdapter } from '@/integrations/registry'
-import { buildOrderUpsert, getComparableDriverName, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
+import { attachContactSnapshotToRawPayload, buildOrderContactSnapshot, buildOrderUpsert, getComparableDriverName, getOrderContactSnapshot, hasMeaningfulCustomerName, hasMeaningfulDriverName, hasMeaningfulPhone, isDriverNamePlaceholder, mergeNormalizedOrderPreservingDetail, shouldSkipFinalizedOrderSync } from '@/lib/order-upsert'
 import { getDisplayCustomerName, getDisplayCustomerPhone, getDisplayDriverName, getDisplayDriverPhone, getFinancialBreakdown } from '@/lib/order-financials'
 import { buildSessionStoreId } from '@/lib/realtime-order-sync'
 import { normalizeCompactPhone } from '@/lib/phone'
@@ -685,6 +685,13 @@ async function repairStoredOrders(
       const nextPlacedAt = resolveOrderPlacedAtValue(order as unknown as Order)
       const nextDeliveredAt = resolveOrderDeliveredAtValue(order as unknown as Order)
       const financialBreakdown = getFinancialBreakdown(order as unknown as Order)
+      const nextContactSnapshot = buildOrderContactSnapshot({
+        customerName: nextCustomerName,
+        customerPhone: nextCustomerPhone,
+        driverName: nextDriverName,
+        driverPhone: nextDriverPhone,
+      })
+      const currentContactSnapshot = getOrderContactSnapshot(order.rawPayload)
 
       const set: Record<string, unknown> = {}
       const unset: Record<string, ''> = {}
@@ -726,6 +733,13 @@ async function repairStoredOrders(
       if (Object.keys(nextDriverInfo).some((key) => nextDriverInfo[key as keyof typeof nextDriverInfo] !== currentDriverInfo[key as keyof typeof currentDriverInfo])) {
         set.driverInfo = {
           ...nextDriverInfo,
+        }
+      }
+
+      if (JSON.stringify(currentContactSnapshot ?? null) !== JSON.stringify(nextContactSnapshot ?? null)) {
+        const nextRawPayload = attachContactSnapshotToRawPayload(order.rawPayload, nextContactSnapshot)
+        if (nextRawPayload) {
+          set.rawPayload = nextRawPayload
         }
       }
 

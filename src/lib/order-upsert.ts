@@ -12,6 +12,13 @@ type IntegrationRef = {
   hubId?: string
 }
 
+type OrderContactSnapshot = {
+  customerName?: string
+  customerPhone?: string
+  driverName?: string
+  driverPhone?: string
+}
+
 const FINALIZED_ORDER_STATUSES = new Set(['completed', 'cancelled'])
 
 function hasText(value: unknown) {
@@ -346,6 +353,65 @@ function mergeInfoObject<T extends object>(existing: T | undefined, incoming: T 
   return Object.keys(merged).length ? (merged as T) : undefined
 }
 
+export function getOrderContactSnapshot(rawPayload: unknown) {
+  const raw = getRecord(rawPayload)
+  const snapshot = getRecord(raw?._contactSnapshot)
+  if (!snapshot) return undefined
+
+  const customerName = hasMeaningfulCustomerName(snapshot.customerName) ? toTrimmedText(snapshot.customerName) : undefined
+  const customerPhone = hasMeaningfulPhone(snapshot.customerPhone) ? normalizeCompactPhone(String(snapshot.customerPhone)) ?? undefined : undefined
+  const driverName = hasMeaningfulDriverName(snapshot.driverName) ? toTrimmedText(snapshot.driverName) : undefined
+  const driverPhone = hasMeaningfulPhone(snapshot.driverPhone) ? normalizeCompactPhone(String(snapshot.driverPhone)) ?? undefined : undefined
+
+  const nextSnapshot: OrderContactSnapshot = {
+    ...(customerName ? { customerName } : {}),
+    ...(customerPhone ? { customerPhone } : {}),
+    ...(driverName ? { driverName } : {}),
+    ...(driverPhone ? { driverPhone } : {}),
+  }
+
+  return Object.keys(nextSnapshot).length ? nextSnapshot : undefined
+}
+
+export function buildOrderContactSnapshot(values: OrderContactSnapshot) {
+  const customerName = hasMeaningfulCustomerName(values.customerName) ? toTrimmedText(values.customerName) : undefined
+  const customerPhone = hasMeaningfulPhone(values.customerPhone) ? normalizeCompactPhone(String(values.customerPhone)) ?? undefined : undefined
+  const driverName = hasMeaningfulDriverName(values.driverName) ? toTrimmedText(values.driverName) : undefined
+  const driverPhone = hasMeaningfulPhone(values.driverPhone) ? normalizeCompactPhone(String(values.driverPhone)) ?? undefined : undefined
+
+  const snapshot: OrderContactSnapshot = {
+    ...(customerName ? { customerName } : {}),
+    ...(customerPhone ? { customerPhone } : {}),
+    ...(driverName ? { driverName } : {}),
+    ...(driverPhone ? { driverPhone } : {}),
+  }
+
+  return Object.keys(snapshot).length ? snapshot : undefined
+}
+
+export function attachContactSnapshotToRawPayload(
+  rawPayload: Record<string, unknown> | undefined,
+  snapshot: OrderContactSnapshot | undefined,
+) {
+  if (!rawPayload && !snapshot) return undefined
+  if (!snapshot) return rawPayload
+
+  const nextRawPayload: Record<string, unknown> = {
+    ...(rawPayload ?? {}),
+  }
+
+  const mergedSnapshot = mergeInfoObject(
+    getRecord(nextRawPayload._contactSnapshot),
+    snapshot as unknown as Record<string, unknown>,
+  )
+
+  if (mergedSnapshot) {
+    nextRawPayload._contactSnapshot = mergedSnapshot
+  }
+
+  return nextRawPayload
+}
+
 function mergeRawPayloadPreservingContacts(
   existing: Record<string, unknown> | undefined,
   incoming: Record<string, unknown> | undefined,
@@ -381,6 +447,14 @@ function mergeRawPayloadPreservingContacts(
     if (mergedDeliveryDriver) {
       (merged.delivery as Record<string, unknown>).driver = mergedDeliveryDriver
     }
+  }
+
+  const mergedContactSnapshot = mergeInfoObject(
+    getRecord(existing?._contactSnapshot),
+    getRecord(incoming?._contactSnapshot),
+  )
+  if (mergedContactSnapshot) {
+    merged._contactSnapshot = mergedContactSnapshot
   }
 
   return Object.keys(merged).length ? merged : undefined
@@ -444,6 +518,17 @@ export function mergeNormalizedOrderPreservingDetail(existing: OrderSnapshot | n
         : undefined
     })()
 
+  const contactSnapshot = buildOrderContactSnapshot({
+    customerName: mergedCustomerName,
+    customerPhone: mergedCustomerPhone,
+    driverName: mergedDriverName,
+    driverPhone: mergedDriverPhone,
+  })
+  const mergedRawPayloadWithSnapshot = attachContactSnapshotToRawPayload(
+    mergedRawPayload ?? getRecord(incoming.rawPayload),
+    contactSnapshot,
+  )
+
   return {
     ...incoming,
     customerName: mergedCustomerName,
@@ -483,7 +568,7 @@ export function mergeNormalizedOrderPreservingDetail(existing: OrderSnapshot | n
       : undefined,
     deliveryInfo: mergeInfoObject(existing?.deliveryInfo, incoming.deliveryInfo),
     driverInfo: mergedDriverInfo,
-    rawPayload: mergedRawPayload ?? {
+    rawPayload: mergedRawPayloadWithSnapshot ?? {
       ...(existing?.rawPayload ?? {}),
       ...(incoming.rawPayload ?? {}),
     },
@@ -833,6 +918,15 @@ export function buildOrderUpsert(integration: IntegrationRef, normalized: Normal
     ...normalizedOrder.driverInfo,
     ...(recoveredDriverName ? { name: recoveredDriverName } : {}),
   })
+  const rawPayloadWithContactSnapshot = attachContactSnapshotToRawPayload(
+    getRecord(normalizedOrder.rawPayload),
+    buildOrderContactSnapshot({
+      customerName,
+      customerPhone,
+      driverName: recoveredDriverName ?? driverInfo?.name,
+      driverPhone,
+    }),
+  )
   const discount = financialBreakdown
     ? Number(financialBreakdown.productDiscount ?? 0) + Number(financialBreakdown.orderDiscount ?? 0)
     : normalizedOrder.discount
@@ -849,7 +943,7 @@ export function buildOrderUpsert(integration: IntegrationRef, normalized: Normal
     paymentMethod: normalizedOrder.paymentMethod,
     deliveryInfo: normalizedOrder.deliveryInfo,
     driverInfo: driverInfo ? { ...driverInfo, ...(driverPhone ? { phone: driverPhone } : {}) } : driverPhone ? { phone: driverPhone } : undefined,
-    rawPayload: normalizedOrder.rawPayload,
+    rawPayload: rawPayloadWithContactSnapshot ?? normalizedOrder.rawPayload,
     source: normalizedOrder.source,
     externalOrderId: normalizedOrder.externalOrderId,
     externalStoreId: normalizedOrder.externalStoreId,

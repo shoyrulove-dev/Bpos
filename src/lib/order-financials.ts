@@ -32,6 +32,11 @@ function getRecord(value: unknown) {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
 }
 
+function getContactSnapshot(order: Order) {
+  const raw = getRecord(order.rawPayload)
+  return getRecord(raw?._contactSnapshot)
+}
+
 function hasText(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0
 }
@@ -537,6 +542,7 @@ export function getFinancialBreakdown(order: Order) {
 
 export function getDisplayCustomerPhone(order: Order) {
   const raw = getRecord(order.rawPayload)
+  const snapshot = getContactSnapshot(order)
   const customer = getRecord(raw?.customer)
   const receiver = getRecord(raw?.receiver)
   const consumer = getRecord(raw?.consumer)
@@ -544,6 +550,7 @@ export function getDisplayCustomerPhone(order: Order) {
 
   return getNormalizedPhoneFromCandidates([
     order.customerPhone,
+    snapshot?.customerPhone,
     raw?.customer_phone_no,
     raw?.receiver_phone_no,
     raw?.customerPhone,
@@ -583,6 +590,7 @@ export function getDisplayCustomerPhone(order: Order) {
 
 export function getDisplayCustomerName(order: Order) {
   const raw = getRecord(order.rawPayload)
+  const snapshot = getContactSnapshot(order)
   const customer = getRecord(raw?.customer)
   const receiver = getRecord(raw?.receiver)
   const consumer = getRecord(raw?.consumer)
@@ -590,6 +598,7 @@ export function getDisplayCustomerName(order: Order) {
 
   const candidates = [
     order.customerName,
+    snapshot?.customerName,
     customer?.name,
     customer?.displayName,
     receiver?.name,
@@ -612,6 +621,7 @@ export function getDisplayCustomerName(order: Order) {
 
 export function getDisplayDriverPhone(order: Order) {
   const raw = getRecord(order.rawPayload)
+  const snapshot = getContactSnapshot(order)
   const delivery = getRecord(raw?.delivery)
   const deliveryDriver = getRecord(delivery?.driver)
   const driver = getRecord(raw?.driver)
@@ -670,12 +680,14 @@ export function getDisplayDriverPhone(order: Order) {
     deliveryPerson?.phoneNumber,
     deliveryPerson?.contactNumber,
     deliveryPerson?.displayPhone,
+    snapshot?.driverPhone,
     order.driverInfo?.phone,
   ])
 }
 
 export function getDisplayDriverName(order: Order) {
   const raw = getRecord(order.rawPayload)
+  const snapshot = getContactSnapshot(order)
   const delivery = getRecord(raw?.delivery)
   const deliveryDriver = getRecord(delivery?.driver)
   const driver = getRecord(raw?.driver)
@@ -712,6 +724,7 @@ export function getDisplayDriverName(order: Order) {
     raw?.driver_name,
     raw?.driverName,
     raw?.driverDisplayName,
+    snapshot?.driverName,
     order.driverInfo?.name,
   ]
 
