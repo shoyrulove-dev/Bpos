@@ -1583,6 +1583,19 @@ export class GrabAdapter implements PlatformAdapter {
   }
 
   normalizeOrder(raw: Record<string, unknown>): NormalizedOrder {
+    const externalOrderId = String(raw.orderID ?? raw.orderId ?? raw.ID ?? raw.id ?? '')
+    const externalStoreId = String(raw.merchantID ?? raw.merchantId ?? raw.storeId ?? raw.restaurantID ?? raw.restaurantId ?? '')
+    const placedAt = String(
+      raw.orderTime ??
+      raw.createdAt ??
+      raw.createTime ??
+      raw.placedAt ??
+      raw.createdTime ??
+      raw.completedAt ??
+      raw.updatedAt ??
+      raw.transactionTime ??
+      new Date().toISOString()
+    )
     // items[] — field name is 'items' in POS API v1.1.3 (not 'orderItems')
     const itemInfo = raw.itemInfo as Record<string, unknown> | undefined
     const rawItems = Array.isArray(raw.items)
@@ -1653,8 +1666,8 @@ export class GrabAdapter implements PlatformAdapter {
 
     return {
       source:          'grab',
-      externalOrderId: String(raw.orderID ?? ''),
-      externalStoreId: String(raw.merchantID ?? ''),
+      externalOrderId,
+      externalStoreId,
       customerName:    String(receiver?.name ?? receiver?.displayName ?? receiver?.fullName ?? 'Khách hàng'),
       customerPhone:   receiverPhone,
       items,
@@ -1673,7 +1686,7 @@ export class GrabAdapter implements PlatformAdapter {
       },
       driverInfo,
       orderStatus,
-      placedAt:    String(raw.orderTime ?? new Date().toISOString()),
+      placedAt,
       deliveredAt: this.getGrabDeliveredAt(raw, orderStatus),
       rawPayload:  raw,
     }
